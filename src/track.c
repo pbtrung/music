@@ -78,9 +78,10 @@ void decode_mp3(const char *filename, const char *pipe_name) {
 
     if (err != MPG123_DONE) {
         fprintf(stderr, "Error decoding MP3 file\n");
-        return;
+        goto clean;
     }
 
+clean:
     free(audio);
     close(fd);
     mpg123_close(mh);
@@ -119,14 +120,18 @@ void decode_opus(const char *filename, const char *pipe_name) {
 
     if (ret < 0) {
         fprintf(stderr, "Error decoding Opus file\n");
-        exit(-1);
+        goto clean;
     }
 
+clean:
     op_free(of);
     close(fd);
 }
 
-void track_decode(file_downloader_t *infos, int num_files) {
+void track_decode(uv_work_t *req) {
+    file_downloader_t *infos = (file_downloader_t *)req->data;
+    int num_files = infos[0].config->num_files;
+
     for (int i = 0; i < num_files; ++i) {
         int path_length =
             strlen(infos[i].config->output) + strlen(infos[i].filename) + 2;
