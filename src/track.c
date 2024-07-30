@@ -128,8 +128,7 @@ clean:
     close(fd);
 }
 
-void track_decode(uv_work_t *req) {
-    file_downloader_t *infos = (file_downloader_t *)req->data;
+void track_decode(file_downloader_t *infos) {
     int num_files = infos[0].config->num_files;
 
     for (int i = 0; i < num_files; ++i) {

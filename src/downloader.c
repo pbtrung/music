@@ -90,11 +90,16 @@ void on_cid_download_complete(uv_work_t *req, int status) {
         num_downloaded += task->downloaded[j];
     }
     if (num_downloaded == task->num_cids) {
-        char path[256];
         int path_length =
             strlen(task->config->output) + strlen(task->filename) + 1;
-        snprintf(path, sizeof(path), "%s/%s", task->config->output,
+        char *path = (char *)malloc(path_length + 1);
+        if (!path) {
+            fprintf(stderr, "Memory allocation failed\n");
+            exit(-1);
+        }
+        snprintf(path, path_length + 1, "%s/%s", task->config->output,
                  task->filename);
+
         FILE *outfile = fopen(path, "wb");
         if (!outfile) {
             fprintf(stderr, "Failed to open file %s\n", path);
@@ -126,6 +131,7 @@ void on_cid_download_complete(uv_work_t *req, int status) {
             }
         }
         fclose(outfile);
+        free(path);
     }
 }
 
@@ -147,8 +153,12 @@ void download_cid_task(uv_work_t *req) {
 
     int path_length =
         strlen(task->config->output) + strlen(task->cids[task->cid_index]) + 1;
-    char path[path_length + 1];
-    snprintf(path, sizeof(path), "%s/%s", task->config->output,
+    char *path = (char *)malloc(path_length + 1);
+    if (!path) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(-1);
+    }
+    snprintf(path, path_length + 1, "%s/%s", task->config->output,
              task->cids[task->cid_index]);
 
     FILE *fp = fopen(path, "wb");
@@ -164,13 +174,13 @@ void download_cid_task(uv_work_t *req) {
     char url[256];
     do {
         if (strlen(task->cids[task->cid_index]) == 59) {
-            snprintf(url, sizeof(url), "https://%s.ipfs.nftstorage.link",
+            snprintf(url, 256, "https://%s.ipfs.nftstorage.link",
                      task->cids[task->cid_index]);
             curl_easy_setopt(task->curl, CURLOPT_TIMEOUT, 50);
         } else {
             int *random_index =
                 random_ints(1, 0, task->config->num_gateways - 1);
-            snprintf(url, sizeof(url), "https://%s/%s",
+            snprintf(url, 256, "https://%s/%s",
                      task->config->gateways[*random_index],
                      task->cids[task->cid_index]);
             free(random_index);
@@ -199,6 +209,7 @@ void download_cid_task(uv_work_t *req) {
 
     task->completed[task->cid_index] = 1;
     fclose(fp);
+    free(path);
     curl_easy_cleanup(task->curl);
 }
 
@@ -260,7 +271,7 @@ void initialize_downloads(file_downloader_t *infos, int num_files,
         infos[i].cid_tasks = (cid_downloader_t *)malloc(
             infos[i].num_cids * sizeof(cid_downloader_t));
         if (!infos[i].cid_tasks) {
-            perror("Memory allocation failed");
+            fprintf(stderr, "Memory allocation failed\n");
             exit(-1);
         }
         for (int j = 0; j < infos[i].num_cids; j++) {
@@ -283,12 +294,12 @@ void cleanup_downloads(file_downloader_t *infos, int num_files) {
     for (int i = 0; i < num_files; i++) {
         file_downloader_t *info = &infos[i];
 
-        // for (int j = 0; j < info->num_cids; j++) {
-        //     cid_downloader_t *task = &info->cid_tasks[j];
-        //     if (task->curl != NULL) {
-        //         curl_easy_cleanup(task->curl);
-        //     }
-        // }
+        for (int j = 0; j < info->num_cids; j++) {
+            cid_downloader_t *task = &info->cid_tasks[j];
+            if (task->curl != NULL) {
+                curl_easy_cleanup(task->curl);
+            }
+        }
 
         free(info->cid_tasks);
         free(info->filename);

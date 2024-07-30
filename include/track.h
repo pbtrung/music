@@ -4,6 +4,6 @@
 #include "downloader.h"
 
 char *track_extract_metadata(file_downloader_t *infos, int num_files);
-void track_decode(uv_work_t *req);
+void track_decode(file_downloader_t *infos);
 
 #endif // TRACK_H

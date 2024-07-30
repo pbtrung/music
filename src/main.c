@@ -4,37 +4,10 @@
 #include "downloader.h"
 #include "random.h"
 #include "track.h"
-#include <libwebsockets.h>
 #include <stdbool.h>
 #include <string.h>
 #include <uv.h>
 
-int lws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user,
-                 void *in, size_t len) {
-    switch (reason) {
-    case LWS_CALLBACK_ESTABLISHED:
-        lwsl_user("Connection established\n");
-        break;
-
-    case LWS_CALLBACK_RECEIVE:
-        lwsl_user("Received message: %.*s\n", (int)len, (char *)in);
-
-        // Echo the received message back to the client
-        if (lws_write(wsi, (unsigned char *)in, len, LWS_WRITE_TEXT) < 0) {
-            lwsl_err("Error writing to client\n");
-        }
-        break;
-
-    case LWS_CALLBACK_CLOSED:
-        lwsl_user("Connection closed\n");
-        break;
-
-    default:
-        break;
-    }
-
-    return 0;
-}
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -73,38 +46,12 @@ int main(int argc, char *argv[]) {
 
         uv_run(loop, UV_RUN_DEFAULT);
 
-        // struct lws_context_creation_info lws_info;
-        // struct lws_context *context;
-        // struct lws_protocols protocols[] = {{"http", lws_callback, 0, 0},
-        //                                     {NULL, NULL, 0, 0}};
-        // memset(&lws_info, 0, sizeof(lws_info));
-        // lws_info.port = 9000;
-        // lws_info.protocols = protocols;
-        // lws_info.options = LWS_SERVER_OPTION_LIBUV;
-        // lws_info.user = loop;
-        // context = lws_create_context(&lws_info);
-        // if (context == NULL) {
-        //     lwsl_err("Creating context failed\n");
-        //     exit(-1);
-        // }
-
         char *json = track_extract_metadata(infos, config.num_files);
-
-        uv_work_t *work_req = malloc(sizeof(uv_work_t));
-        if (!work_req) {
-            fprintf(stderr, "Memory allocation failed\n");
-            exit(-1);
-        }
-        work_req->data = infos;
-        uv_queue_work(loop, work_req, track_decode, NULL);
-
-        uv_run(loop, UV_RUN_DEFAULT);
+        track_decode(infos);
 
         cleanup_downloads(infos, config.num_files);
         free(infos);
         free(json);
-        free(work_req);
-        // lws_context_destroy(context);
 
         fprintf(stdout, "Sleeping...\n");
         sleep(2);
