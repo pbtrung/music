@@ -63,6 +63,8 @@ void decode_opus(const char *filename, const char *pipe_name) {
     int error;
     int channels = 2;
     int bits_per_sample = 16;
+    int sample_rate = 48000;
+
     OggOpusFile *of = op_open_file(filename, &error);
     if (!of) {
         fprintf(stderr, "Error opening file\n");
@@ -76,7 +78,7 @@ void decode_opus(const char *filename, const char *pipe_name) {
     }
 
     // Set up decoder
-    OpusDecoder *dec = opus_decoder_create(48000, 2, &error);
+    OpusDecoder *dec = opus_decoder_create(sample_rate, channels, &error);
     if (error != OPUS_OK) {
         fprintf(stderr, "Error creating Opus decoder\n");
         exit(-1);
