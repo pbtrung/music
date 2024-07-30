@@ -292,12 +292,12 @@ void cleanup_downloads(file_downloader_t *infos, int num_files) {
     for (int i = 0; i < num_files; i++) {
         file_downloader_t *info = &infos[i];
 
-        for (int j = 0; j < info->num_cids; j++) {
-            cid_downloader_t *task = &info->cid_tasks[j];
-            if (task->curl != NULL) {
-                curl_easy_cleanup(task->curl);
-            }
-        }
+        // for (int j = 0; j < info->num_cids; j++) {
+        //     cid_downloader_t *task = &info->cid_tasks[j];
+        //     if (task->curl != NULL) {
+        //         curl_easy_cleanup(task->curl);
+        //     }
+        // }
 
         free(info->cid_tasks);
         free(info->filename);

@@ -1,145 +1,114 @@
-#include <mpg123.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <faad.h>
+#include <samplerate.h>
 
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 8192
 
-// Structure to store PCM audio data
-typedef struct {
-    short *data;
-    size_t size; // Size in bytes
-} PCMData;
+// Function to decode and (optionally) resample to PCM file
+void decode_to_pcm(const char *input_file_path, const char *output_file_path, bool resample) {
+    FILE *input_file, *output_file;
+    NeAACDecHandle decoder;
+    NeAACDecFrameInfo frame_info;
+    unsigned char input_buffer[BUFFER_SIZE];
+    void *output_buffer;
+    long input_size;
+    unsigned long sample_rate, channels;
 
-PCMData decode_mp3(const char *filename) {
-    PCMData pcmData = {NULL, 0};
-    mpg123_handle *mh = NULL;
-    int err;
-    unsigned char *audio = NULL;
-    size_t done;
-    size_t data_size = 0;
-
-    // Initialize mpg123 library
-    if (mpg123_init() != MPG123_OK) {
-        fprintf(stderr, "Unable to initialize mpg123 library\n");
-        return pcmData;
+    // Open the input file
+    input_file = fopen(input_file_path, "rb");
+    if (!input_file) {
+        perror("fopen (input)");
+        exit(EXIT_FAILURE);
     }
 
-    // Create a new mpg123 handle
-    mh = mpg123_new(NULL, &err);
-    if (!mh) {
-        fprintf(stderr, "Error creating mpg123 handle: %s\n",
-                mpg123_plain_strerror(err));
-        mpg123_exit();
-        return pcmData;
+    // Open the output file
+    output_file = fopen(output_file_path, "wb");
+    if (!output_file) {
+        perror("fopen (output)");
+        fclose(input_file);
+        exit(EXIT_FAILURE);
     }
 
-    // Open the MP3 file
-    if (mpg123_open(mh, filename) != MPG123_OK) {
-        fprintf(stderr, "Error opening file: %s\n", filename);
-        mpg123_delete(mh);
-        mpg123_exit();
-        return pcmData;
+    // Initialize FAAD2 decoder
+    decoder = NeAACDecOpen();
+    if (decoder == NULL) {
+        fprintf(stderr, "Failed to open FAAD2 decoder\n");
+        goto cleanup;
     }
 
-    // Get the audio format of the MP3 file
-    long rate;
-    int channels, encoding;
-    if (mpg123_getformat(mh, &rate, &channels, &encoding) != MPG123_OK) {
-        fprintf(stderr, "Error getting MP3 format: %s\n", mpg123_strerror(mh));
-        mpg123_close(mh);
-        mpg123_delete(mh);
-        mpg123_exit();
-        return pcmData;
-    }
-    printf("MP3 File format: Rate=%ld, Channels=%d, Encoding=%d\n", rate,
-           channels, encoding);
-
-    // Force output format to 48kHz, 16-bit stereo (if possible)
-    if (mpg123_format_none(mh) != MPG123_OK ||
-        mpg123_format(mh, 48000, 2, MPG123_ENC_SIGNED_16) != MPG123_OK) {
-        fprintf(stderr, "Error setting format: %s\n", mpg123_strerror(mh));
-        mpg123_close(mh);
-        mpg123_delete(mh);
-        mpg123_exit();
-        return pcmData;
+    // Read initial data to initialize decoder
+    input_size = fread(input_buffer, 1, BUFFER_SIZE, input_file);
+    if (NeAACDecInit(decoder, input_buffer, input_size, &sample_rate, &channels) < 0) {
+        fprintf(stderr, "Failed to initialize FAAD2 decoder\n");
+        goto cleanup;
     }
 
-    // Allocate buffer for audio data
-    audio = (unsigned char *)malloc(BUFFER_SIZE);
-    if (!audio) {
-        fprintf(stderr, "Error allocating audio buffer\n");
-        mpg123_close(mh);
-        mpg123_delete(mh);
-        mpg123_exit();
-        return pcmData;
-    }
-
-    // Read and decode MP3 data
-    while ((err = mpg123_read(mh, audio, BUFFER_SIZE, &done)) == MPG123_OK) {
-        size_t new_size = data_size + done;
-        short *new_data = (short *)realloc(pcmData.data, new_size);
-        if (!new_data) {
-            fprintf(stderr, "Error reallocating PCM data buffer\n");
-            free(audio);
-            free(pcmData.data);
-            mpg123_close(mh);
-            mpg123_delete(mh);
-            mpg123_exit();
-            return pcmData;
+    SRC_STATE *resampler = NULL;
+    if (resample) {
+        // Initialize resampler (if needed)
+        SRC_DATA resample_data;
+        resample_data.data_in = NULL; // Will be set per frame
+        resample_data.data_out = malloc(BUFFER_SIZE * 2); // Output buffer
+        resample_data.input_frames = 0; // Will be set per frame
+        resample_data.output_frames = BUFFER_SIZE / 2; // Max output samples
+        resample_data.end_of_input = 0;
+        int error = src_simple(&resample_data, SRC_SINC_BEST_QUALITY, channels);
+        if (error != 0) {
+            fprintf(stderr, "Failed to initialize resampler: %s\n", src_strerror(error));
+            goto cleanup;
         }
-        pcmData.data = new_data;
-        memcpy((unsigned char *)pcmData.data + data_size, audio, done);
-        data_size = new_size;
+        resampler = resample_data.src_state;
     }
 
-    // Check for errors during decoding
-    if (err != MPG123_DONE) {
-        fprintf(stderr, "Error decoding MP3 file: %s\n", mpg123_strerror(mh));
-        free(pcmData.data); // Free the data in case of an error
-        pcmData.data = NULL;
-        pcmData.size = 0;
-    } else {
-        pcmData.size = data_size;
-    }
+    // Decode loop
+    while (input_size > 0) {
+        output_buffer = NeAACDecDecode(decoder, &frame_info, input_buffer, input_size);
 
+        if (frame_info.error > 0) {
+            fprintf(stderr, "Decoding error: %s\n", NeAACDecGetErrorMessage(frame_info.error));
+            break;
+        }
+
+        if (frame_info.samples > 0) {
+            if (!resample || (frame_info.samplerate == 48000 && frame_info.channels == 2)) {
+                fwrite(output_buffer, 2, frame_info.samples, output_file);
+            } else {
+                SRC_DATA resample_data;
+                resample_data.data_in = output_buffer;
+                resample_data.data_out = malloc(BUFFER_SIZE * 2);
+                resample_data.input_frames = frame_info.samples;
+                resample_data.output_frames = BUFFER_SIZE / 2;
+                resample_data.end_of_input = 0;
+                resample_data.src_ratio = 48000.0 / frame_info.samplerate;
+
+                int error = src_process(resampler, &resample_data);
+                if (error != 0) {
+                    fprintf(stderr, "Resampling error: %s\n", src_strerror(error));
+                    break;
+                } else {
+                    fwrite(resample_data.data_out, 2, resample_data.output_frames_gen, output_file);
+                }
+            }
+        }
+
+        input_size = fread(input_buffer, 1, BUFFER_SIZE, input_file);
+    }
+cleanup:
     // Clean up
-    free(audio);
-    mpg123_close(mh);
-    mpg123_delete(mh);
-    mpg123_exit();
-
-    return pcmData;
-}
-
-void writePCMDataToFile(const PCMData *pcmData, const char *filename) {
-    FILE *file = fopen(filename, "wb"); // Open file in binary mode for writing
-    if (!file) {
-        perror("Error opening PCM output file");
-        return;
+    fclose(input_file);
+    fclose(output_file);
+    NeAACDecClose(decoder);
+    if (resampler) {
+        src_delete(resampler);
     }
-
-    // Write the PCM data to the file
-    if (fwrite(pcmData->data, 1, pcmData->size, file) != pcmData->size) {
-        fprintf(stderr, "Error writing PCM data to file\n");
-    }
-
-    fclose(file);
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <input_mp3> <output_pcm>\n", argv[0]);
-        return EXIT_FAILURE;
-    }
-
-    PCMData pcmData = decode_mp3(argv[1]);
-    if (pcmData.data) {
-        writePCMDataToFile(&pcmData, argv[2]);
-        free(pcmData.data);
-    } else {
-        fprintf(stderr, "No PCM data available\n");
-    }
-
-    return EXIT_SUCCESS;
+    bool resample = true;
+    decode_to_pcm(argv[1], argv[2], resample);
+    return 0;
 }
