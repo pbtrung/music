@@ -91,13 +91,13 @@ void on_cid_download_complete(uv_work_t *req, int status) {
     }
     if (num_downloaded == task->num_cids) {
         int path_length =
-            strlen(task->config->output) + strlen(task->filename) + 1;
-        char *path = (char *)malloc(path_length + 1);
+            strlen(task->config->output) + strlen(task->cids[j]) * 2;
+        char *path = (char *)malloc(path_length);
         if (!path) {
             fprintf(stderr, "Memory allocation failed\n");
             exit(-1);
         }
-        snprintf(path, path_length + 1, "%s/%s", task->config->output,
+        snprintf(path, path_length, "%s/%s", task->config->output,
                  task->filename);
 
         FILE *outfile = fopen(path, "wb");
@@ -108,9 +108,7 @@ void on_cid_download_complete(uv_work_t *req, int status) {
         char buffer[4096];
         size_t bytes_read;
         for (int j = 0; j < task->num_cids; j++) {
-            path_length =
-                strlen(task->config->output) + strlen(task->cids[j]) + 1;
-            snprintf(path, sizeof(path), "%s/%s", task->config->output,
+            snprintf(path, path_length, "%s/%s", task->config->output,
                      task->cids[j]);
 
             FILE *infile = fopen(path, "rb");
