@@ -91,7 +91,7 @@ void on_cid_download_complete(uv_work_t *req, int status) {
     }
     if (num_downloaded == task->num_cids) {
         int path_length =
-            strlen(task->config->output) + strlen(task->cids[j]) * 2;
+            strlen(task->config->output) + strlen(task->cids[0]) * 2;
         char *path = (char *)malloc(path_length);
         if (!path) {
             fprintf(stderr, "Memory allocation failed\n");
