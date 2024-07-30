@@ -15,9 +15,6 @@
 void decode_mp3(const char *filename, const char *pipe_name) {
     mpg123_handle *mh;
     int err;
-    int channels = 2;
-    int encoding = MPG123_ENC_SIGNED_16;
-    long rate = 48000;
     unsigned char *audio;
     size_t done;
 
@@ -40,6 +37,16 @@ void decode_mp3(const char *filename, const char *pipe_name) {
         exit(-1);
     }
 
+    long rate;
+    int channels, encoding;
+    if (mpg123_getformat(mh, &rate, &channels, &encoding) != MPG123_OK) {
+        fprintf(stderr, "Error getting MP3 format\n");
+        exit(-1);
+    }
+
+    channels = 2;
+    encoding = MPG123_ENC_SIGNED_16;
+    rate = 48000;
     // Ensure the output format is correct
     if (mpg123_format_none(mh) != MPG123_OK ||
         mpg123_format(mh, rate, channels, encoding) != MPG123_OK) {
