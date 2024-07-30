@@ -14,48 +14,70 @@
 
 void decode_mp3(const char *filename, const char *pipe_name) {
     mpg123_handle *mh;
-    int err, channels, encoding;
-    long rate;
+    int err;
+    int channels = 2;
+    int encoding = MPG123_ENC_SIGNED_16;
+    long rate = 48000;
     unsigned char *audio;
     size_t done;
 
     // Initialize mpg123 library
-    mpg123_init();
+    if (mpg123_init() != MPG123_OK) {
+        fprintf(stderr, "Unable to initialize mpg123 library\n");
+        exit(-1);
+    }
+
+    // Create a new mpg123 handle
     mh = mpg123_new(NULL, &err);
     if (!mh) {
         fprintf(stderr, "Error creating mpg123 handle\n");
         exit(-1);
     }
 
-    // Open MP3 file
+    // Open the MP3 file
     if (mpg123_open(mh, filename) != MPG123_OK) {
-        fprintf(stderr, "Error opening file\n");
+        fprintf(stderr, "Error opening file: %s\n", filename);
         exit(-1);
     }
 
-    // Set format (48000 Hz, 16-bit, stereo)
+    // Ensure the output format is correct
     if (mpg123_format_none(mh) != MPG123_OK ||
-        mpg123_format(mh, 48000, MPG123_STEREO, MPG123_ENC_SIGNED_16) !=
-            MPG123_OK) {
+        mpg123_format(mh, rate, channels, encoding) != MPG123_OK) {
         fprintf(stderr, "Error setting format\n");
         exit(-1);
     }
 
-    // Open pipe
+    // Open the named pipe for writing
     int fd = open(pipe_name, O_WRONLY);
     if (fd == -1) {
         fprintf(stderr, "Error opening pipe\n");
         exit(-1);
     }
 
-    // Decode and write to pipe
-    while (mpg123_read(mh, &audio, BUFFER_SIZE, &done) == MPG123_OK) {
-        write(fd, audio, done);
+    // Allocate buffer for audio data
+    audio = (unsigned char *)malloc(BUFFER_SIZE);
+    if (!audio) {
+        fprintf(stderr, "Error allocating audio buffer\n");
+        exit(-1);
     }
 
+    // Read and decode MP3 data
+    while ((err = mpg123_read(mh, audio, BUFFER_SIZE, &done)) == MPG123_OK) {
+        if (write(fd, audio, done) == -1) {
+            fprintf(stderr, "Error writing to pipe\n");
+            exit(-1);
+        }
+    }
+
+    if (err != MPG123_DONE && err != MPG123_OK) {
+        fprintf(stderr, "Error decoding MP3 file\n");
+        exit(-1);
+    }
+
+    free(audio);
+    close(fd);
     mpg123_close(mh);
     mpg123_delete(mh);
-    close(fd);
     mpg123_exit();
 }
 
@@ -63,41 +85,37 @@ void decode_opus(const char *filename, const char *pipe_name) {
     int error;
     int channels = 2;
     int bits_per_sample = 16;
-    int sample_rate = 48000;
 
     OggOpusFile *of = op_open_file(filename, &error);
     if (!of) {
-        fprintf(stderr, "Error opening file\n");
+        fprintf(stderr, "Error opening file: %s\n", filename);
         exit(-1);
     }
 
     int fd = open(pipe_name, O_WRONLY);
     if (fd == -1) {
-        perror("Error opening pipe");
+        fprintf(stderr, "Error opening pipe\n");
         exit(-1);
     }
 
-    // Set up decoder
-    OpusDecoder *dec = opus_decoder_create(sample_rate, channels, &error);
-    if (error != OPUS_OK) {
-        fprintf(stderr, "Error creating Opus decoder\n");
-        exit(-1);
-    }
-
+    // Buffer for PCM data
     opus_int16 pcm[BUFFER_SIZE * channels];
     int ret;
     while ((ret = op_read_stereo(of, pcm, BUFFER_SIZE)) > 0) {
-        unsigned char output[BUFFER_SIZE * channels * (bits_per_sample / 8)];
-        int decoded_samples = opus_decode(dec, (unsigned char *)pcm, ret, (opus_int16 *)output, BUFFER_SIZE, 0);
-         if (decoded_samples < 0) {
-            fprintf(stderr, "Opus decode failed\n");
+        ssize_t written =
+            write(fd, pcm, ret * channels * (bits_per_sample / 8));
+        if (written == -1) {
+            fprintf(stderr, "Error writing to pipe\n");
             exit(-1);
         }
-        write(fd, output, ret * channels * (bits_per_sample / 8));
+    }
+
+    if (ret < 0) {
+        fprintf(stderr, "Error decoding Opus file\n");
+        exit(-1);
     }
 
     op_free(of);
-    opus_decoder_destroy(dec);
     close(fd);
 }
 
