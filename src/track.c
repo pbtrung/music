@@ -78,10 +78,8 @@ void decode_mp3(const char *filename, const char *pipe_name) {
 
     if (err != MPG123_DONE) {
         fprintf(stderr, "Error decoding MP3 file\n");
-        goto clean;
     }
 
-clean:
     free(audio);
     close(fd);
     mpg123_close(mh);
@@ -120,10 +118,8 @@ void decode_opus(const char *filename, const char *pipe_name) {
 
     if (ret < 0) {
         fprintf(stderr, "Error decoding Opus file\n");
-        goto clean;
     }
 
-clean:
     op_free(of);
     close(fd);
 }
