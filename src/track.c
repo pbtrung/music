@@ -76,9 +76,9 @@ void decode_mp3(const char *filename, const char *pipe_name) {
         }
     }
 
-    if (err != MPG123_DONE && err != MPG123_OK) {
+    if (err != MPG123_DONE) {
         fprintf(stderr, "Error decoding MP3 file\n");
-        exit(-1);
+        return;
     }
 
     free(audio);
