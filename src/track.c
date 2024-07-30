@@ -61,25 +61,41 @@ void decode_mp3(const char *filename, const char *pipe_name) {
 
 void decode_opus(const char *filename, const char *pipe_name) {
     int error;
+    int channels = 2;
+    int bits_per_sample = 16;
     OggOpusFile *of = op_open_file(filename, &error);
     if (!of) {
-        fprintf(stderr, "Error opening Opus file: %s\n", filename);
-        return;
+        fprintf(stderr, "Error opening file\n");
+        exit(-1);
     }
 
     int fd = open(pipe_name, O_WRONLY);
     if (fd == -1) {
-        fprintf(stderr, "Error opening pipe\n");
+        perror("Error opening pipe");
         exit(-1);
     }
 
-    opus_int16 pcm[BUFFER_SIZE];
+    // Set up decoder
+    OpusDecoder *dec = opus_decoder_create(48000, 2, &error);
+    if (error != OPUS_OK) {
+        fprintf(stderr, "Error creating Opus decoder\n");
+        exit(-1);
+    }
+
+    opus_int16 pcm[BUFFER_SIZE * channels];
     int ret;
-    while ((ret = op_read(of, pcm, BUFFER_SIZE, NULL)) > 0) {
-        write(fd, pcm, ret * sizeof(opus_int16));
+    while ((ret = op_read_stereo(of, pcm, BUFFER_SIZE)) > 0) {
+        unsigned char output[BUFFER_SIZE * channels * (bits_per_sample / 8)];
+        int decoded_samples = opus_decode(dec, (unsigned char *)pcm, ret, (opus_int16 *)output, BUFFER_SIZE, 0);
+         if (decoded_samples < 0) {
+            fprintf(stderr, "Opus decode failed\n");
+            exit(-1);
+        }
+        write(fd, output, ret * channels * (bits_per_sample / 8));
     }
 
     op_free(of);
+    opus_decoder_destroy(dec);
     close(fd);
 }
 
