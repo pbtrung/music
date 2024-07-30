@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
 
         uv_run(loop, UV_RUN_DEFAULT);
 
-        // cleanup_downloads(infos, config.num_files);
+        cleanup_downloads(infos, config.num_files);
         free(infos);
         free(json);
         free(work_req);

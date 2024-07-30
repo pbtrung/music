@@ -282,21 +282,31 @@ void initialize_downloads(file_downloader_t *infos, int num_files,
 void cleanup_downloads(file_downloader_t *infos, int num_files) {
     for (int i = 0; i < num_files; i++) {
         file_downloader_t *info = &infos[i];
-
+        fprintf(stdout, "i %d\n", i);
         for (int j = 0; j < info->num_cids; j++) {
+            fprintf(stdout, "j %d\n", j);
             cid_downloader_t *task = &info->cid_tasks[j];
             if (task->curl != NULL) {
+                fprintf(stdout, "j task->curl %d\n", j);
                 curl_easy_cleanup(task->curl);
             }
         }
 
+        fprintf(stdout, "i cid_tasks %d\n", i);
         free(info->cid_tasks);
+        fprintf(stdout, "i filename %d\n", i);
         free(info->filename);
+        fprintf(stdout, "i cids %d\n", i);
         free(info->cids);
+        fprintf(stdout, "i downloaded %d\n", i);
         free(info->downloaded);
+        fprintf(stdout, "i track_name %d\n", i);
         free(info->track_name);
+        fprintf(stdout, "i album_path %d\n", i);
         free(info->album_path);
+        fprintf(stdout, "i completed %d\n", i);
         free(info->completed);
+        fprintf(stdout, "i ext %d\n", i);
         free(info->ext);
     }
 }
