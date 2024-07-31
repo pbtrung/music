@@ -25,7 +25,7 @@ pkg_check_modules(TAGLIB REQUIRED taglib_c)
 pkg_check_modules(JANSSON REQUIRED jansson)
 pkg_check_modules(MPG123 REQUIRED libmpg123)
 pkg_check_modules(LWS REQUIRED libwebsockets)
-pkg_check_modules(MPV REQUIRED libmpv)
+pkg_check_modules(MPV REQUIRED mpv)
 
 include_directories(${LIBUV_INCLUDE_DIRS} ${LIBCURL_INCLUDE_DIRS} ${SQLITE3_INCLUDE_DIRS} ${LIBSODIUM_INCLUDE_DIRS} ${PCRE2_INCLUDE_DIRS} ${OPUSFILE_INCLUDE_DIRS} ${OPUS_INCLUDE_DIRS} ${TAGLIB_INCLUDE_DIRS} ${JANSSON_INCLUDE_DIRS} ${MPG123_INCLUDE_DIRS} ${LWS_INCLUDE_DIRS} ${MPV_INCLUDE_DIRS} include)
 

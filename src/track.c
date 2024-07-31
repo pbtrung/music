@@ -14,7 +14,7 @@
 
 #define BUFFER_SIZE 4096
 
-bool decode_audio_to_pipe(const char *input_file) {
+bool decode_audio_to_pipe(const char *input_file, const char *pipe_name) {
     mpv_handle *ctx = mpv_create();
     if (!ctx) {
         fprintf(stderr, "Failed to create mpv context.\n");
@@ -27,7 +27,7 @@ bool decode_audio_to_pipe(const char *input_file) {
     mpv_set_option_string(ctx, "audio-samplerate", "48000");
     mpv_set_option_string(ctx, "audio-format", "s16"); // 16-bit signed integer
     mpv_set_option_string(ctx, "ao", "pcm");
-    mpv_set_option_string(ctx, "ao-pcm-file", FIFO_PATH);
+    mpv_set_option_string(ctx, "ao-pcm-file", pipe_name);
     mpv_set_option_string(ctx, "demuxer-lavf-o", "protocol_whitelist=file,http,https,tcp,udp");
 
     mpv_initialize(ctx);
@@ -179,7 +179,7 @@ void track_decode(file_downloader_t *infos) {
         // } else if (strcmp(infos[i].ext, "opus") == 0) {
         //     decode_opus(path, infos[i].config->pipe_name);
         // }
-        decode_audio_to_pipe(path);
+        decode_audio_to_pipe(path, infos[i].config->pipe_name);
         free(path);
     }
 }
