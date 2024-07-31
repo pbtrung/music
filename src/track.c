@@ -9,8 +9,46 @@
 #include <sys/stat.h>
 #include <tag_c.h>
 #include <unistd.h>
+#include <mpv/client.h>
 
 #define BUFFER_SIZE 4096
+
+bool decode_audio_to_pipe(const char *input_file) {
+    mpv_handle *ctx = mpv_create();
+    if (!ctx) {
+        fprintf(stderr, "Failed to create mpv context.\n");
+        return false;
+    }
+
+    // Set up the configuration options
+    mpv_set_option_string(ctx, "audio-display", "no");
+    mpv_set_option_string(ctx, "audio-channels", "stereo");
+    mpv_set_option_string(ctx, "audio-samplerate", "48000");
+    mpv_set_option_string(ctx, "audio-format", "s16"); // 16-bit signed integer
+    mpv_set_option_string(ctx, "ao", "pcm");
+    mpv_set_option_string(ctx, "ao-pcm-file", FIFO_PATH);
+    mpv_set_option_string(ctx, "demuxer-lavf-o", "protocol_whitelist=file,http,https,tcp,udp");
+
+    mpv_initialize(ctx);
+
+    // Load the input file and start playback
+    const char *cmd[] = {"loadfile", input_file, NULL};
+    mpv_command(ctx, cmd);
+
+    // Wait for playback to finish
+    while (1) {
+        mpv_event *event = mpv_wait_event(ctx, -1);
+        if (event->event_id == MPV_EVENT_SHUTDOWN ||
+            event->event_id == MPV_EVENT_END_FILE) {
+            break;
+        }
+    }
+
+    // Cleanup
+    mpv_terminate_destroy(ctx);
+
+    return true; // Success
+}
 
 void decode_mp3(const char *filename, const char *pipe_name) {
     mpg123_handle *mh;
@@ -135,11 +173,12 @@ void track_decode(file_downloader_t *infos) {
                  infos[i].filename);
 
         fprintf(stdout, "Decoding: %s\n", path);
-        if (strcmp(infos[i].ext, "mp3") == 0) {
-            decode_mp3(path, infos[i].config->pipe_name);
-        } else if (strcmp(infos[i].ext, "opus") == 0) {
-            decode_opus(path, infos[i].config->pipe_name);
-        }
+        // if (strcmp(infos[i].ext, "mp3") == 0) {
+        //     decode_mp3(path, infos[i].config->pipe_name);
+        // } else if (strcmp(infos[i].ext, "opus") == 0) {
+        //     decode_opus(path, infos[i].config->pipe_name);
+        // }
+        decode_audio_to_pipe(path);
         free(path);
     }
 }
