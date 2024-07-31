@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <tag_c.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include <mpv/client.h>
 
 #define BUFFER_SIZE 4096
