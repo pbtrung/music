@@ -252,9 +252,7 @@ void initialize_downloads(file_downloader_t *infos, int num_files,
                           config_t *config, sqlite3 *db) {
     int min_value = 1;
     int max_value = config->num_tracks;
-    int *random_index = random_ints(num_files, min_value, max_value);
-    random_index[0] = 738000;
-    random_index[1] = 738001;
+    int *random_index = random_ints(num_files, 736000, 738000);
 
     int num_cids;
     for (int i = 0; i < num_files; ++i) {
