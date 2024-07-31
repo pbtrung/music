@@ -198,7 +198,7 @@ void download_cid_task(uv_work_t *req) {
             task->retries++;
             rewind(fp);
         }
-    } while (task->retries < task->config->max_retries - 1);
+    } while (task->retries < task->config->max_retries);
 
     if (res != CURLE_OK) {
         fprintf(stderr, "Download of cid %s of %s failed after %d tries\n",
@@ -253,6 +253,8 @@ void initialize_downloads(file_downloader_t *infos, int num_files,
     int min_value = 1;
     int max_value = config->num_tracks;
     int *random_index = random_ints(num_files, min_value, max_value);
+    random_index[0] = 738000;
+    random_index[1] = 738001;
 
     int num_cids;
     for (int i = 0; i < num_files; ++i) {

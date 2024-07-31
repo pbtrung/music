@@ -45,15 +45,12 @@ int main(int argc, char *argv[]) {
 
         uv_run(loop, UV_RUN_DEFAULT);
 
-        char *json = track_extract_metadata(infos, config.num_files);
-        track_decode(infos);
+        // char *json = track_extract_metadata(infos, config.num_files);
+        // track_decode(infos);
 
         cleanup_downloads(infos, config.num_files);
         free(infos);
-        free(json);
-
-        fprintf(stdout, "Sleeping...\n");
-        sleep(2);
+        // free(json);
     }
 
     uv_loop_close(loop);
