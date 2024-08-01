@@ -1,3 +1,4 @@
+#include "utils.h"
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
@@ -6,52 +7,27 @@
 #include <libswresample/swresample.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <tag_c.h>
 
 
-static void taglib_print_metadata(const char *input_filename) {
-    TagLib_File *file = taglib_file_new(input_filename);
-    if (!file) {
-        fprintf(stderr, "Error opening file: %s\n", input_filename);
-        return;
-    }
-
-    TagLib_Tag *tag = taglib_file_tag(file);
-
-    // Define key width for alignment
-    const int key_width = 17;
-
-    if (tag) {
-        // Print all available standard metadata with alignment
-        printf("%-*s: %s\n", key_width, "artist",
-               taglib_tag_artist(tag) ? taglib_tag_artist(tag) : "Unknown");
-        printf("%-*s: %s\n", key_width, "album",
-               taglib_tag_album(tag) ? taglib_tag_album(tag) : "Unknown");
-        printf("%-*s: %s\n", key_width, "title",
-               taglib_tag_title(tag) ? taglib_tag_title(tag) : "Unknown");
-        printf("%-*s: %d\n", key_width, "track", taglib_tag_track(tag));
-        printf("%-*s: %d\n", key_width, "year", taglib_tag_year(tag));
-        printf("%-*s: %s\n", key_width, "genre",
-               taglib_tag_genre(tag) ? taglib_tag_genre(tag) : "Unknown");
-        printf("%-*s: %s\n", key_width, "comment",
-               taglib_tag_comment(tag) ? taglib_tag_comment(tag) : "None");
-    } else {
-        printf("No tag information available.\n");
-    }
-
-    // Clean up
-    taglib_file_free(file);
-}
-
-static void ffmpeg_print_metadata(AVFormatContext *fmt_ctx) {
+static void print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
-    while ((
-        tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
+
+    // Print format-level metadata
+    while ((tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
+        to_lowercase(tag->key);
         printf("%-17s: %s\n", tag->key, tag->value);
     }
+    // Print stream-level metadata
+    for (int i = 0; i < fmt_ctx->nb_streams; i++) {
+        AVStream *stream = fmt_ctx->streams[i];
+        while ((tag = av_dict_get(stream->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
+            to_lowercase(tag->key);
+            printf("%-17s: %s\n", tag->key, tag->value);
+        }
+    }
 }
 
-static void ffmpeg_print_duration(AVFormatContext *fmt_ctx) {
+static void print_duration(AVFormatContext *fmt_ctx) {
     if (fmt_ctx->duration != AV_NOPTS_VALUE) {
         // Convert duration from microseconds to seconds
         double duration_seconds = fmt_ctx->duration / (double)AV_TIME_BASE;
@@ -85,12 +61,8 @@ void decode_audio(const char *input_filename, const char *output_pipe,
         exit(-1);
     }
 
-    if (strcmp(ext, "opus") == 0) {
-        taglib_print_metadata(input_filename);
-    } else {
-        ffmpeg_print_metadata(fmt_ctx);
-    }
-    ffmpeg_print_duration(fmt_ctx);
+    print_metadata(fmt_ctx);
+    print_duration(fmt_ctx);
     fflush(stdout);
 
     for (int i = 0; i < fmt_ctx->nb_streams; i++) {

@@ -19,10 +19,8 @@ pkg_check_modules(LIBCURL REQUIRED libcurl)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(JANSSON REQUIRED jansson)
 pkg_check_modules(LIBSODIUM REQUIRED libsodium)
-# pkg_check_modules(MPV REQUIRED mpv)
 pkg_check_modules(PCRE2 REQUIRED libpcre2-8)
 pkg_check_modules(UV REQUIRED libuv)
-pkg_check_modules(TAGC REQUIRED taglib_c)
 
 # Combine FFmpeg packages into one
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswresample)
@@ -43,11 +41,9 @@ target_include_directories(music PRIVATE
     ${SQLITE3_INCLUDE_DIRS}
     ${JANSSON_INCLUDE_DIRS}
     ${LIBSODIUM_INCLUDE_DIRS}
-    # ${MPV_INCLUDE_DIRS}
     ${PCRE2_INCLUDE_DIRS}
     ${UV_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
-    ${TAGC_INCLUDE_DIRS}
     include
 )
 
@@ -56,11 +52,9 @@ target_link_directories(music PRIVATE
     ${SQLITE3_LIBRARY_DIRS}
     ${JANSSON_LIBRARY_DIRS}
     ${LIBSODIUM_LIBRARY_DIRS}
-    # ${MPV_LIBRARY_DIRS}
     ${PCRE2_LIBRARY_DIRS}
     ${UV_LIBRARY_DIRS}
     ${FFMPEG_LIBRARY_DIRS}
-    ${TAGC_LIBRARY_DIRS}
 )
 
 target_link_libraries(music PRIVATE
@@ -68,9 +62,7 @@ target_link_libraries(music PRIVATE
     ${SQLITE3_LIBRARIES}
     ${JANSSON_LIBRARIES}
     ${LIBSODIUM_LIBRARIES}
-    # ${MPV_LIBRARIES}
     ${PCRE2_LIBRARIES}
     ${UV_LIBRARIES}
     ${FFMPEG_LIBRARIES}
-    ${TAGC_LIBRARIES}
 )
