@@ -58,7 +58,6 @@ int main(int argc, char *argv[]) {
                 decode_audio(mpv_ctx, cmd);
                 free(file_path);
             }
-            printf("\n");
         }
 
         download_cleanup(infos, config.num_files);

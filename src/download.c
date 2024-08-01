@@ -187,6 +187,7 @@ void assemble_files(file_info_t *infos, config_t *config) {
 
 void download_files(file_info_t *infos, config_t *config) {
     uv_loop_t *loop = uv_default_loop();
+    printf("\n");
     for (int i = 0; i < config->num_files; ++i) {
         for (int j = 0; j < infos[i].num_cids; ++j) {
             uv_work_t *req = malloc(sizeof(uv_work_t));

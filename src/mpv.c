@@ -106,6 +106,7 @@ void decode_audio(mpv_handle *ctx, const char *cmd[]) {
 
     print_metadata(ctx);
     print_duration(ctx);
+    fflush(stdout);
 
     while (1) {
         mpv_event *event = mpv_wait_event(ctx, -1);
