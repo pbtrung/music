@@ -2,10 +2,8 @@
 #include "database.h"
 #include "dir.h"
 #include "download.h"
-// #include "mpv.h"
 #include "ffmpeg.h"
 
-#include <mpv/client.h>
 #include <stdbool.h>
 
 int main(int argc, char *argv[]) {
@@ -23,7 +21,6 @@ int main(int argc, char *argv[]) {
     }
 
     config.num_tracks = count_tracks(db);
-    // mpv_handle *mpv_ctx = mpv_init(&config);
 
     while (true) {
         file_info_t *infos =
@@ -55,7 +52,6 @@ int main(int argc, char *argv[]) {
                 printf("%-17s: %s\n", "path", infos[i].album_path);
                 printf("%-17s: %s\n", "filename", infos[i].track_name);
 
-                // decode_audio(mpv_ctx, cmd);
                 decode_audio(file_path, config.pipe_name, infos[i].ext);
                 free(file_path);
             }
@@ -64,7 +60,6 @@ int main(int argc, char *argv[]) {
         download_cleanup(infos, config.num_files);
     }
 
-    // mpv_terminate_destroy(mpv_ctx);
     sqlite3_close(db);
     free_config(&config);
 
