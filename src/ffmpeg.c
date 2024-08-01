@@ -1,11 +1,13 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
+#include <libavutil/log.h>
 #include <libavutil/timestamp.h>
 #include <libswresample/swresample.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <tag_c.h>
+
 
 static void taglib_print_metadata(const char *input_filename) {
     TagLib_File *file = taglib_file_new(input_filename);
@@ -41,7 +43,7 @@ static void taglib_print_metadata(const char *input_filename) {
     taglib_file_free(file);
 }
 
-static void print_metadata(AVFormatContext *fmt_ctx) {
+static void ffmpeg_print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
     while ((
         tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
@@ -49,7 +51,7 @@ static void print_metadata(AVFormatContext *fmt_ctx) {
     }
 }
 
-static void print_duration(AVFormatContext *fmt_ctx) {
+static void ffmpeg_print_duration(AVFormatContext *fmt_ctx) {
     if (fmt_ctx->duration != AV_NOPTS_VALUE) {
         // Convert duration from microseconds to seconds
         double duration_seconds = fmt_ctx->duration / (double)AV_TIME_BASE;
@@ -71,6 +73,8 @@ void decode_audio(const char *input_filename, const char *output_pipe,
     int stream_index = -1;
     int ret;
 
+    av_log_set_level(AV_LOG_ERROR);
+
     if ((ret = avformat_open_input(&fmt_ctx, input_filename, NULL, NULL)) < 0) {
         fprintf(stderr, "Could not open source file %s\n", input_filename);
         exit(-1);
@@ -84,9 +88,9 @@ void decode_audio(const char *input_filename, const char *output_pipe,
     if (strcmp(ext, "opus") == 0) {
         taglib_print_metadata(input_filename);
     } else {
-        print_metadata(fmt_ctx);
+        ffmpeg_print_metadata(fmt_ctx);
     }
-    print_duration(fmt_ctx);
+    ffmpeg_print_duration(fmt_ctx);
     fflush(stdout);
 
     for (int i = 0; i < fmt_ctx->nb_streams; i++) {
