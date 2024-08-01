@@ -7,8 +7,7 @@
 #include <stdlib.h>
 #include <tag_c.h>
 
-
-void taglib_print_metadata(const char *input_filename) {
+static void taglib_print_metadata(const char *input_filename) {
     TagLib_File *file = taglib_file_new(input_filename);
     if (!file) {
         fprintf(stderr, "Error opening file: %s\n", input_filename);
@@ -42,11 +41,21 @@ void taglib_print_metadata(const char *input_filename) {
     taglib_file_free(file);
 }
 
-void print_metadata(AVFormatContext *fmt_ctx) {
+static void print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
     while ((
         tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
         printf("%-17s: %s\n", tag->key, tag->value);
+    }
+}
+
+static void print_duration(AVFormatContext *fmt_ctx) {
+    if (fmt_ctx->duration != AV_NOPTS_VALUE) {
+        // Convert duration from microseconds to seconds
+        double duration_seconds = fmt_ctx->duration / (double)AV_TIME_BASE;
+        printf("%-17s: %.2f\n", "duration", duration_seconds);
+    } else {
+        printf("%-17s: %s\n", "duration", "Unknown");
     }
 }
 
@@ -77,6 +86,8 @@ void decode_audio(const char *input_filename, const char *output_pipe,
     } else {
         print_metadata(fmt_ctx);
     }
+    print_duration(fmt_ctx);
+    fflush(stdout);
 
     for (int i = 0; i < fmt_ctx->nb_streams; i++) {
         if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
