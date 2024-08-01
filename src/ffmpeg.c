@@ -1,44 +1,46 @@
 #include "utils.h"
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-#include <libavutil/opt.h>
 #include <libavutil/log.h>
+#include <libavutil/opt.h>
 #include <libavutil/timestamp.h>
 #include <libswresample/swresample.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-
 static void print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
 
+    const int width = 17;
     // Print format-level metadata
-    while ((tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
+    while ((
+        tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
         to_lowercase(tag->key);
-        printf("%-17s: %s\n", tag->key, tag->value);
+        printf("%-*s: %s\n", width, tag->key, tag->value);
     }
     // Print stream-level metadata
     for (int i = 0; i < fmt_ctx->nb_streams; i++) {
         AVStream *stream = fmt_ctx->streams[i];
-        while ((tag = av_dict_get(stream->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
+        while ((tag = av_dict_get(stream->metadata, "", tag,
+                                  AV_DICT_IGNORE_SUFFIX))) {
             to_lowercase(tag->key);
-            printf("%-17s: %s\n", tag->key, tag->value);
+            printf("%-*s: %s\n", width, tag->key, tag->value);
         }
     }
 }
 
 static void print_duration(AVFormatContext *fmt_ctx) {
+    const int width = 17;
     if (fmt_ctx->duration != AV_NOPTS_VALUE) {
         // Convert duration from microseconds to seconds
         double duration_seconds = fmt_ctx->duration / (double)AV_TIME_BASE;
-        printf("%-17s: %.2f\n", "duration", duration_seconds);
+        printf("%-*s: %.2f\n", width, "duration", duration_seconds);
     } else {
-        printf("%-17s: %s\n", "duration", "Unknown");
+        printf("%-*s: %s\n", width, "duration", "Unknown");
     }
 }
 
-void decode_audio(const char *input_filename, const char *output_pipe,
-                  char *ext) {
+void decode_audio(const char *input_filename, const char *output_pipe) {
     AVFormatContext *fmt_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
     const AVCodec *codec = NULL;
@@ -53,12 +55,12 @@ void decode_audio(const char *input_filename, const char *output_pipe,
 
     if ((ret = avformat_open_input(&fmt_ctx, input_filename, NULL, NULL)) < 0) {
         fprintf(stderr, "Could not open source file %s\n", input_filename);
-        exit(-1);
+        goto cleanup;
     }
 
     if ((ret = avformat_find_stream_info(fmt_ctx, NULL)) < 0) {
         fprintf(stderr, "Could not find stream information\n");
-        exit(-1);
+        goto cleanup;
     }
 
     print_metadata(fmt_ctx);
@@ -74,49 +76,49 @@ void decode_audio(const char *input_filename, const char *output_pipe,
 
     if (stream_index == -1) {
         fprintf(stderr, "Could not find audio stream\n");
-        exit(-1);
+        goto cleanup;
     }
 
     codec = avcodec_find_decoder(
         fmt_ctx->streams[stream_index]->codecpar->codec_id);
     if (!codec) {
         fprintf(stderr, "Failed to find codec\n");
-        exit(-1);
+        goto cleanup;
     }
 
     codec_ctx = avcodec_alloc_context3(codec);
     if (!codec_ctx) {
         fprintf(stderr, "Failed to allocate codec\n");
-        exit(-1);
+        goto cleanup;
     }
 
     if ((ret = avcodec_parameters_to_context(
              codec_ctx, fmt_ctx->streams[stream_index]->codecpar)) < 0) {
         fprintf(stderr, "Failed to copy codec parameters to decoder context\n");
-        exit(-1);
+        goto cleanup;
     }
 
     if ((ret = avcodec_open2(codec_ctx, codec, NULL)) < 0) {
         fprintf(stderr, "Failed to open codec\n");
-        exit(-1);
+        goto cleanup;
     }
 
     pkt = av_packet_alloc();
     if (!pkt) {
         fprintf(stderr, "Could not allocate AVPacket\n");
-        exit(-1);
+        goto cleanup;
     }
 
     frame = av_frame_alloc();
     if (!frame) {
         fprintf(stderr, "Could not allocate AVFrame\n");
-        exit(-1);
+        goto cleanup;
     }
 
     swr_ctx = swr_alloc();
     if (!swr_ctx) {
         fprintf(stderr, "Could not allocate SwrContext\n");
-        exit(-1);
+        goto cleanup;
     }
 
     av_opt_set_chlayout(swr_ctx, "in_chlayout", &codec_ctx->ch_layout, 0);
@@ -132,13 +134,13 @@ void decode_audio(const char *input_filename, const char *output_pipe,
 
     if ((ret = swr_init(swr_ctx)) < 0) {
         fprintf(stderr, "Failed to initialize the resampling context\n");
-        exit(-1);
+        goto cleanup;
     }
 
     output_fp = fopen(output_pipe, "wb");
     if (!output_fp) {
         fprintf(stderr, "Could not open output pipe %s\n", output_pipe);
-        exit(-1);
+        goto cleanup;
     }
 
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
@@ -155,7 +157,7 @@ void decode_audio(const char *input_filename, const char *output_pipe,
                     break;
                 } else if (ret < 0) {
                     fprintf(stderr, "Error during decoding\n");
-                    exit(-1);
+                    goto cleanup;
                 }
 
                 uint8_t *output_buffer;
@@ -168,7 +170,8 @@ void decode_audio(const char *input_filename, const char *output_pipe,
                     (const uint8_t **)frame->data, frame->nb_samples);
                 if (nb_samples < 0) {
                     fprintf(stderr, "Error while converting\n");
-                    exit(-1);
+                    av_freep(&output_buffer);
+                    goto cleanup;
                 }
 
                 fwrite(output_buffer, 1,
@@ -181,7 +184,9 @@ void decode_audio(const char *input_filename, const char *output_pipe,
         av_packet_unref(pkt);
     }
 
-    fclose(output_fp);
+cleanup:
+    if (output_fp)
+        fclose(output_fp);
     av_frame_free(&frame);
     av_packet_free(&pkt);
     avcodec_free_context(&codec_ctx);

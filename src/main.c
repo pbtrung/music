@@ -3,8 +3,8 @@
 #include "dir.h"
 #include "download.h"
 #include "ffmpeg.h"
-
 #include <stdbool.h>
+
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -22,6 +22,7 @@ int main(int argc, char *argv[]) {
 
     config.num_tracks = count_tracks(db);
 
+    const int width = 17;
     while (true) {
         file_info_t *infos =
             (file_info_t *)malloc(config.num_files * sizeof(file_info_t));
@@ -32,7 +33,7 @@ int main(int argc, char *argv[]) {
 
         int rc = delete_directory(config.output);
         if (rc != 0) {
-            fprintf(stderr, "delete_directory\n");
+            fprintf(stderr, "Failed to delete directory\n");
             exit(-1);
         }
         create_directory(config.output);
@@ -46,17 +47,18 @@ int main(int argc, char *argv[]) {
             if (infos[i].download_status == DOWNLOAD_OK) {
                 char *file_path =
                     get_file_path(config.output, infos[i].filename);
-                const char *cmd[] = {"loadfile", file_path, NULL};
 
-                printf("%-17s: %s\n", "PLAYING", infos[i].filename);
-                printf("%-17s: %s\n", "path", infos[i].album_path);
-                printf("%-17s: %s\n", "filename", infos[i].track_name);
+                printf("%-*s: %s\n", width, "PLAYING", infos[i].filename);
+                printf("%-*s: %s\n", width, "path", infos[i].album_path);
+                printf("%-*s: %s\n", width, "filename", infos[i].track_name);
 
-                decode_audio(file_path, config.pipe_name, infos[i].ext);
+                decode_audio(file_path, config.pipe_name);
                 free(file_path);
             }
         }
 
+        printf("\nend");
+        fflush(stdout);
         download_cleanup(infos, config.num_files);
     }
 
