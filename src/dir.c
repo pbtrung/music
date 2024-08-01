@@ -1,6 +1,5 @@
 #include "dir.h"
 
-
 int delete_directory(const char *path) {
     struct stat st;
     if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {

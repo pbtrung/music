@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-
 int *random_ints(int num_samples, int min_value, int max_value) {
     if (num_samples > (max_value - min_value + 1)) {
         fprintf(stderr,

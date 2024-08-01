@@ -7,7 +7,6 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
-
 char *int_to_str(int num) {
     int max_len = snprintf(NULL, 0, "%d", num) + 1;
     char *str = (char *)malloc(max_len);

@@ -5,7 +5,6 @@
 #include <string.h>
 #include <uv.h>
 
-
 typedef struct {
     char *cid;
     cid_info_t *cid_info;
@@ -89,7 +88,8 @@ static void download_cid(uv_work_t *req) {
         if (strlen(download_info->cid) == 59) {
             snprintf(url, 128, "https://%s.ipfs.nftstorage.link",
                      download_info->cid);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2 * download_info->config->timeout);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT,
+                             2 * download_info->config->timeout);
         } else {
             int *random_index =
                 random_ints(1, 0, download_info->config->num_gateways - 1);

@@ -1,9 +1,8 @@
 #include "mpv.h"
 #include "utils.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-
 
 void print_metadata(mpv_handle *ctx) {
     // Fetch the metadata as a node
@@ -17,7 +16,8 @@ void print_metadata(mpv_handle *ctx) {
     if (node.format == MPV_FORMAT_NODE_MAP) {
         for (int i = 0; i < node.u.list->num; i++) {
             to_lowercase(node.u.list->keys[i]);
-            printf("%-17s: %s\n", node.u.list->keys[i], node.u.list->values[i].u.string);
+            printf("%-17s: %s\n", node.u.list->keys[i],
+                   node.u.list->values[i].u.string);
         }
     }
 
@@ -27,7 +27,8 @@ void print_metadata(mpv_handle *ctx) {
 
 void print_duration(mpv_handle *ctx) {
     double duration = 0;
-    if (mpv_get_property(ctx, "duration", MPV_FORMAT_DOUBLE, &duration) == MPV_ERROR_SUCCESS) {
+    if (mpv_get_property(ctx, "duration", MPV_FORMAT_DOUBLE, &duration) ==
+        MPV_ERROR_SUCCESS) {
         printf("%-17s: %.2f\n", "duration", duration);
     } else {
         printf("%-17s: Unknown\n", "duration");

@@ -2,7 +2,6 @@
 #include <jansson.h>
 #include <string.h>
 
-
 void free_config(config_t *config) {
     free(config->db);
     free(config->output);
