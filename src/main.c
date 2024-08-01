@@ -1,12 +1,12 @@
 #include "config.h"
 #include "database.h"
 #include "dir.h"
-#include "downloader.h"
-#include "random.h"
-#include "track.h"
+#include "download.h"
+#include "mpv.h"
+
+#include <mpv/client.h>
 #include <stdbool.h>
-#include <string.h>
-#include <uv.h>
+
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -23,11 +23,11 @@ int main(int argc, char *argv[]) {
     }
 
     config.num_tracks = count_tracks(db);
-    uv_loop_t *loop = uv_default_loop();
+    mpv_handle *mpv_ctx = mpv_init(&config);
 
     while (true) {
-        file_downloader_t *infos =
-            malloc(config.num_files * sizeof(file_downloader_t));
+        file_info_t *infos =
+            (file_info_t *)malloc(config.num_files * sizeof(file_info_t));
         if (!infos) {
             fprintf(stderr, "Memory allocation failed\n");
             exit(-1);
@@ -40,20 +40,31 @@ int main(int argc, char *argv[]) {
         }
         create_directory(config.output);
 
-        initialize_downloads(infos, config.num_files, &config, db);
-        perform_downloads(infos, config.num_files, loop);
+        download_init(infos, &config, db);
+        download_files(infos, &config);
+        assemble_files(infos, &config);
 
-        uv_run(loop, UV_RUN_DEFAULT);
 
-        char *json = track_extract_metadata(infos, config.num_files);
-        track_decode(infos);
+        for (int i = 0; i < config.num_files; ++i) {
+            printf("\n");
+            if (infos[i].download_status == DOWNLOAD_OK) {
+                char *file_path = get_file_path(config.output, infos[i].filename);
+                const char *cmd[] = {"loadfile", file_path, NULL};
 
-        cleanup_downloads(infos, config.num_files);
-        free(infos);
-        // free(json);
+                printf("%-17s: %s\n", "PLAYING", infos[i].filename);
+                printf("%-17s: %s\n", "path", infos[i].album_path);
+                printf("%-17s: %s\n", "filename", infos[i].track_name);
+
+                decode_audio(mpv_ctx, cmd);
+                free(file_path);
+            }
+            printf("\n");
+        }
+
+        download_cleanup(infos, config.num_files);
     }
 
-    uv_loop_close(loop);
+    mpv_terminate_destroy(mpv_ctx);
     sqlite3_close(db);
     free_config(&config);
 

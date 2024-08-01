@@ -1,8 +1,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <jansson.h>
-
 typedef struct {
     char *db;
     char *output;

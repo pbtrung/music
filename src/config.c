@@ -1,7 +1,7 @@
 #include "config.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include <jansson.h>
 #include <string.h>
+
 
 void free_config(config_t *config) {
     free(config->db);

@@ -58,8 +58,7 @@ char **get_cids(sqlite3 *db, int track_id, int *num_cids) {
     cids = (char **)malloc((*num_cids) * sizeof(char *));
     if (cids == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
-        sqlite3_finalize(stmt);
-        return NULL;
+        exit(-1);
     }
 
     index = 0;
@@ -96,8 +95,8 @@ char *get_track_name(sqlite3 *db, int track_id) {
 }
 
 char *get_album(sqlite3 *db, int track_id) {
-    const char *query =
-        "SELECT path FROM albums WHERE album_id = (SELECT album_id FROM tracks WHERE track_id = ?)";
+    const char *query = "SELECT path FROM albums WHERE album_id = (SELECT "
+                        "album_id FROM tracks WHERE track_id = ?)";
     sqlite3_stmt *stmt;
     char *album_path = NULL;
 
