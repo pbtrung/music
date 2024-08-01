@@ -2,6 +2,7 @@
 
 #include <curl/curl.h>
 #include <stdlib.h>
+#include <string.h>
 #include <uv.h>
 
 
