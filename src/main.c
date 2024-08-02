@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        printf("\nend-5z2ok9v4iik5tdykgms90qrc6");
+        print_end(&config);
         fflush(stdout);
         download_cleanup(infos, config.num_files);
     }
