@@ -166,7 +166,7 @@ static void print_duration(config_t *config, AVFormatContext *fmt_ctx) {
         char msg[128];
         int msg_len = snprintf(msg, 128, "%-*s: %.2f\n", width, "duration",
                                duration_seconds);
-        printf("%s\n", msg);
+        printf("%s", msg);
         write_message(config, msg, msg_len);
     } else {
         print_kv(config, width, "duration", "Unknown");
