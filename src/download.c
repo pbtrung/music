@@ -140,7 +140,12 @@ static void assemble(file_info_t *info, config_t *config) {
         exit(-1);
     }
 
-    char buffer[4096];
+    size_t buffer_size = 4096;
+    char *buffer = (char *)malloc(buffer_size);
+    if (!buffer) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(-1);
+    }
     size_t bytes_read;
     for (int j = 0; j < info->num_cids; j++) {
         char *cid_path = get_file_path(config->output, info->cids[j]);
@@ -151,7 +156,7 @@ static void assemble(file_info_t *info, config_t *config) {
             exit(-1);
         }
 
-        while ((bytes_read = fread(buffer, 1, sizeof(buffer), infile)) > 0) {
+        while ((bytes_read = fread(buffer, 1, buffer_size, infile)) > 0) {
             fwrite(buffer, 1, bytes_read, outfile);
         }
         fclose(infile);
@@ -165,6 +170,7 @@ static void assemble(file_info_t *info, config_t *config) {
 
     fclose(outfile);
     free(file_path);
+    free(buffer);
 }
 
 void assemble_files(file_info_t *infos, config_t *config) {
