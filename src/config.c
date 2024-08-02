@@ -6,6 +6,8 @@ void free_config(config_t *config) {
     free(config->db);
     free(config->output);
     free(config->pipe_name);
+    free(config->ws_pipeout);
+    free(config->ws_pipein);
     for (int i = 0; i < config->num_gateways; ++i) {
         free(config->gateways[i]);
     }
@@ -28,6 +30,8 @@ void read_config(const char *config_file, config_t *config) {
     json_t *gateways_array = json_object_get(root, "gateways");
     json_t *num_files_obj = json_object_get(root, "num_files");
     json_t *pipe_name_obj = json_object_get(root, "pipe_name");
+    json_t *ws_pipeout_obj = json_object_get(root, "ws_pipeout");
+    json_t *ws_pipein_obj = json_object_get(root, "ws_pipein");
 
     if (!json_is_string(db_obj) || !json_is_string(output_obj) ||
         !json_is_integer(max_retries_obj) || !json_is_integer(timeout_obj) ||
@@ -44,6 +48,8 @@ void read_config(const char *config_file, config_t *config) {
     config->timeout = json_integer_value(timeout_obj);
     config->num_files = json_integer_value(num_files_obj);
     config->pipe_name = strdup(json_string_value(pipe_name_obj));
+    config->ws_pipeout = strdup(json_string_value(ws_pipeout_obj));
+    config->ws_pipein = strdup(json_string_value(ws_pipein_obj));
 
     config->num_gateways = json_array_size(gateways_array);
     config->gateways = malloc(config->num_gateways * sizeof(char *));

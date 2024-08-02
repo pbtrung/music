@@ -11,6 +11,8 @@ typedef struct {
     int num_tracks;
     int num_files;
     char *pipe_name;
+    char *ws_pipeout;
+    char *ws_pipein;
 } config_t;
 
 void read_config(const char *config_file, config_t *config);

@@ -3,6 +3,7 @@
 #include "decoder.h"
 #include "dir.h"
 #include "download.h"
+#include "websocket.h"
 #include <stdbool.h>
 
 int main(int argc, char *argv[]) {
@@ -47,11 +48,11 @@ int main(int argc, char *argv[]) {
                 char *file_path =
                     get_file_path(config.output, infos[i].filename);
 
-                printf("%-*s: %s\n", width, "PLAYING", infos[i].filename);
-                printf("%-*s: %s\n", width, "path", infos[i].album_path);
-                printf("%-*s: %s\n", width, "filename", infos[i].track_name);
+                print_kv(&config, width, "PLAYING", infos[i].filename);
+                print_kv(&config, width, "path", infos[i].album_path);
+                print_kv(&config, width, "filename", infos[i].track_name);
 
-                decode_audio(file_path, config.pipe_name, infos[i].ext);
+                decode_audio(&config, file_path, infos[i].ext);
                 free(file_path);
             }
         }
