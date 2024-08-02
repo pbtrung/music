@@ -1,12 +1,92 @@
 #include "utils.h"
+#include <fcntl.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/log.h>
 #include <libavutil/opt.h>
 #include <libavutil/timestamp.h>
 #include <libswresample/swresample.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <mpg123.h>
+#include <unistd.h>
+
+#define BUFFER_SIZE 4096
+
+static void decode_mp3(const char *filename, const char *pipe_name) {
+    mpg123_handle *mh = NULL;
+    int err;
+    unsigned char *audio = NULL;
+    size_t done;
+
+    // Initialize mpg123 library
+    if (mpg123_init() != MPG123_OK) {
+        fprintf(stderr, "Unable to initialize mpg123 library\n");
+        goto cleanup;
+    }
+
+    // Create a new mpg123 handle
+    mh = mpg123_new(NULL, &err);
+    if (!mh) {
+        fprintf(stderr, "Error creating mpg123 handle\n");
+        goto cleanup;
+    }
+
+    // Open the MP3 file
+    if (mpg123_open(mh, filename) != MPG123_OK) {
+        fprintf(stderr, "Error opening file: %s\n", filename);
+        goto cleanup;
+    }
+
+    long rate;
+    int channels, encoding;
+    if (mpg123_getformat(mh, &rate, &channels, &encoding) != MPG123_OK) {
+        fprintf(stderr, "Error getting MP3 format\n");
+        goto cleanup;
+    }
+
+    channels = 2;
+    encoding = MPG123_ENC_SIGNED_16;
+    rate = 48000;
+    // Ensure the output format is correct
+    if (mpg123_format_none(mh) != MPG123_OK ||
+        mpg123_format(mh, rate, channels, encoding) != MPG123_OK) {
+        fprintf(stderr, "Error setting format\n");
+        goto cleanup;
+    }
+
+    // Open the named pipe for writing
+    int fd = open(pipe_name, O_WRONLY);
+    if (fd == -1) {
+        fprintf(stderr, "Error opening pipe\n");
+        goto cleanup;
+    }
+
+    // Allocate buffer for audio data
+    audio = (unsigned char *)malloc(BUFFER_SIZE);
+    if (!audio) {
+        fprintf(stderr, "Error allocating audio buffer\n");
+        goto cleanup;
+    }
+
+    // Read and decode MP3 data
+    while ((err = mpg123_read(mh, audio, BUFFER_SIZE, &done)) == MPG123_OK) {
+        if (write(fd, audio, done) == -1) {
+            fprintf(stderr, "Error writing to pipe\n");
+            goto cleanup;
+        }
+    }
+
+    if (err != MPG123_DONE) {
+        fprintf(stderr, "Error decoding MP3 file\n");
+    }
+
+cleanup:
+    free(audio);
+    if (fd >= 0)
+        close(fd);
+    mpg123_close(mh);
+    mpg123_delete(mh);
+    mpg123_exit();
+}
 
 static void print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
@@ -40,7 +120,7 @@ static void print_duration(AVFormatContext *fmt_ctx) {
     }
 }
 
-void decode_audio(const char *input_filename, const char *output_pipe) {
+static void decode_others(const char *input_filename, const char *output_pipe) {
     AVFormatContext *fmt_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
     const AVCodec *codec = NULL;
@@ -62,10 +142,6 @@ void decode_audio(const char *input_filename, const char *output_pipe) {
         fprintf(stderr, "Could not find stream information\n");
         goto cleanup;
     }
-
-    print_metadata(fmt_ctx);
-    print_duration(fmt_ctx);
-    fflush(stdout);
 
     for (int i = 0; i < fmt_ctx->nb_streams; i++) {
         if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -192,4 +268,35 @@ cleanup:
     avcodec_free_context(&codec_ctx);
     avformat_close_input(&fmt_ctx);
     swr_free(&swr_ctx);
+}
+
+void decode_audio(const char *input_filename, const char *output_pipe,
+                  const char *ext) {
+    int ret;
+    AVFormatContext *fmt_ctx = NULL;
+
+    av_log_set_level(AV_LOG_ERROR);
+
+    if ((ret = avformat_open_input(&fmt_ctx, input_filename, NULL, NULL)) < 0) {
+        fprintf(stderr, "Could not open source file %s\n", input_filename);
+        goto cleanup;
+    }
+
+    if ((ret = avformat_find_stream_info(fmt_ctx, NULL)) < 0) {
+        fprintf(stderr, "Could not find stream information\n");
+        goto cleanup;
+    }
+
+    print_metadata(fmt_ctx);
+    print_duration(fmt_ctx);
+    fflush(stdout);
+
+    if (strcmp(ext, "mp3") == 0) {
+        decode_mp3(input_filename, output_pipe);
+    } else {
+        decode_others(input_filename, output_pipe);
+    }
+
+cleanup:
+    avformat_close_input(&fmt_ctx);
 }

@@ -5,7 +5,6 @@
 #include <string.h>
 #include <uv.h>
 
-
 typedef struct {
     char *cid;
     cid_info_t *cid_info;

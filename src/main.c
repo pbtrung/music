@@ -1,10 +1,9 @@
 #include "config.h"
 #include "database.h"
+#include "decoder.h"
 #include "dir.h"
 #include "download.h"
-#include "ffmpeg.h"
 #include <stdbool.h>
-
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -52,7 +51,7 @@ int main(int argc, char *argv[]) {
                 printf("%-*s: %s\n", width, "path", infos[i].album_path);
                 printf("%-*s: %s\n", width, "filename", infos[i].track_name);
 
-                decode_audio(file_path, config.pipe_name);
+                decode_audio(file_path, config.pipe_name, infos[i].ext);
                 free(file_path);
             }
         }
