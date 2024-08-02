@@ -15,8 +15,8 @@ void print_kv(config_t *config, int width, char *key, char *value) {
         fprintf(stderr, "Memory allocation failed\n");
         exit(-1);
     }
-    msg_len = snprintf(msg, msg_len, "%-*s: %s", width, key, value);
-    printf("%s\n", msg);
+    msg_len = snprintf(msg, msg_len, "%-*s: %s\n", width, key, value);
+    printf("%s", msg);
     write_message(config, msg, msg_len);
     free(msg);
 }
