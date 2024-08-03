@@ -157,7 +157,7 @@ void decode_audio(config_t *config, const char *input_filename) {
     /* Set element properties */
     g_object_set(G_OBJECT(source), "location", input_filename, NULL);
     // config->pipe_name
-    g_object_set(G_OBJECT(sink), "location", "test.pcm", NULL);
+    g_object_set(G_OBJECT(sink), "location", config->pipe_name, NULL);
 
     /* Set the desired caps */
     caps = gst_caps_new_simple("audio/x-raw", "rate", G_TYPE_INT, 48000,
@@ -201,7 +201,7 @@ void decode_audio(config_t *config, const char *input_filename) {
     int printed = 0;
     do {
         msg = gst_bus_timed_pop_filtered(
-            bus, 100 * GST_MSECOND,
+            bus, 1000 * GST_MSECOND,
             GST_MESSAGE_STATE_CHANGED | GST_MESSAGE_ERROR | GST_MESSAGE_EOS |
                 GST_MESSAGE_DURATION | GST_MESSAGE_TAG);
 
