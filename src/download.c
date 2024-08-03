@@ -1,5 +1,4 @@
 #include "download.h"
-#include "websocket.h"
 #include <curl/curl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -186,15 +185,11 @@ void assemble_files(file_info_t *infos, config_t *config) {
     printf("\n");
     for (int i = 0; i < config->num_files; ++i) {
         if (infos[i].download_status == DOWNLOAD_OK) {
-            printf("%s %s\n", "Assemble", infos[i].filename);
-            char msg[128];
-            int msg_len =
-                snprintf(msg, 128, "%s %s\n", "Assemble", infos[i].filename);
-            write_message(config, msg, msg_len);
-            print_kv(config, width, "path", infos[i].album_path);
-            print_kv(config, width, "filename", infos[i].track_name);
+            fprintf(stdout, "%-*s: %s\n", width, "Assemble", infos[i].filename);
+            fprintf(stdout, "%-*s: %s\n", width, "path", infos[i].album_path);
+            fprintf(stdout, "%-*s: %s\n", width, "filename",
+                    infos[i].track_name);
             printf("\n");
-
             fflush(stdout);
             assemble(&infos[i], config);
         }
@@ -221,10 +216,6 @@ void download_files(file_info_t *infos, config_t *config) {
             download_info->config = config;
             req->data = download_info;
 
-            char msg[128];
-            int msg_len =
-                snprintf(msg, 128, "Downloading %s\n", download_info->cid);
-            write_message(config, msg, msg_len);
             uv_queue_work(loop, req, download_cid, on_cid_download_completed);
         }
     }

@@ -3,7 +3,7 @@
 #include "decoder.h"
 #include "dir.h"
 #include "download.h"
-#include "websocket.h"
+#include <gst/gst.h>
 #include <stdbool.h>
 
 int main(int argc, char *argv[]) {
@@ -11,6 +11,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <config_file>\n", argv[0]);
         return -1;
     }
+    gst_init(&argc, &argv);
 
     config_t config;
     read_config(argv[1], &config);
@@ -48,16 +49,19 @@ int main(int argc, char *argv[]) {
                 char *file_path =
                     get_file_path(config.output, infos[i].filename);
 
-                print_kv(&config, width, "PLAYING", infos[i].filename);
-                print_kv(&config, width, "path", infos[i].album_path);
-                print_kv(&config, width, "filename", infos[i].track_name);
+                fprintf(stdout, "%-*s: %s\n", width, "PLAYING",
+                        infos[i].filename);
+                fprintf(stdout, "%-*s: %s\n", width, "path",
+                        infos[i].album_path);
+                fprintf(stdout, "%-*s: %s\n", width, "filename",
+                        infos[i].track_name);
 
                 decode_audio(&config, file_path, infos[i].ext);
                 free(file_path);
             }
         }
 
-        print_end(&config);
+        fprintf(stdout, "\nend-5z2ok9v4iik5tdykgms90qrc6\n");
         fflush(stdout);
         download_cleanup(infos, config.num_files);
     }

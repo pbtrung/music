@@ -1,38 +1,11 @@
 #include "utils.h"
 #include "random.h"
-#include "websocket.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
-
-void print_kv(config_t *config, int width, char *key, char *value) {
-    int msg_len = 1024;
-    char *msg = (char *)malloc(msg_len);
-    if (!msg) {
-        fprintf(stderr, "Memory allocation failed\n");
-        exit(-1);
-    }
-    msg_len = snprintf(msg, msg_len, "%-*s: %s\n", width, key, value);
-    printf("%s", msg);
-    write_message(config, msg, msg_len);
-    free(msg);
-}
-
-void print_end(config_t *config) {
-    int msg_len = 128;
-    char *msg = (char *)malloc(msg_len);
-    if (!msg) {
-        fprintf(stderr, "Memory allocation failed\n");
-        exit(-1);
-    }
-    msg_len = snprintf(msg, msg_len, "%s", "\nend-5z2ok9v4iik5tdykgms90qrc6\n");
-    printf("%s", msg);
-    write_message(config, msg, msg_len);
-    free(msg);
-}
 
 char *int_to_str(int num) {
     int max_len = snprintf(NULL, 0, "%d", num) + 1;

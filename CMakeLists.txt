@@ -21,11 +21,7 @@ pkg_check_modules(JANSSON REQUIRED jansson)
 pkg_check_modules(LIBSODIUM REQUIRED libsodium)
 pkg_check_modules(PCRE2 REQUIRED libpcre2-8)
 pkg_check_modules(UV REQUIRED libuv)
-pkg_check_modules(MPG123 REQUIRED libmpg123)
-pkg_check_modules(OPUSFILE REQUIRED opusfile)
-
-# Combine FFmpeg packages into one
-pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswresample)
+pkg_check_modules(GST REQUIRED gstreamer-1.0)
 
 add_executable(music
     src/main.c
@@ -36,7 +32,6 @@ add_executable(music
     src/utils.c
     src/download.c
     src/decoder.c
-    src/websocket.c
 )
 
 target_include_directories(music PRIVATE
@@ -46,9 +41,7 @@ target_include_directories(music PRIVATE
     ${LIBSODIUM_INCLUDE_DIRS}
     ${PCRE2_INCLUDE_DIRS}
     ${UV_INCLUDE_DIRS}
-    ${FFMPEG_INCLUDE_DIRS}
-    ${MPG123_INCLUDE_DIRS}
-    ${OPUSFILE_INCLUDE_DIRS}
+    ${GST_INCLUDE_DIRS}
     include
 )
 
@@ -59,9 +52,7 @@ target_link_directories(music PRIVATE
     ${LIBSODIUM_LIBRARY_DIRS}
     ${PCRE2_LIBRARY_DIRS}
     ${UV_LIBRARY_DIRS}
-    ${FFMPEG_LIBRARY_DIRS}
-    ${MPG123_LIBRARY_DIRS}
-    ${OPUSFILE_LIBRARY_DIRS}
+    ${GST_LIBRARY_DIRS}
 )
 
 target_link_libraries(music PRIVATE
@@ -71,7 +62,5 @@ target_link_libraries(music PRIVATE
     ${LIBSODIUM_LIBRARIES}
     ${PCRE2_LIBRARIES}
     ${UV_LIBRARIES}
-    ${FFMPEG_LIBRARIES}
-    ${MPG123_LIBRARIES}
-    ${OPUSFILE_LIBRARIES}
+    ${GST_LIBRARIES}
 )
