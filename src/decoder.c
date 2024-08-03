@@ -162,7 +162,7 @@ void decode_audio(config_t *config, const char *input_filename) {
 
     /* Set element properties */
     g_object_set(G_OBJECT(source), "location", input_filename, NULL);
-    g_object_set(G_OBJECT(sink), "location", "test.pcm", NULL);
+    g_object_set(G_OBJECT(sink), "location", config->pipe_name, NULL);
 
     /* Set the desired caps */
     caps = gst_caps_new_simple("audio/x-raw", "rate", G_TYPE_INT, 48000,
