@@ -201,7 +201,7 @@ void decode_audio(config_t *config, const char *input_filename) {
     int printed = 0;
     do {
         msg = gst_bus_timed_pop_filtered(
-            bus, 1000 * GST_MSECOND,
+            bus, 100 * GST_MSECOND,
             GST_MESSAGE_STATE_CHANGED | GST_MESSAGE_ERROR | GST_MESSAGE_EOS |
                 GST_MESSAGE_DURATION | GST_MESSAGE_TAG);
 
