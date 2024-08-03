@@ -32,6 +32,12 @@ static void print_tags(GstTagList *tags) {
             } else if (G_VALUE_HOLDS(value, G_TYPE_BOOLEAN)) {
                 g_print("%s\n", g_value_get_boolean(value) ? "true" : "false");
 
+            } else if (G_VALUE_HOLDS(value, G_TYPE_DATE)) {
+                GDate *date = (GDate *)g_value_get_boxed(value);
+                gchar date_str[128];
+                g_date_strftime(date_str, sizeof(date_str), "%Y-%m-%d", date);
+                g_print("%s\n", date_str);
+
             } else if (G_VALUE_HOLDS(value, GST_TYPE_DATE_TIME)) {
                 GstDateTime *dt = g_value_get_boxed(value);
                 gchar *dt_str = gst_date_time_to_iso8601_string(dt);
