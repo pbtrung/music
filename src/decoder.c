@@ -2,23 +2,53 @@
 #include <gst/gst.h>
 #include <gst/tag/tag.h>
 
-static void print_tags(GHashTable *tag_table) {
-    GList *keys = g_hash_table_get_keys(tag_table);
+static void print_tags(GstTagList *tags) {
+    guint num_tags, i;
+    num_tags = gst_tag_list_n_tags(tags);
     const int width = 17;
-    for (GList *l = keys; l != NULL; l = l->next) {
-        gchar *key = (gchar *)l->data;
-        GValue *value = (GValue *)g_hash_table_lookup(tag_table, key);
+
+    for (i = 0; i < num_tags; i++) {
+        const gchar *key = gst_tag_list_nth_tag_name(tags, i);
+        const GValue *value = gst_tag_list_get_value_index(tags, key, 0);
 
         if (value) {
             g_print("%-*s: ", width, key);
 
             if (G_VALUE_HOLDS(value, G_TYPE_STRING)) {
                 g_print("%s\n", g_value_get_string(value));
+
+            } else if (G_VALUE_HOLDS(value, G_TYPE_INT)) {
+                g_print("%d\n", g_value_get_int(value));
+
+            } else if (G_VALUE_HOLDS_UINT(value)) {
+                g_print("%u\n", g_value_get_uint(value));
+
+            } else if (G_VALUE_HOLDS_FLOAT(value)) {
+                g_print("%f\n", g_value_get_float(value));
+
+            } else if (G_VALUE_HOLDS(value, G_TYPE_DOUBLE)) {
+                g_print("%f\n", g_value_get_double(value));
+
+            } else if (G_VALUE_HOLDS(value, G_TYPE_BOOLEAN)) {
+                g_print("%s\n", g_value_get_boolean(value) ? "true" : "false");
+
+            } else if (G_VALUE_HOLDS(value, GST_TYPE_DATE_TIME)) {
+                GstDateTime *dt = g_value_get_boxed(value);
+                gchar *dt_str = gst_date_time_to_iso8601_string(dt);
+                g_print("%s\n", dt_str);
+                g_free(dt_str);
+
+            } else if (G_VALUE_HOLDS(value, GST_TYPE_TAG_LIST)) {
+                g_print("[Tag List]\n");
+                print_tags(g_value_get_boxed(value));
+
+            } else {
+                gchar *type_name = g_strdup(g_type_name(G_VALUE_TYPE(value)));
+                g_print("Unknown type: %s\n", type_name);
+                g_free(type_name);
             }
         }
     }
-    g_list_free(keys);
-    g_hash_table_destroy(tag_table);
 }
 
 static void on_pad_added(GstElement *element, GstPad *pad, gpointer data) {
@@ -49,24 +79,8 @@ cleanup:
     gst_object_unref(sink_pad);
 }
 
-static void dedup_tags(const GstTagList *tags, GHashTable *tag_table) {
-    guint num_tags = gst_tag_list_n_tags(tags);
-    for (int i = 0; i < num_tags; i++) {
-        const gchar *key = gst_tag_list_nth_tag_name(tags, i);
-        const GValue *value = gst_tag_list_get_value_index(tags, key, 0);
-        GValue *copied_value = g_new(GValue, 1);
-        g_value_init(copied_value, G_VALUE_TYPE(value));
-        g_value_copy(value, copied_value);
-        gchar *copied_key = g_strdup(key);
-
-        if (!g_hash_table_contains(tag_table, copied_key)) {
-            g_hash_table_insert(tag_table, copied_key, copied_value);
-        }
-    }
-}
-
 static void handle_msg(gboolean *terminate, gint64 *duration, gboolean *playing,
-                       GstMessage *msg, GHashTable *tag_table) {
+                       GstMessage *msg, int *printed) {
     GError *err;
     gchar *debug_info;
 
@@ -97,10 +111,10 @@ static void handle_msg(gboolean *terminate, gint64 *duration, gboolean *playing,
     case GST_MESSAGE_TAG: {
         GstTagList *tag_list;
         gst_message_parse_tag(msg, &tag_list);
-        if (tag_list) {
-            // Process tags to deduplicate
-            dedup_tags(tag_list, tag_table);
+        if (tag_list && *printed == 0) {
+            print_tags(tag_list);
             gst_tag_list_unref(tag_list);
+            *printed = 1;
         }
     } break;
     default:
@@ -111,12 +125,6 @@ static void handle_msg(gboolean *terminate, gint64 *duration, gboolean *playing,
     gst_message_unref(msg);
 }
 
-static void g_value_destroy(gpointer data) {
-    GValue *value = (GValue *)data;
-    g_value_unset(value);
-    g_slice_free(GValue, value);
-}
-
 void decode_audio(config_t *config, const char *input_filename) {
     GstElement *source, *decoder, *audioconvert, *audioresample, *capsfilter,
         *sink;
@@ -124,8 +132,6 @@ void decode_audio(config_t *config, const char *input_filename) {
     GstCaps *caps = NULL;
     GstBus *bus = NULL;
     GstMessage *msg = NULL;
-    GHashTable *tag_table =
-        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_value_destroy);
 
     /* Create GStreamer elements */
     pipeline = gst_pipeline_new("audio-pipeline");
@@ -194,11 +200,7 @@ void decode_audio(config_t *config, const char *input_filename) {
                 GST_MESSAGE_DURATION | GST_MESSAGE_TAG);
 
         if (msg != NULL) {
-            handle_msg(&terminate, &duration, &playing, msg, tag_table);
-            if (playing && printed == 0) {
-                print_tags(tag_table);
-                printed = 1;
-            }
+            handle_msg(&terminate, &duration, &playing, msg, &printed);
         } else {
             /* We got no message, this means the timeout expired */
             if (playing) {
@@ -225,8 +227,6 @@ void decode_audio(config_t *config, const char *input_filename) {
     g_print("\n\n");
 
 cleanup:
-    if (tag_table)
-        g_hash_table_destroy(tag_table);
     gst_object_unref(bus);
     gst_element_set_state(pipeline, GST_STATE_NULL);
     gst_object_unref(pipeline);
