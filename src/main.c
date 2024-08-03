@@ -44,7 +44,6 @@ int main(int argc, char *argv[]) {
         assemble_files(infos, &config);
 
         for (int i = 0; i < config.num_files; ++i) {
-            printf("\n");
             if (infos[i].download_status == DOWNLOAD_OK) {
                 char *file_path =
                     get_file_path(config.output, infos[i].filename);
@@ -61,7 +60,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        fprintf(stdout, "\nend-5z2ok9v4iik5tdykgms90qrc6\n");
+        fprintf(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
         fflush(stdout);
         download_cleanup(infos, config.num_files);
     }

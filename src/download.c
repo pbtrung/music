@@ -182,14 +182,14 @@ void assemble_files(file_info_t *infos, config_t *config) {
         }
     }
     const int width = 17;
-    printf("\n");
+    fprintf(stdout, "\n");
     for (int i = 0; i < config->num_files; ++i) {
         if (infos[i].download_status == DOWNLOAD_OK) {
             fprintf(stdout, "%-*s: %s\n", width, "Assemble", infos[i].filename);
             fprintf(stdout, "%-*s: %s\n", width, "path", infos[i].album_path);
             fprintf(stdout, "%-*s: %s\n", width, "filename",
                     infos[i].track_name);
-            printf("\n");
+            fprintf(stdout, "\n");
             fflush(stdout);
             assemble(&infos[i], config);
         }
@@ -198,7 +198,7 @@ void assemble_files(file_info_t *infos, config_t *config) {
 
 void download_files(file_info_t *infos, config_t *config) {
     uv_loop_t *loop = uv_default_loop();
-    printf("\n");
+    fprintf(stdout, "\n");
     for (int i = 0; i < config->num_files; ++i) {
         for (int j = 0; j < infos[i].num_cids; ++j) {
             uv_work_t *req = malloc(sizeof(uv_work_t));
