@@ -7,12 +7,13 @@ static void print_metadata(GstTagList *tags) {
     num_tags = gst_tag_list_n_tags(tags);
 
     num_tags = gst_tag_list_n_tags(tags);
+    const int width = 17;
     for (i = 0; i < num_tags; i++) {
         const gchar *key = gst_tag_list_nth_tag_name(tags, i);
         const GValue *value = gst_tag_list_get_value_index(tags, key, 0);
 
         if (value) {
-            g_print("%s: ", key);
+            g_print("%-*s: ", width, key);
             if (G_VALUE_HOLDS(value, G_TYPE_STRING)) {
                 g_print("%s\n", g_value_get_string(value));
             } else if (G_VALUE_HOLDS(value, G_TYPE_INT)) {
@@ -36,22 +37,25 @@ static void on_pad_added(GstElement *element, GstPad *pad, gpointer data) {
     GstPadLinkReturn ret;
     GstCaps *caps;
     GstStructure *str;
-    const gchar *name;
 
     /* Get pad capabilities and check media type */
     caps = gst_pad_query_caps(pad, NULL);
+    if (gst_caps_is_empty(caps)) {
+        g_printerr("Error: Could not get pad capabilities.\n");
+        goto cleanup;
+    }
+
     str = gst_caps_get_structure(caps, 0);
-    name = gst_structure_get_name(str);
+    const gchar *name = gst_structure_get_name(str);
 
     if (g_str_has_prefix(name, "audio/x-raw")) {
         ret = gst_pad_link(pad, sink_pad);
         if (ret != GST_PAD_LINK_OK) {
-            g_printerr("Type is '%s' but link failed.\n", name);
-        } else {
-            g_print("Link succeeded (type '%s').\n", name);
+            g_printerr("Error linking pads: %s\n", gst_pad_link_get_name(ret));
         }
     }
 
+cleanup:
     gst_caps_unref(caps);
     gst_object_unref(sink_pad);
 }
@@ -123,12 +127,12 @@ void decode_audio(config_t *config, const char *input_filename,
             GError *err;
             gchar *debug_info;
             gst_message_parse_error(msg, &err, &debug_info);
-            g_printerr("Error received: %s\n", err->message);
+            g_printerr("Error: %s\n", err->message);
+            g_printerr("Debug info: %s\n", debug_info ? debug_info : "none");
             g_clear_error(&err);
             g_free(debug_info);
             break;
         } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
-            g_print("End of stream reached.\n");
             break;
         } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_TAG) {
             GstTagList *tag_list;
