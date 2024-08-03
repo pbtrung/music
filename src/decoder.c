@@ -111,10 +111,10 @@ static void handle_msg(gboolean *terminate, gint64 *duration, gboolean *playing,
     case GST_MESSAGE_TAG: {
         GstTagList *tag_list;
         gst_message_parse_tag(msg, &tag_list);
-        if (tag_list && *printed == 0) {
+        if (tag_list && *printed <= 2) {
             print_tags(tag_list);
             gst_tag_list_unref(tag_list);
-            *printed = 1;
+            (*printed)++;
         }
     } break;
     default:
