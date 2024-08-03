@@ -7,7 +7,8 @@ static void print_metadata(GstTagList *tags) {
     num_tags = gst_tag_list_n_tags(tags);
     const int width = 17;
 
-    GHashTable *printed_tags = g_hash_table_new(g_str_hash, g_str_equal);
+    GHashTable *printed_tags =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
     for (i = 0; i < num_tags; i++) {
         const gchar *key = gst_tag_list_nth_tag_name(tags, i);
@@ -18,7 +19,7 @@ static void print_metadata(GstTagList *tags) {
         }
 
         // Add the tag to the printed tags table
-        g_hash_table_add(printed_tags, (gpointer)key);
+        g_hash_table_add(printed_tags, g_strdup(key));
 
         const GValue *value = gst_tag_list_get_value_index(tags, key, 0);
 
