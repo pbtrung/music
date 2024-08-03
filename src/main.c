@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
                 fprintf(stdout, "%-*s: %s\n", width, "filename",
                         infos[i].track_name);
 
-                decode_audio(&config, file_path, infos[i].ext);
+                decode_audio(&config, file_path);
                 free(file_path);
             }
         }
