@@ -3,6 +3,7 @@
 #include "utils.hpp"
 #include <fmt/core.h>
 #include <fstream>
+#include <iostream>
 #include <mpg123.h>
 #include <opusfile.h>
 #include <taglib/fileref.h>
@@ -12,25 +13,6 @@
 decoder::decoder(const std::filesystem::path &file_path, const std::string &ext,
                  const std::string &pipe_name)
     : file_path(file_path), ext(ext), pipe_name(pipe_name) {}
-
-static std::string get_time(double seconds) {
-    int hours = static_cast<int>(seconds / 3600);
-    seconds -= hours * 3600;
-    int minutes = static_cast<int>(seconds / 60);
-    seconds -= minutes * 60;
-    int milliseconds =
-        static_cast<int>((seconds - static_cast<int>(seconds)) * 1000);
-
-    std::string time = "00:00.000";
-    if (hours > 0) {
-        time = fmt::format("{:02}:{:02}:{:02}.{:03}", hours, minutes,
-                           static_cast<int>(seconds), milliseconds);
-    } else {
-        time = fmt::format("{:02}:{:02}.{:03}", minutes,
-                           static_cast<int>(seconds), milliseconds);
-    }
-    return time;
-}
 
 static void decode_opus(const std::string &filename,
                         const std::string &pipe_name) {
@@ -50,7 +32,7 @@ static void decode_opus(const std::string &filename,
 
     opus_int64 total_samples = op_pcm_total(of.get(), -1);
     double total_seconds = static_cast<double>(total_samples) / sample_rate;
-    std::string total_time = get_time(total_seconds);
+    std::string total_time = utils::get_time(total_seconds);
 
     // Open the named pipe with RAII for resource management
     std::ofstream pipe(pipe_name, std::ios::binary);
@@ -74,7 +56,7 @@ static void decode_opus(const std::string &filename,
         opus_int64 position = op_pcm_tell(of.get());
         double seconds = static_cast<double>(position) / sample_rate;
 
-        std::string time = get_time(seconds);
+        std::string time = utils::get_time(seconds);
         fmt::print("\r  {:<{}}: {} / {}", "position", WIDTH, time, total_time);
         std::cout.flush();
     }
@@ -133,7 +115,7 @@ static void decode_mp3(const std::string &filename,
         throw std::runtime_error("Error getting total length of MP3 file");
     }
     double total_seconds = total_frames / static_cast<double>(rate);
-    std::string total_time = get_time(total_seconds);
+    std::string total_time = utils::get_time(total_seconds);
 
     // Use std::ofstream to open named pipe
     std::ofstream pipe(pipe_name, std::ios::binary);
@@ -153,7 +135,7 @@ static void decode_mp3(const std::string &filename,
         off_t position = mpg123_tell(mh);
         double seconds = static_cast<double>(position) / rate;
 
-        std::string time = get_time(seconds);
+        std::string time = utils::get_time(seconds);
         fmt::print("\r  {:<{}}: {} / {}", "position", WIDTH, time, total_time);
         std::cout.flush();
     }
@@ -225,9 +207,11 @@ void decoder::print_metadata() {
             fmt::print("  {:<{}}: {}\n", "channels", WIDTH,
                        properties->channels());
         }
-        if (properties->length() != 0) {
-            fmt::print("  {:<{}}: {} {}\n", "length", WIDTH,
-                       properties->length(), std::string("seconds"));
+        if (properties->lengthInMilliseconds() != 0) {
+            double seconds =
+                static_cast<double>(properties->lengthInMilliseconds()) / 1000;
+            std::string time = utils::get_time(seconds);
+            fmt::print("  {:<{}}: {}\n", "length", WIDTH, time);
         }
     }
 

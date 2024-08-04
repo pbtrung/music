@@ -1,9 +1,29 @@
 #include "utils.hpp"
 #include <algorithm>
+#include <fmt/core.h>
 #include <iostream>
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
+
+std::string utils::get_time(double seconds) {
+    int hours = static_cast<int>(seconds / 3600);
+    seconds -= hours * 3600;
+    int minutes = static_cast<int>(seconds / 60);
+    seconds -= minutes * 60;
+    int milliseconds =
+        static_cast<int>((seconds - static_cast<int>(seconds)) * 1000);
+
+    std::string time = "00:00.000";
+    if (hours > 0) {
+        time = fmt::format("{:02}:{:02}:{:02}.{:03}", hours, minutes,
+                           static_cast<int>(seconds), milliseconds);
+    } else {
+        time = fmt::format("{:02}:{:02}.{:03}", minutes,
+                           static_cast<int>(seconds), milliseconds);
+    }
+    return time;
+}
 
 void utils::to_lowercase(std::string &str) {
     std::transform(str.begin(), str.end(), str.begin(),
