@@ -13,7 +13,7 @@ endif()
 set(CMAKE_C_FLAGS_DEBUG "-g -O0")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
 
-set(ENV{PKG_CONFIG_PATH} "/opt/homebrew/usr/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+set(ENV{PKG_CONFIG_PATH} "/opt/homebrew/usr/local/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(UV REQUIRED libuv)
 pkg_check_modules(LIBCURL REQUIRED libcurl)

@@ -33,11 +33,14 @@ int main(int argc, char *argv[]) {
     }
     std::string config_filename = argv[1];
     json config = read_config(config_filename);
-    database db(config["db"].get<std::string>());
     std::string output = config["output"].get<std::string>();
+    std::string pipe_name = config["pipe_name"].get<std::string>();
+    std::string db_path = config["db"].get<std::string>();
 
     while (true) {
         try {
+            database db(db_path);
+
             dir::delete_directory(output);
             dir::create_directory(output);
 
@@ -61,8 +64,7 @@ int main(int argc, char *argv[]) {
                         std::filesystem::path(output) /
                         std::filesystem::path(file_infos[i].filename);
 
-                    decoder decoder(file_path, file_infos[i].ext,
-                                    config["pipe_name"].get<std::string>());
+                    decoder decoder(file_path, file_infos[i].ext, pipe_name);
                     decoder.print_metadata();
                     decoder.decode();
                 }
