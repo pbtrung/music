@@ -1,0 +1,80 @@
+#include "const.hpp"
+#include "database.hpp"
+#include "decoder.hpp"
+#include "dir.hpp"
+#include "downloader.hpp"
+#include "random.hpp"
+#include <fmt/core.h>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <uv.h>
+
+#include "json.hpp"
+using json = nlohmann::json;
+
+json read_config(std::string config_filename) {
+    std::ifstream file(config_filename);
+    if (!file.is_open()) {
+        fmt::print(stderr, "Could not open: {}\n", config_filename);
+        exit(-1);
+    }
+    json config;
+    file >> config;
+    file.close();
+
+    return config;
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fmt::print(stderr, "Usage: {} {}\n", argv[0], "<config_file>");
+        return -1;
+    }
+    std::string config_filename = argv[1];
+    json config = read_config(config_filename);
+    database db(config["db"].get<std::string>());
+    std::string output = config["output"].get<std::string>();
+
+    while (true) {
+        try {
+            dir::delete_directory(output);
+            dir::create_directory(output);
+
+            downloader downloader(config, db);
+            downloader.perform_downloads();
+            downloader.assemble_files();
+
+            std::vector<file_info> file_infos = downloader.get_file_info();
+
+            for (int i = 0; i < file_infos.size(); ++i) {
+                if (file_infos[i].file_download_status == DOWNLOAD_SUCCEEDED) {
+                    fmt::print(stdout, "{:<{}}: {}\n", "PLAYING", WIDTH + 2,
+                               file_infos[i].filename);
+                    fmt::print(stdout, "  {:<{}}: {}\n", "path", WIDTH,
+                               file_infos[i].album_path);
+                    fmt::print(stdout, "  {:<{}}: {}\n", "filename", WIDTH,
+                               file_infos[i].track_name);
+                    std::cout.flush();
+
+                    std::filesystem::path file_path =
+                        std::filesystem::path(output) /
+                        std::filesystem::path(file_infos[i].filename);
+
+                    decoder decoder(file_path, file_infos[i].ext,
+                                    config["pipe_name"].get<std::string>());
+                    decoder.print_metadata();
+                    decoder.decode();
+                }
+            }
+
+            fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
+
+        } catch (const std::exception &e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+            return -1;
+        }
+    }
+
+    return 0;
+}
