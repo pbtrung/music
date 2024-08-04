@@ -57,7 +57,7 @@ static void decode_opus(const std::string &filename,
         double seconds = static_cast<double>(position) / sample_rate;
 
         std::string time = utils::get_time(seconds);
-        fmt::print("\r  {:<{}}: {} / {}", "position", WIDTH, time, total_time);
+        fmt::print("  {:<{}}: {} / {}\r", "position", WIDTH, time, total_time);
         std::cout.flush();
     }
 
@@ -136,7 +136,7 @@ static void decode_mp3(const std::string &filename,
         double seconds = static_cast<double>(position) / rate;
 
         std::string time = utils::get_time(seconds);
-        fmt::print("\r  {:<{}}: {} / {}", "position", WIDTH, time, total_time);
+        fmt::print("  {:<{}}: {} / {}\r", "position", WIDTH, time, total_time);
         std::cout.flush();
     }
 
