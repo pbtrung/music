@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
 
     config.num_tracks = count_tracks(db);
 
-    const int width = 17;
+    const int width = 20;
     while (true) {
         file_info_t *infos =
             (file_info_t *)malloc(config.num_files * sizeof(file_info_t));
@@ -48,11 +48,11 @@ int main(int argc, char *argv[]) {
                 char *file_path =
                     get_file_path(config.output, infos[i].filename);
 
-                fprintf(stdout, "%-*s: %s\n", width, "PLAYING",
+                fprintf(stdout, "%-*s: %s\n", width + 2, "PLAYING",
                         infos[i].filename);
-                fprintf(stdout, "%-*s: %s\n", width, "path",
+                fprintf(stdout, "  %-*s: %s\n", width, "path",
                         infos[i].album_path);
-                fprintf(stdout, "%-*s: %s\n", width, "filename",
+                fprintf(stdout, "  %-*s: %s\n", width, "filename",
                         infos[i].track_name);
 
                 decode_audio(&config, file_path);

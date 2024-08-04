@@ -181,13 +181,14 @@ void assemble_files(file_info_t *infos, config_t *config) {
             }
         }
     }
-    const int width = 17;
+    const int width = 20;
     fprintf(stdout, "\n");
     for (int i = 0; i < config->num_files; ++i) {
         if (infos[i].download_status == DOWNLOAD_OK) {
-            fprintf(stdout, "%-*s: %s\n", width, "Assemble", infos[i].filename);
-            fprintf(stdout, "%-*s: %s\n", width, "path", infos[i].album_path);
-            fprintf(stdout, "%-*s: %s\n", width, "filename",
+            fprintf(stdout, "%-*s: %s\n", width + 2, "Assemble",
+                    infos[i].filename);
+            fprintf(stdout, "  %-*s: %s\n", width, "path", infos[i].album_path);
+            fprintf(stdout, "  %-*s: %s\n", width, "filename",
                     infos[i].track_name);
             fprintf(stdout, "\n");
             fflush(stdout);

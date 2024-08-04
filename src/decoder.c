@@ -1,18 +1,52 @@
 #include "utils.h"
 #include <gst/gst.h>
 #include <gst/tag/tag.h>
+#include <stdio.h>
 
-static void print_tags(GstTagList *tags) {
+#define GST_HOUR (GstClockTime)(3600 * GST_SECOND)
+#define GST_MINUTE (GstClockTime)(60 * GST_SECOND)
+
+void format_time(GstClockTime time, char *buffer, size_t buffer_size) {
+    guint64 hours, minutes, seconds, milliseconds;
+    guint64 remainder;
+
+    // Calculate hours, minutes, seconds, and milliseconds
+    hours = time / GST_HOUR;
+    remainder = time % GST_HOUR;
+    minutes = remainder / GST_MINUTE;
+    remainder %= GST_MINUTE;
+    seconds = remainder / GST_SECOND;
+    remainder %= GST_SECOND;
+    milliseconds = remainder / GST_MSECOND;
+
+    if (hours > 0) {
+        snprintf(buffer, buffer_size, "%02u:%02u:%02u.%03u",
+                 (unsigned int)hours, (unsigned int)minutes,
+                 (unsigned int)seconds, (unsigned int)milliseconds);
+    } else {
+        snprintf(buffer, buffer_size, "%02u:%02u.%03u", (unsigned int)minutes,
+                 (unsigned int)seconds, (unsigned int)milliseconds);
+    }
+}
+
+static void print_tags(GstTagList *tags, GHashTable *printed_tags) {
     guint num_tags, i;
     num_tags = gst_tag_list_n_tags(tags);
-    const int width = 17;
+    const int width = 20;
 
     for (i = 0; i < num_tags; i++) {
         const gchar *key = gst_tag_list_nth_tag_name(tags, i);
         const GValue *value = gst_tag_list_get_value_index(tags, key, 0);
 
+        if (g_hash_table_contains(printed_tags, key)) {
+            continue;
+        }
+
+        // Add the tag to the printed tags table
+        g_hash_table_add(printed_tags, g_strdup(key));
+
         if (value) {
-            g_print("%-*s: ", width, key);
+            g_print("  %-*s: ", width, key);
 
             if (G_VALUE_HOLDS(value, G_TYPE_STRING)) {
                 g_print("%s\n", g_value_get_string(value));
@@ -46,7 +80,7 @@ static void print_tags(GstTagList *tags) {
 
             } else if (G_VALUE_HOLDS(value, GST_TYPE_TAG_LIST)) {
                 g_print("[Tag List]\n");
-                print_tags(g_value_get_boxed(value));
+                print_tags(g_value_get_boxed(value), printed_tags);
 
             } else {
                 gchar *type_name = g_strdup(g_type_name(G_VALUE_TYPE(value)));
@@ -86,7 +120,7 @@ cleanup:
 }
 
 static void handle_msg(gboolean *terminate, gint64 *duration, gboolean *playing,
-                       GstMessage *msg, int *printed) {
+                       GstMessage *msg, GHashTable *printed_tags) {
     GError *err;
     gchar *debug_info;
 
@@ -117,10 +151,9 @@ static void handle_msg(gboolean *terminate, gint64 *duration, gboolean *playing,
     case GST_MESSAGE_TAG: {
         GstTagList *tag_list;
         gst_message_parse_tag(msg, &tag_list);
-        if (tag_list && *printed <= 2) {
-            print_tags(tag_list);
+        if (tag_list) {
+            print_tags(tag_list, printed_tags);
             gst_tag_list_unref(tag_list);
-            (*printed)++;
         }
     } break;
     default:
@@ -138,6 +171,8 @@ void decode_audio(config_t *config, const char *input_filename) {
     GstCaps *caps = NULL;
     GstBus *bus = NULL;
     GstMessage *msg = NULL;
+    GHashTable *printed_tags =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
     /* Create GStreamer elements */
     pipeline = gst_pipeline_new("audio-pipeline");
@@ -157,7 +192,7 @@ void decode_audio(config_t *config, const char *input_filename) {
     /* Set element properties */
     g_object_set(G_OBJECT(source), "location", input_filename, NULL);
     // config->pipe_name
-    g_object_set(G_OBJECT(sink), "location", config->pipe_name, NULL);
+    g_object_set(G_OBJECT(sink), "location", "test.pcm", NULL);
 
     /* Set the desired caps */
     caps = gst_caps_new_simple("audio/x-raw", "rate", G_TYPE_INT, 48000,
@@ -196,9 +231,8 @@ void decode_audio(config_t *config, const char *input_filename) {
     gboolean terminate = FALSE;
     gboolean playing = FALSE;
     gint64 duration = GST_CLOCK_TIME_NONE;
-    const int width = 17;
+    const int width = 20;
 
-    int printed = 0;
     do {
         msg = gst_bus_timed_pop_filtered(
             bus, 100 * GST_MSECOND,
@@ -206,7 +240,7 @@ void decode_audio(config_t *config, const char *input_filename) {
                 GST_MESSAGE_DURATION | GST_MESSAGE_TAG);
 
         if (msg != NULL) {
-            handle_msg(&terminate, &duration, &playing, msg, &printed);
+            handle_msg(&terminate, &duration, &playing, msg, printed_tags);
         } else {
             /* We got no message, this means the timeout expired */
             if (playing) {
@@ -221,10 +255,12 @@ void decode_audio(config_t *config, const char *input_filename) {
                                                     &duration);
                 }
                 if (r1 && r2) {
-                    g_print("%-*s: %" GST_TIME_FORMAT " / %" GST_TIME_FORMAT
-                            "\r",
-                            width, "position", GST_TIME_ARGS(current),
-                            GST_TIME_ARGS(duration));
+                    char cbuffer[20];
+                    format_time(current, cbuffer, sizeof(cbuffer));
+                    char dbuffer[20];
+                    format_time(duration, dbuffer, sizeof(dbuffer));
+                    g_print("  %-*s: %s / %s\r", width, "position", cbuffer,
+                            dbuffer);
                 }
             }
         }
@@ -233,6 +269,7 @@ void decode_audio(config_t *config, const char *input_filename) {
     g_print("\n\n");
 
 cleanup:
+    g_hash_table_destroy(printed_tags);
     gst_object_unref(bus);
     gst_element_set_state(pipeline, GST_STATE_NULL);
     gst_object_unref(pipeline);
