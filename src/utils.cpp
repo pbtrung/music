@@ -8,16 +8,13 @@ std::string utils::get_time(double seconds) {
     seconds -= hours * 3600;
     int minutes = static_cast<int>(seconds / 60);
     seconds -= minutes * 60;
-    int milliseconds =
-        static_cast<int>((seconds - static_cast<int>(seconds)) * 1000);
 
-    std::string time = "00:00.000";
+    std::string time = "00:00:00";
     if (hours > 0) {
-        time = fmt::format("{:02}:{:02}:{:02}.{:03}", hours, minutes,
-                           static_cast<int>(seconds), milliseconds);
+        time = fmt::format("{:02}:{:02}:{:02}", hours, minutes,
+                           static_cast<int>(seconds));
     } else {
-        time = fmt::format("{:02}:{:02}.{:03}", minutes,
-                           static_cast<int>(seconds), milliseconds);
+        time = fmt::format("{:02}:{:02}", minutes, static_cast<int>(seconds));
     }
     return time;
 }
