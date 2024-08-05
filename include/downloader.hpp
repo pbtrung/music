@@ -2,11 +2,13 @@
 #define DOWNLOADER_HPP
 
 #include "database.hpp"
+#include <coroutine>
 #include <curl/curl.h>
-#include <string>
-#include <uv.h>
-#include <vector>
+#include <filesystem>
+#include <future>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "json.hpp"
 using json = nlohmann::json;
@@ -46,7 +48,8 @@ class file_downloader {
     file_downloader(const std::string &filename, const std::string &album_path,
                     const std::string &track_name, const std::string &ext,
                     const std::vector<std::string> &cids, const json &config);
-    void download(uv_loop_t *loop);
+
+    std::future<void> download();
     void assemble();
     std::string get_filename() const;
     std::string get_ext() const;
@@ -55,8 +58,9 @@ class file_downloader {
     std::string get_track_name() const;
 
   private:
-    static void on_cid_download_completed(uv_work_t *req, int status);
-    static void download_cid(uv_work_t *req);
+    static size_t write_cb(void *ptr, size_t size, size_t nmemb,
+                           void *userdata);
+    std::future<void> download_cid(const std::string &cid, size_t index);
 
     std::string filename;
     std::string album_path;

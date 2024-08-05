@@ -133,7 +133,7 @@ static void decode_mp3(const std::string &filename,
 }
 
 void decoder::decode() {
-    // pipe_name = "test.pcm";
+    pipe_name = "test.pcm";
     if (ext == "mp3") {
         decode_mp3(file_path.string(), pipe_name);
     } else if (ext == "opus") {
@@ -150,7 +150,7 @@ void decoder::print_metadata() {
         auto print_tag = [](const std::string &name, const auto &value) {
             if (!value.isEmpty()) {
                 fmt::print("  {:<{}}: {}\n", name, WIDTH,
-                           value.toCString(true));
+                           value.stripWhiteSpace().to8Bit(true));
             }
         };
 
@@ -175,7 +175,7 @@ void decoder::print_metadata() {
                        properties->bitrate());
         }
         if (properties->sampleRate() != 0) {
-            fmt::print("  {:<{}}: {}\n", "sample rate", WIDTH,
+            fmt::print("  {:<{}}: {}\n", "sample-rate", WIDTH,
                        properties->sampleRate());
         }
         if (properties->channels() != 0) {
@@ -194,12 +194,12 @@ void decoder::print_metadata() {
         const TagLib::PropertyMap properties = file.file()->properties();
         for (const auto &[key, values] : properties) {
             if (!key.isEmpty() && !values.isEmpty()) {
-                std::string key_str = key.to8Bit(true);
+                std::string key_str = key.stripWhiteSpace().to8Bit(true);
                 utils::to_lowercase(key_str);
                 fmt::print("  {:<{}}: ", key_str, WIDTH);
                 for (const auto &value : values) {
                     if (!value.isEmpty()) {
-                        fmt::print("{} ", value.toCString(true));
+                        fmt::print("{}", value.stripWhiteSpace().to8Bit(true));
                     }
                 }
                 fmt::print("\n");
