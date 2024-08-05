@@ -37,19 +37,25 @@ int main(int argc, char *argv[]) {
     std::string db_path = config["db"].get<std::string>();
 
     while (true) {
+        std::vector<file_info> file_infos;
+
         try {
             database db(db_path);
 
             dir::delete_directory(output);
             dir::create_directory(output);
 
-            downloader *dler = new downloader(config, db);
-            dler->perform_downloads();
-            dler->assemble_files();
-            std::vector<file_info> file_infos = dler->get_file_info();
-            delete dler;
+            downloader dler(config, db);
+            dler.perform_downloads();
+            dler.assemble_files();
+            file_infos = dler.get_file_info();
+        } catch (const std::exception &e) {
+            fmt::print(stderr, "Error: {}\n", e.what());
+            return -1;
+        }
 
-            for (int i = 0; i < file_infos.size(); ++i) {
+        for (int i = 0; i < file_infos.size(); ++i) {
+            try {
                 if (file_infos[i].file_download_status ==
                     download_status::SUCCEEDED) {
                     fmt::print(stdout, "{:<{}}: {}\n", "PLAYING", WIDTH + 2,
@@ -69,14 +75,13 @@ int main(int argc, char *argv[]) {
                     decoder.print_metadata();
                     decoder.decode();
                 }
+            } catch (const std::exception &e) {
+                fmt::print(stderr, "Error: {}\n", e.what());
+                continue;
             }
-
-            fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
-
-        } catch (const std::exception &e) {
-            std::cerr << "Error: " << e.what() << std::endl;
-            return -1;
         }
+
+        fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
     }
 
     return 0;

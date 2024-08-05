@@ -15,7 +15,7 @@ decoder::decoder(const std::string &input_filename,
 decoder::~decoder() { cleanup(); }
 
 void decoder::init() {
-    av_log_set_level(AV_LOG_ERROR);
+    av_log_set_level(AV_LOG_DEBUG);
 
     if (avformat_open_input(&fmt_ctx_, input_filename_.c_str(), nullptr,
                             nullptr) < 0) {
@@ -55,6 +55,7 @@ void decoder::init() {
             "Failed to copy codec parameters to decoder context");
     }
 
+    codec_ctx_->pkt_timebase = fmt_ctx_->streams[stream_index_]->time_base;
     if (avcodec_open2(codec_ctx_, codec, nullptr) < 0) {
         throw std::runtime_error("Failed to open codec");
     }
@@ -95,6 +96,7 @@ void decoder::init() {
     }
 
     duration_ = fmt_ctx_->duration / AV_TIME_BASE;
+    dur_str = utils::get_time(static_cast<double>(duration_));
 }
 
 void decoder::cleanup() {
@@ -138,55 +140,79 @@ void decoder::print_metadata() const {
 }
 
 void decoder::decode() {
-    std::string dur_str = utils::get_time(static_cast<double>(duration_));
+    // Read and decode frames
     while (av_read_frame(fmt_ctx_, packet_) >= 0) {
         if (packet_->stream_index == stream_index_) {
-            if (avcodec_send_packet(codec_ctx_, packet_) < 0) {
-                throw std::runtime_error("Error sending packet to decoder");
-            }
-
-            while (true) {
-                int ret = avcodec_receive_frame(codec_ctx_, frame_);
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                    break;
-                } else if (ret < 0) {
-                    throw std::runtime_error("Error during decoding");
-                }
-
-                uint8_t *output_buffer = nullptr;
-                int output_buffer_size =
-                    av_samples_alloc(&output_buffer, nullptr, 2,
-                                     frame_->nb_samples, AV_SAMPLE_FMT_S16, 0);
-                if (output_buffer_size < 0) {
-                    throw std::runtime_error(
-                        "Could not allocate output buffer");
-                }
-
-                int nb_samples = swr_convert(
-                    swr_ctx_, &output_buffer, frame_->nb_samples,
-                    (const uint8_t **)frame_->data, frame_->nb_samples);
-                if (nb_samples < 0) {
-                    av_freep(&output_buffer);
-                    throw std::runtime_error("Error while converting");
-                }
-
-                output_fp_.write(
-                    reinterpret_cast<char *>(output_buffer),
-                    nb_samples * 2 *
-                        av_get_bytes_per_sample(AV_SAMPLE_FMT_S16));
-                av_freep(&output_buffer);
-
-                int64_t current_pts =
-                    frame_->pts *
-                    av_q2d(fmt_ctx_->streams[stream_index_]->time_base);
-                std::string cur_str =
-                    utils::get_time(static_cast<double>(current_pts));
-                fmt::print(stdout, "  {:<{}}: {} / {}\r", "position", WIDTH,
-                           cur_str, dur_str);
-                std::cout.flush();
-            }
+            decode_frame();
         }
         av_packet_unref(packet_);
     }
+
+    // Flush the decoder
+    flush_decoder();
+
     fmt::print(stdout, "\n\n");
+}
+
+void decoder::decode_frame() {
+    if (avcodec_send_packet(codec_ctx_, packet_) < 0) {
+        throw std::runtime_error("Error sending packet to decoder");
+    }
+
+    while (true) {
+        int ret = avcodec_receive_frame(codec_ctx_, frame_);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            break;
+        } else if (ret < 0) {
+            throw std::runtime_error("Error during decoding");
+        }
+
+        process_frame();
+    }
+}
+
+void decoder::process_frame() {
+    uint8_t *output_buffer = nullptr;
+    int output_buffer_size = av_samples_alloc(
+        &output_buffer, nullptr, 2, frame_->nb_samples, AV_SAMPLE_FMT_S16, 0);
+
+    if (output_buffer_size < 0) {
+        throw std::runtime_error("Could not allocate output buffer");
+    }
+
+    int nb_samples =
+        swr_convert(swr_ctx_, &output_buffer, frame_->nb_samples,
+                    (const uint8_t **)frame_->data, frame_->nb_samples);
+
+    if (nb_samples < 0) {
+        av_freep(&output_buffer);
+        throw std::runtime_error("Error while converting");
+    }
+
+    output_fp_.write(reinterpret_cast<char *>(output_buffer),
+                     nb_samples * 2 *
+                         av_get_bytes_per_sample(AV_SAMPLE_FMT_S16));
+    av_freep(&output_buffer);
+
+    int64_t current_pts =
+        frame_->pts * av_q2d(fmt_ctx_->streams[stream_index_]->time_base);
+    std::string cur_str = utils::get_time(static_cast<double>(current_pts));
+    fmt::print(stdout, "  {:<{}}: {} / {}\r", "position", WIDTH, cur_str,
+               dur_str);
+    std::cout.flush();
+}
+
+void decoder::flush_decoder() {
+    if (avcodec_send_packet(codec_ctx_, nullptr) >= 0) {
+        while (true) {
+            int ret = avcodec_receive_frame(codec_ctx_, frame_);
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                break;
+            } else if (ret < 0) {
+                throw std::runtime_error("Error during flushing");
+            }
+
+            process_frame();
+        }
+    }
 }

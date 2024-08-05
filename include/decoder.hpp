@@ -22,6 +22,9 @@ class decoder {
   private:
     void init();
     void cleanup();
+    void decode_frame();
+    void process_frame();
+    void flush_decoder();
 
     std::string input_filename_;
     std::string output_pipe_;
@@ -33,6 +36,7 @@ class decoder {
     std::ofstream output_fp_;
     int stream_index_ = -1;
     int64_t duration_ = 0;
+    std::string dur_str;
 };
 
 #endif // DECODER_HPP
