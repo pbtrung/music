@@ -95,7 +95,16 @@ void decoder::init() {
             fmt::format("Could not open output pipe {}", output_pipe_));
     }
 
-    duration_ = fmt_ctx_->duration / AV_TIME_BASE;
+    // Accurate duration calculation for VBR
+    if (fmt_ctx_->streams[stream_index_]->duration != AV_NOPTS_VALUE) {
+        duration_ = fmt_ctx_->streams[stream_index_]->duration *
+                    av_q2d(fmt_ctx_->streams[stream_index_]->time_base);
+    } else if (fmt_ctx_->duration != AV_NOPTS_VALUE) {
+        duration_ = fmt_ctx_->duration / AV_TIME_BASE;
+    } else {
+        duration_ = -1; // Unknown duration
+    }
+
     dur_str = utils::get_time(static_cast<double>(duration_));
 }
 
@@ -143,6 +152,14 @@ void decoder::decode() {
     // Read and decode frames
     while (av_read_frame(fmt_ctx_, packet_) >= 0) {
         if (packet_->stream_index == stream_index_) {
+            // Key Change: Check for packet duration and adjust if needed
+            if (packet_->duration > 0) {
+                packet_->duration =
+                    av_rescale_q(packet_->duration,
+                                 fmt_ctx_->streams[stream_index_]->time_base,
+                                 codec_ctx_->time_base);
+            }
+
             decode_frame();
         }
         av_packet_unref(packet_);
