@@ -114,10 +114,12 @@ void decoder::print_metadata() const {
     // Print format-level metadata
     while ((tag = av_dict_get(fmt_ctx_->metadata, "", tag,
                               AV_DICT_IGNORE_SUFFIX))) {
-        std::string key = tag->key;
-        std::string value = tag->value;
-        utils::to_lowercase(key);
-        fmt::print("  {:<{}}: {}\n", key, WIDTH, value);
+        std::string key = tag->key ? tag->key : "";
+        std::string value = tag->value ? tag->value : "";
+        if (!key.empty() && !value.empty()) {
+            utils::to_lowercase(key);
+            fmt::print("  {:<{}}: {}\n", key, WIDTH, value);
+        }
     }
 
     // Print stream-level metadata
@@ -125,15 +127,18 @@ void decoder::print_metadata() const {
         AVStream *stream = fmt_ctx_->streams[i];
         while ((tag = av_dict_get(stream->metadata, "", tag,
                                   AV_DICT_IGNORE_SUFFIX))) {
-            std::string key = tag->key;
-            std::string value = tag->value;
-            utils::to_lowercase(key);
-            fmt::print("  {:<{}}: {}\n", key, WIDTH, value);
+            std::string key = tag->key ? tag->key : "";
+            std::string value = tag->value ? tag->value : "";
+            if (!key.empty() && !value.empty()) {
+                utils::to_lowercase(key);
+                fmt::print("  {:<{}}: {}\n", key, WIDTH, value);
+            }
         }
     }
 }
 
 void decoder::decode() {
+    std::string dur_str = utils::get_time(static_cast<double>(duration_));
     while (av_read_frame(fmt_ctx_, packet_) >= 0) {
         if (packet_->stream_index == stream_index_) {
             if (avcodec_send_packet(codec_ctx_, packet_) < 0) {
@@ -161,6 +166,7 @@ void decoder::decode() {
                     swr_ctx_, &output_buffer, frame_->nb_samples,
                     (const uint8_t **)frame_->data, frame_->nb_samples);
                 if (nb_samples < 0) {
+                    av_freep(&output_buffer);
                     throw std::runtime_error("Error while converting");
                 }
 
@@ -173,8 +179,10 @@ void decoder::decode() {
                 int64_t current_pts =
                     frame_->pts *
                     av_q2d(fmt_ctx_->streams[stream_index_]->time_base);
+                std::string cur_str =
+                    utils::get_time(static_cast<double>(current_pts));
                 fmt::print(stdout, "  {:<{}}: {} / {}\r", "position", WIDTH,
-                           current_pts, duration_);
+                           cur_str, dur_str);
                 std::cout.flush();
             }
         }
