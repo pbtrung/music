@@ -138,6 +138,8 @@ void decoder::decode() {
         decode_mp3(file_path.string(), pipe_name);
     } else if (ext == "opus") {
         decode_opus(file_path.string(), pipe_name);
+    } else {
+        fmt::print("  {:<{}}: {}", "Error", WIDTH, "Unsupported format");
     }
     fmt::print("\n\n");
 }
