@@ -73,6 +73,7 @@ int main(int argc, char *argv[]) {
                     // pipe_name = "test.pcm";
                     decoder decoder(file_path.string(), file_infos[i].ext,
                                     pipe_name);
+                    decoder.print_metadata();
                     decoder.decode();
                 }
             } catch (const std::exception &e) {
