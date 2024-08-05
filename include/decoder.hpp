@@ -1,8 +1,8 @@
 #ifndef DECODER_HPP
 #define DECODER_HPP
 
-#include <string>
 #include <fstream>
+#include <string>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -12,14 +12,14 @@ extern "C" {
 }
 
 class decoder {
-public:
+  public:
     decoder(const std::string &input_filename, const std::string &output_pipe);
     ~decoder();
 
     void print_metadata() const;
     void decode();
 
-private:
+  private:
     void init();
     void cleanup();
 
