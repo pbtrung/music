@@ -2,234 +2,210 @@
 #include "const.hpp"
 #include "utils.hpp"
 #include <fmt/core.h>
-#include <fmt/format.h>
+#include <fstream>
 #include <iostream>
-#include <stdexcept>
+#include <mpg123.h>
+#include <opusfile.h>
+#include <taglib/fileref.h>
+#include <taglib/tag.h>
+#include <taglib/tpropertymap.h>
 
-decoder::decoder(const std::string &input_filename,
-                 const std::string &output_pipe)
-    : input_filename_(input_filename), output_pipe_(output_pipe) {
-    init();
+decoder::decoder(const std::filesystem::path &file_path, const std::string &ext,
+                 const std::string &pipe_name)
+    : file_path(file_path), ext(ext), pipe_name(pipe_name) {}
+
+static void decode_opus(const std::string &filename,
+                        const std::string &pipe_name) {
+    int error;
+    const int channels = 2;
+    const int bits_per_sample = 16;
+    const size_t buffer_size = 4096;
+    const double sample_rate = 48000.0;
+
+    std::unique_ptr<OggOpusFile, decltype(&op_free)> of(
+        op_open_file(filename.c_str(), &error), &op_free);
+    if (!of) {
+        throw std::runtime_error(
+            fmt::format("Error opening file: {}", filename));
+    }
+
+    opus_int64 total_samples = op_pcm_total(of.get(), -1);
+    double total_seconds = static_cast<double>(total_samples) / sample_rate;
+    std::string total_time = utils::get_time(total_seconds);
+
+    std::ofstream pipe(pipe_name, std::ios::binary);
+    if (!pipe.is_open()) {
+        throw std::runtime_error(
+            fmt::format("Error opening pipe: {}", pipe_name));
+    }
+
+    std::vector<opus_int16> pcm(buffer_size * channels);
+    int ret;
+    while ((ret = op_read_stereo(of.get(), pcm.data(), buffer_size)) > 0) {
+        pipe.write(reinterpret_cast<char *>(pcm.data()),
+                   ret * channels * (bits_per_sample / 8));
+        if (pipe.fail()) {
+            throw std::runtime_error("Error writing to pipe");
+        }
+
+        opus_int64 position = op_pcm_tell(of.get());
+        double seconds = static_cast<double>(position) / sample_rate;
+        std::string time = utils::get_time(seconds);
+        fmt::print("  {:<{}}: {} / {}\r", "position", WIDTH, time, total_time);
+        std::cout.flush();
+    }
+
+    if (ret < 0) {
+        throw std::runtime_error("Error decoding Opus file");
+    }
 }
 
-decoder::~decoder() { cleanup(); }
+static void decode_mp3(const std::string &filename,
+                       const std::string &pipe_name) {
+    mpg123_handle *mh = nullptr;
+    int err;
+    std::vector<unsigned char> audio(4096);
+    size_t done;
 
-void decoder::init() {
-    av_log_set_level(AV_LOG_ERROR);
+    if (mpg123_init() != MPG123_OK) {
+        throw std::runtime_error("Unable to initialize mpg123 library");
+    }
 
-    if (avformat_open_input(&fmt_ctx_, input_filename_.c_str(), nullptr,
-                            nullptr) < 0) {
+    mh = mpg123_new(nullptr, &err);
+    if (!mh) {
+        throw std::runtime_error("Error creating mpg123 handle");
+    }
+
+    auto cleanup = [](mpg123_handle *mh) {
+        mpg123_close(mh);
+        mpg123_delete(mh);
+        mpg123_exit();
+    };
+    std::unique_ptr<mpg123_handle, decltype(cleanup)> mh_ptr(mh, cleanup);
+
+    if (mpg123_open(mh, filename.c_str()) != MPG123_OK) {
         throw std::runtime_error(
-            fmt::format("Could not open source file {}", input_filename_));
+            fmt::format("Error opening file: {}", filename));
     }
 
-    if (avformat_find_stream_info(fmt_ctx_, nullptr) < 0) {
-        throw std::runtime_error("Could not find stream information");
+    long rate;
+    int channels, encoding;
+    if (mpg123_getformat(mh, &rate, &channels, &encoding) != MPG123_OK) {
+        throw std::runtime_error("Error getting MP3 format");
     }
 
-    for (int i = 0; i < fmt_ctx_->nb_streams; i++) {
-        if (fmt_ctx_->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            stream_index_ = i;
-            break;
-        }
+    channels = 2;
+    encoding = MPG123_ENC_SIGNED_16;
+    rate = 48000;
+
+    if (mpg123_format_none(mh) != MPG123_OK ||
+        mpg123_format(mh, rate, channels, encoding) != MPG123_OK) {
+        throw std::runtime_error("Error setting format");
     }
 
-    if (stream_index_ == -1) {
-        throw std::runtime_error("Could not find audio stream");
+    off_t total_frames = mpg123_length(mh);
+    if (total_frames == -1) {
+        throw std::runtime_error("Error getting total length of MP3 file");
     }
+    double total_seconds = total_frames / static_cast<double>(rate);
+    std::string total_time = utils::get_time(total_seconds);
 
-    const AVCodec *codec = avcodec_find_decoder(
-        fmt_ctx_->streams[stream_index_]->codecpar->codec_id);
-    if (!codec) {
-        throw std::runtime_error("Failed to find codec");
-    }
-
-    codec_ctx_ = avcodec_alloc_context3(codec);
-    if (!codec_ctx_) {
-        throw std::runtime_error("Failed to allocate codec");
-    }
-
-    if (avcodec_parameters_to_context(
-            codec_ctx_, fmt_ctx_->streams[stream_index_]->codecpar) < 0) {
+    std::ofstream pipe(pipe_name, std::ios::binary);
+    if (!pipe.is_open()) {
         throw std::runtime_error(
-            "Failed to copy codec parameters to decoder context");
+            fmt::format("Error opening pipe: {}", pipe_name));
     }
 
-    codec_ctx_->pkt_timebase = fmt_ctx_->streams[stream_index_]->time_base;
-    if (avcodec_open2(codec_ctx_, codec, nullptr) < 0) {
-        throw std::runtime_error("Failed to open codec");
+    while ((err = mpg123_read(mh, audio.data(), audio.size(), &done)) ==
+           MPG123_OK) {
+        pipe.write(reinterpret_cast<char *>(audio.data()), done);
+
+        off_t position = mpg123_tell(mh);
+        double seconds = static_cast<double>(position) / rate;
+        std::string time = utils::get_time(seconds);
+        fmt::print("  {:<{}}: {} / {}\r", "position", WIDTH, time, total_time);
+        std::cout.flush();
     }
 
-    packet_ = av_packet_alloc();
-    if (!packet_) {
-        throw std::runtime_error("Could not allocate AVPacket");
-    }
-
-    frame_ = av_frame_alloc();
-    if (!frame_) {
-        throw std::runtime_error("Could not allocate AVFrame");
-    }
-
-    swr_ctx_ = swr_alloc();
-    if (!swr_ctx_) {
-        throw std::runtime_error("Could not allocate SwrContext");
-    }
-
-    av_opt_set_chlayout(swr_ctx_, "in_chlayout", &codec_ctx_->ch_layout, 0);
-    av_opt_set_int(swr_ctx_, "in_sample_rate", codec_ctx_->sample_rate, 0);
-    av_opt_set_sample_fmt(swr_ctx_, "in_sample_fmt", codec_ctx_->sample_fmt, 0);
-
-    AVChannelLayout out_chlayout;
-    av_channel_layout_default(&out_chlayout, 2);
-    av_opt_set_chlayout(swr_ctx_, "out_chlayout", &out_chlayout, 0);
-    av_opt_set_int(swr_ctx_, "out_sample_rate", 48000, 0);
-    av_opt_set_sample_fmt(swr_ctx_, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
-
-    if (swr_init(swr_ctx_) < 0) {
-        throw std::runtime_error("Failed to initialize the resampling context");
-    }
-
-    output_fp_.open(output_pipe_, std::ios::binary);
-    if (!output_fp_) {
-        throw std::runtime_error(
-            fmt::format("Could not open output pipe {}", output_pipe_));
-    }
-
-    // Accurate duration calculation for VBR
-    if (fmt_ctx_->streams[stream_index_]->duration != AV_NOPTS_VALUE) {
-        duration_ = fmt_ctx_->streams[stream_index_]->duration *
-                    av_q2d(fmt_ctx_->streams[stream_index_]->time_base);
-    } else if (fmt_ctx_->duration != AV_NOPTS_VALUE) {
-        duration_ = fmt_ctx_->duration / AV_TIME_BASE;
-    } else {
-        duration_ = -1; // Unknown duration
-    }
-
-    dur_str = utils::get_time(static_cast<double>(duration_));
-}
-
-void decoder::cleanup() {
-    if (output_fp_.is_open()) {
-        output_fp_.close();
-    }
-    av_frame_free(&frame_);
-    av_packet_free(&packet_);
-    avcodec_free_context(&codec_ctx_);
-    avformat_close_input(&fmt_ctx_);
-    swr_free(&swr_ctx_);
-}
-
-void decoder::print_metadata() const {
-    AVDictionaryEntry *tag = nullptr;
-
-    // Print format-level metadata
-    while ((tag = av_dict_get(fmt_ctx_->metadata, "", tag,
-                              AV_DICT_IGNORE_SUFFIX))) {
-        std::string key = tag->key ? tag->key : "";
-        std::string value = tag->value ? tag->value : "";
-        if (!key.empty() && !value.empty()) {
-            utils::to_lowercase(key);
-            fmt::print("  {:<{}}: {}\n", key, WIDTH, value);
-        }
-    }
-
-    // Print stream-level metadata
-    for (int i = 0; i < fmt_ctx_->nb_streams; i++) {
-        AVStream *stream = fmt_ctx_->streams[i];
-        while ((tag = av_dict_get(stream->metadata, "", tag,
-                                  AV_DICT_IGNORE_SUFFIX))) {
-            std::string key = tag->key ? tag->key : "";
-            std::string value = tag->value ? tag->value : "";
-            if (!key.empty() && !value.empty()) {
-                utils::to_lowercase(key);
-                fmt::print("  {:<{}}: {}\n", key, WIDTH, value);
-            }
-        }
+    if (err != MPG123_DONE) {
+        throw std::runtime_error("Error decoding MP3 file");
     }
 }
 
 void decoder::decode() {
-    // Read and decode frames
-    while (av_read_frame(fmt_ctx_, packet_) >= 0) {
-        if (packet_->stream_index == stream_index_) {
-            // Key Change: Check for packet duration and adjust if needed
-            if (packet_->duration > 0) {
-                packet_->duration =
-                    av_rescale_q(packet_->duration,
-                                 fmt_ctx_->streams[stream_index_]->time_base,
-                                 codec_ctx_->time_base);
+    // pipe_name = "test.pcm";
+    if (ext == "mp3") {
+        decode_mp3(file_path.string(), pipe_name);
+    } else if (ext == "opus") {
+        decode_opus(file_path.string(), pipe_name);
+    } else {
+        fmt::print("  {:<{}}: {}", "Error", WIDTH, "Unsupported format");
+    }
+    fmt::print("\n\n");
+}
+
+void decoder::print_metadata() {
+    TagLib::FileRef file(file_path.string().c_str());
+    if (!file.isNull() && file.tag()) {
+        TagLib::Tag *tag = file.tag();
+
+        auto print_tag = [](const std::string &name, const auto &value) {
+            if (!value.isEmpty()) {
+                fmt::print("  {:<{}}: {}\n", name, WIDTH,
+                           value.stripWhiteSpace().to8Bit(true));
             }
+        };
 
-            decode_frame();
+        print_tag("title", tag->title());
+        print_tag("artist", tag->artist());
+        print_tag("album", tag->album());
+        if (tag->year() != 0) {
+            fmt::print("  {:<{}}: {}\n", "year", WIDTH, tag->year());
         }
-        av_packet_unref(packet_);
-    }
-
-    // Flush the decoder
-    flush_decoder();
-
-    fmt::print(stdout, "\n\n");
-}
-
-void decoder::decode_frame() {
-    if (avcodec_send_packet(codec_ctx_, packet_) < 0) {
-        throw std::runtime_error("Error sending packet to decoder");
-    }
-
-    while (true) {
-        int ret = avcodec_receive_frame(codec_ctx_, frame_);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            break;
-        } else if (ret < 0) {
-            throw std::runtime_error("Error during decoding");
+        print_tag("comment", tag->comment());
+        if (tag->track() != 0) {
+            fmt::print("  {:<{}}: {}\n", "track", WIDTH, tag->track());
         }
-
-        process_frame();
-    }
-}
-
-void decoder::process_frame() {
-    uint8_t *output_buffer = nullptr;
-    int output_buffer_size = av_samples_alloc(
-        &output_buffer, nullptr, 2, frame_->nb_samples, AV_SAMPLE_FMT_S16, 0);
-
-    if (output_buffer_size < 0) {
-        throw std::runtime_error("Could not allocate output buffer");
+        print_tag("genre", tag->genre());
     }
 
-    int nb_samples =
-        swr_convert(swr_ctx_, &output_buffer, frame_->nb_samples,
-                    (const uint8_t **)frame_->data, frame_->nb_samples);
+    if (!file.isNull() && file.audioProperties()) {
+        TagLib::AudioProperties *properties = file.audioProperties();
 
-    if (nb_samples < 0) {
-        av_freep(&output_buffer);
-        throw std::runtime_error("Error while converting");
+        if (properties->bitrate() != 0) {
+            fmt::print("  {:<{}}: {}\n", "bitrate", WIDTH,
+                       properties->bitrate());
+        }
+        if (properties->sampleRate() != 0) {
+            fmt::print("  {:<{}}: {}\n", "sample-rate", WIDTH,
+                       properties->sampleRate());
+        }
+        if (properties->channels() != 0) {
+            fmt::print("  {:<{}}: {}\n", "channels", WIDTH,
+                       properties->channels());
+        }
+        if (properties->lengthInMilliseconds() != 0) {
+            double seconds =
+                static_cast<double>(properties->lengthInMilliseconds()) / 1000;
+            std::string time = utils::get_time(seconds);
+            fmt::print("  {:<{}}: {}\n", "length", WIDTH, time);
+        }
     }
 
-    output_fp_.write(reinterpret_cast<char *>(output_buffer),
-                     nb_samples * 2 *
-                         av_get_bytes_per_sample(AV_SAMPLE_FMT_S16));
-    av_freep(&output_buffer);
-
-    int64_t current_pts =
-        frame_->pts * av_q2d(fmt_ctx_->streams[stream_index_]->time_base);
-    std::string cur_str = utils::get_time(static_cast<double>(current_pts));
-    fmt::print(stdout, "  {:<{}}: {} / {}\r", "position", WIDTH, cur_str,
-               dur_str);
-    std::cout.flush();
-}
-
-void decoder::flush_decoder() {
-    if (avcodec_send_packet(codec_ctx_, nullptr) >= 0) {
-        while (true) {
-            int ret = avcodec_receive_frame(codec_ctx_, frame_);
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                break;
-            } else if (ret < 0) {
-                throw std::runtime_error("Error during flushing");
+    if (!file.isNull()) {
+        const TagLib::PropertyMap properties = file.file()->properties();
+        for (const auto &[key, values] : properties) {
+            if (!key.isEmpty() && !values.isEmpty()) {
+                std::string key_str = key.stripWhiteSpace().to8Bit(true);
+                utils::to_lowercase(key_str);
+                fmt::print("  {:<{}}: ", key_str, WIDTH);
+                for (const auto &value : values) {
+                    if (!value.isEmpty()) {
+                        fmt::print("{}", value.stripWhiteSpace().to8Bit(true));
+                    }
+                }
+                fmt::print("\n");
             }
-
-            process_frame();
         }
     }
 }
