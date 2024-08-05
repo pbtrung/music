@@ -6,6 +6,7 @@
 #include <string>
 #include <uv.h>
 #include <vector>
+#include <stdexcept>
 
 #include "json.hpp"
 using json = nlohmann::json;

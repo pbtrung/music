@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <string>
+#include <stdexcept>
 
 class decoder {
   public:

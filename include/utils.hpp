@@ -2,6 +2,7 @@
 #define UTILS_HPP
 
 #include <string>
+#include <stdexcept>
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
