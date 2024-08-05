@@ -15,7 +15,7 @@ decoder::decoder(const std::string &input_filename,
 decoder::~decoder() { cleanup(); }
 
 void decoder::init() {
-    av_log_set_level(AV_LOG_DEBUG);
+    av_log_set_level(AV_LOG_ERROR);
 
     if (avformat_open_input(&fmt_ctx_, input_filename_.c_str(), nullptr,
                             nullptr) < 0) {
