@@ -133,7 +133,7 @@ static void decode_mp3(const std::string &filename,
 }
 
 void decoder::decode() {
-    pipe_name = "test.pcm";
+    // pipe_name = "test.pcm";
     if (ext == "mp3") {
         decode_mp3(file_path.string(), pipe_name);
     } else if (ext == "opus") {
