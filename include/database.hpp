@@ -1,7 +1,7 @@
 #ifndef DATABASE_HPP
 #define DATABASE_HPP
 
-#include <iostream>
+#include <fmt/core.h>
 #include <sqlite3.h>
 #include <stdexcept>
 #include <string>
@@ -9,7 +9,7 @@
 
 class database {
   public:
-    database(const std::string &filename);
+    explicit database(const std::string &filename);
     ~database();
 
     int count_tracks() const;

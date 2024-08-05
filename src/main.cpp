@@ -51,7 +51,8 @@ int main(int argc, char *argv[]) {
             std::vector<file_info> file_infos = downloader.get_file_info();
 
             for (int i = 0; i < file_infos.size(); ++i) {
-                if (file_infos[i].file_download_status == DOWNLOAD_SUCCEEDED) {
+                if (file_infos[i].file_download_status ==
+                    download_status::SUCCEEDED) {
                     fmt::print(stdout, "{:<{}}: {}\n", "PLAYING", WIDTH + 2,
                                file_infos[i].filename);
                     fmt::print(stdout, "  {:<{}}: {}\n", "path", WIDTH,

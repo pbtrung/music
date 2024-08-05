@@ -3,7 +3,6 @@
 #include "random.hpp"
 #include "utils.hpp"
 #include <algorithm>
-#include <curl/curl.h>
 #include <filesystem>
 #include <fmt/core.h>
 #include <fstream>
@@ -30,8 +29,8 @@ file_downloader::file_downloader(const std::string &filename,
                                  const json &config)
     : filename(filename), album_path(album_path), track_name(track_name),
       ext(ext), cids(cids), config(config) {
-    cid_download_status.resize(cids.size(), DOWNLOAD_PENDING);
-    file_download_status = DOWNLOAD_PENDING;
+    cid_download_status.resize(cids.size(), download_status::PENDING);
+    file_download_status = download_status::PENDING;
 }
 
 void file_downloader::download_cid(uv_work_t *req) {
@@ -47,63 +46,63 @@ void file_downloader::download_cid(uv_work_t *req) {
     std::ofstream outfile(file_path, std::ios::binary);
     if (!outfile.is_open()) {
         fmt::print(stderr, "Failed to open file {}\n", file_path.string());
-        *(download_info->cid_download_status) = DOWNLOAD_FAILED;
+        *(download_info->cid_download_status) = download_status::FAILED;
         return;
     }
 
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        fmt::print(stderr, "Error initializing curl handle\n");
-        outfile.close();
-        *(download_info->cid_download_status) = DOWNLOAD_FAILED;
-        return;
-    }
+    try {
+        CurlHandle curl; // Automatically cleans up CURL* on destruction
 
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &outfile);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, write_cb);
+        curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);
+        curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
 
-    long response_code = 0;
-    std::string url;
-    std::vector<std::string> gateways =
-        download_info->config["gateways"].get<std::vector<std::string>>();
-    int timeout = download_info->config["timeout"].get<int>();
+        long response_code = 0;
+        std::string url;
+        std::vector<std::string> gateways =
+            download_info->config["gateways"].get<std::vector<std::string>>();
+        int timeout = download_info->config["timeout"].get<int>();
 
-    for (int retries = 0;
-         retries < download_info->config["max_retries"].get<int>(); ++retries) {
-        if (download_info->cid.size() == 59) {
-            url = fmt::format("https://{}.ipfs.nftstorage.link",
-                              download_info->cid);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2 * timeout);
-        } else {
-            std::vector<int> random_indices =
-                rng::random_ints(1, 0, gateways.size() - 1);
-            url = fmt::format("https://{}/{}", gateways[random_indices[0]],
-                              download_info->cid);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
-        }
-
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-
-        CURLcode res = curl_easy_perform(curl);
-        if (res == CURLE_OK) {
-            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
-            if (response_code == 200) {
-                *(download_info->cid_download_status) = DOWNLOAD_SUCCEEDED;
-                break;
+        for (int retries = 0;
+             retries < download_info->config["max_retries"].get<int>();
+             ++retries) {
+            if (download_info->cid.size() == 59) {
+                url = fmt::format("https://{}.ipfs.nftstorage.link",
+                                  download_info->cid);
+                curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, 2 * timeout);
+            } else {
+                std::vector<int> random_indices =
+                    rng::random_ints(1, 0, gateways.size() - 1);
+                url = fmt::format("https://{}/{}", gateways[random_indices[0]],
+                                  download_info->cid);
+                curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, timeout);
             }
+
+            curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
+
+            CURLcode res = curl_easy_perform(curl.get());
+            if (res == CURLE_OK) {
+                curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
+                                  &response_code);
+                if (response_code == 200) {
+                    *(download_info->cid_download_status) =
+                        download_status::SUCCEEDED;
+                    break;
+                }
+            }
+            outfile.clear();
+            outfile.seekp(0, std::ios::beg);
         }
-        outfile.clear();
-        outfile.seekp(0, std::ios::beg);
-    }
 
-    if (response_code != 200) {
-        fmt::print(stderr, "Download of cid {} failed\n", download_info->cid);
-        *(download_info->cid_download_status) = DOWNLOAD_FAILED;
+        if (response_code != 200) {
+            fmt::print(stderr, "Download of cid {} failed\n",
+                       download_info->cid);
+            *(download_info->cid_download_status) = download_status::FAILED;
+        }
+    } catch (const std::exception &e) {
+        fmt::print(stderr, "Error: {}\n", e.what());
+        *(download_info->cid_download_status) = download_status::FAILED;
     }
-
-    outfile.close();
-    curl_easy_cleanup(curl);
 }
 
 void file_downloader::on_cid_download_completed(uv_work_t *req, int status) {
@@ -128,14 +127,14 @@ void file_downloader::download(uv_loop_t *loop) {
 }
 
 void file_downloader::assemble() {
-    file_download_status = DOWNLOAD_SUCCEEDED;
+    file_download_status = download_status::SUCCEEDED;
     for (int i = 0; i < cids.size(); ++i) {
-        if (cid_download_status[i] != DOWNLOAD_SUCCEEDED) {
-            file_download_status = DOWNLOAD_FAILED;
+        if (cid_download_status[i] != download_status::SUCCEEDED) {
+            file_download_status = download_status::FAILED;
         }
     }
 
-    if (file_download_status == DOWNLOAD_SUCCEEDED) {
+    if (file_download_status == download_status::SUCCEEDED) {
         fmt::print(stdout, "\n");
         fmt::print(stdout, "{:<{}}: {}\n", "Assemble", WIDTH + 2, filename);
         fmt::print(stdout, "  {:<{}}: {}\n", "path", WIDTH, album_path);

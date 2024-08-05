@@ -2,6 +2,7 @@
 #define DOWNLOADER_HPP
 
 #include "database.hpp"
+#include <curl/curl.h>
 #include <string>
 #include <uv.h>
 #include <vector>
@@ -9,7 +10,27 @@
 #include "json.hpp"
 using json = nlohmann::json;
 
-enum download_status { DOWNLOAD_PENDING, DOWNLOAD_SUCCEEDED, DOWNLOAD_FAILED };
+enum class download_status { PENDING, SUCCEEDED, FAILED };
+
+class CurlHandle {
+  public:
+    CurlHandle() : handle(curl_easy_init()) {
+        if (!handle) {
+            throw std::runtime_error("Failed to initialize CURL handle");
+        }
+    }
+
+    ~CurlHandle() {
+        if (handle) {
+            curl_easy_cleanup(handle);
+        }
+    }
+
+    CURL *get() const { return handle; }
+
+  private:
+    CURL *handle;
+};
 
 struct file_info {
     std::string filename;
