@@ -43,11 +43,11 @@ int main(int argc, char *argv[]) {
             dir::delete_directory(output);
             dir::create_directory(output);
 
-            downloader downloader(config, db);
-            downloader.perform_downloads();
-            downloader.assemble_files();
-
-            std::vector<file_info> file_infos = downloader.get_file_info();
+            downloader *dler = new downloader(config, db);
+            dler->perform_downloads();
+            dler->assemble_files();
+            std::vector<file_info> file_infos = dler->get_file_info();
+            delete dler;
 
             for (int i = 0; i < file_infos.size(); ++i) {
                 if (file_infos[i].file_download_status ==
