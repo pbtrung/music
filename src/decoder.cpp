@@ -138,7 +138,7 @@ void decoder::decode() {
     } else if (ext == "opus") {
         decode_opus(file_path.string(), pipe_name);
     } else {
-        fmt::print("  {:<{}}: {}", "Error", WIDTH, "Unsupported format");
+        fmt::print("  {:<{}}: {}", "error", WIDTH, "Unsupported format");
     }
     fmt::print("\n\n");
 }
