@@ -99,7 +99,7 @@ void Decoder::printMetadata() {
 
 void Decoder::decodeOpus() {
     int error;
-    constexpr double sampleRate = 48000.0;
+    constexpr double sampleRate = 48000;
 
     std::unique_ptr<OggOpusFile, decltype(&op_free)> of(
         op_open_file(filePath.string().data(), &error), &op_free);
@@ -143,14 +143,14 @@ void Decoder::decodeOpus() {
     }
 
     if (samplesRead < 0) {
-        throw std::runtime_error("Error decoding Opus file");
+        fmt::print(stdout, "\n  {:<{}} : {}", "error", WIDTH,
+                   "error decoding Opus file");
     }
 }
 
 void Decoder::decodeMp3() {
     mpg123_handle *mh = nullptr;
     int err;
-    constexpr double sampleRate = 48000.0;
 
     if (mpg123_init() != MPG123_OK) {
         throw std::runtime_error("Unable to initialize mpg123 library");
@@ -175,16 +175,19 @@ void Decoder::decodeMp3() {
             std::format("Error opening MP3 file: {}", filePath.string()));
     }
 
-    long rate;
+    long sampleRate;
     int channels, encoding;
-    if (mpg123_getformat(mh, &rate, &channels, &encoding) != MPG123_OK) {
+    if (mpg123_getformat(mh, &sampleRate, &channels, &encoding) != MPG123_OK) {
         throw std::runtime_error(
             std::format("Error getting MP3 format: {}", mpg123_strerror(mh)));
     }
 
+    sampleRate = 48000;
+    channels = 2;
+    encoding = MPG123_ENC_SIGNED_16;
     // Force stereo 16-bit 48kHz output
     if (mpg123_format_none(mh) != MPG123_OK ||
-        mpg123_format(mh, sampleRate, 2, MPG123_ENC_SIGNED_16) != MPG123_OK) {
+        mpg123_format(mh, sampleRate, channels, encoding) != MPG123_OK) {
         throw std::runtime_error(
             std::format("Error setting MP3 format: {}", mpg123_strerror(mh)));
     }
@@ -196,7 +199,8 @@ void Decoder::decodeMp3() {
     }
 
     auto totalDuration = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::duration<double>(totalFrames / sampleRate));
+        std::chrono::duration<double>(totalFrames /
+                                      static_cast<double>(sampleRate)));
 
     std::ofstream pipe(pipeName, std::ios::binary);
     if (!pipe) {
@@ -204,13 +208,13 @@ void Decoder::decodeMp3() {
             std::format("Error opening pipe: {}", pipeName));
     }
 
-    constexpr std::size_t bufferSize = 4096;
+    constexpr size_t bufferSize = 4096;
     std::vector<unsigned char> audioBuffer(bufferSize);
     size_t bytesRead;
     std::string durStr = Utils::formatTime(totalDuration);
 
-    while (mpg123_read(mh, audioBuffer.data(), bufferSize, &bytesRead) ==
-           MPG123_OK) {
+    while ((err = mpg123_read(mh, audioBuffer.data(), bufferSize,
+                              &bytesRead)) == MPG123_OK) {
         pipe.write(reinterpret_cast<char *>(audioBuffer.data()), bytesRead);
 
         if (pipe.fail()) {
@@ -218,15 +222,16 @@ void Decoder::decodeMp3() {
         }
 
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::duration<double>(mpg123_tell(mh) / sampleRate));
+            std::chrono::duration<double>(mpg123_tell(mh) /
+                                          static_cast<double>(sampleRate)));
         fmt::print("  {:<{}} : {} / {}\r", "position", WIDTH,
                    Utils::formatTime(currentPosition), durStr);
         std::cout.flush();
     }
 
-    // Check for decoding errors explicitly
-    if (mpg123_errcode(mh) != MPG123_DONE) {
-        throw std::runtime_error(
-            fmt::format("Error decoding MP3 file: {}", mpg123_strerror(mh)));
+    // Check for decoding errors explicitly and print detailed error
+    if (err != MPG123_DONE) {
+        fmt::print(stdout, "\n  {:<{}} : {}: {}", "error", WIDTH,
+                   "error decoding MP3 file", mpg123_strerror(mh));
     }
 }

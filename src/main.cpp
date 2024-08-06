@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
                     std::cout.flush();
 
                     fs::path filePath = fs::path(outputDir) / fileInfo.filename;
-                    // pipe_name = "test.pcm";
+                    pipeName = "test.pcm";
                     Decoder decoder(filePath, fileInfo.extension, pipeName);
                     decoder.printMetadata();
                     decoder.decode();
