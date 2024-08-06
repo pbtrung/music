@@ -37,7 +37,8 @@ void Decoder::printMetadata() {
 
     auto printTag = [](std::string_view name, const TagLib::String &value) {
         if (!value.isEmpty()) {
-            fmt::print("  {:<{}} : {}\n", name, WIDTH, value.to8Bit(true));
+            fmt::print("  {:<{}} : {}\n", name, WIDTH,
+                       value.stripWhiteSpace().to8Bit(true));
         }
     };
 

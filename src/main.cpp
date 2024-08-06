@@ -18,7 +18,7 @@ using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 json readConfig(std::string_view configFilename) {
-    std::ifstream file(configFilename);
+    std::ifstream file(configFilename.data());
     if (!file) {
         fmt::print(stderr, "Could not open: {}\n", configFilename);
         std::exit(EXIT_FAILURE);
