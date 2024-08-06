@@ -51,7 +51,7 @@ static void decode_opus(const std::string &filename,
         opus_int64 position = op_pcm_tell(of.get());
         double seconds = static_cast<double>(position) / sample_rate;
         std::string time = utils::get_time(seconds);
-        fmt::print("  {:<{}}: {} / {}\r", "position", WIDTH, time, total_time);
+        fmt::print("  {:<{}} : {} / {}\r", "position", WIDTH, time, total_time);
         std::cout.flush();
     }
 
@@ -126,7 +126,7 @@ static void decode_mp3(const std::string &filename,
         off_t position = mpg123_tell(mh);
         double seconds = static_cast<double>(position) / rate;
         std::string time = utils::get_time(seconds);
-        fmt::print("  {:<{}}: {} / {}\r", "position", WIDTH, time, total_time);
+        fmt::print("  {:<{}} : {} / {}\r", "position", WIDTH, time, total_time);
         std::cout.flush();
     }
 
@@ -141,7 +141,7 @@ void decoder::decode() {
     } else if (ext == "opus") {
         decode_opus(file_path.string(), pipe_name);
     } else {
-        fmt::print("  {:<{}}: {}", "error", WIDTH, "Unsupported format");
+        fmt::print("  {:<{}} : {}", "error", WIDTH, "Unsupported format");
     }
     fmt::print("\n\n");
 }
@@ -153,7 +153,7 @@ void decoder::print_metadata() {
 
         auto print_tag = [](const std::string &name, const auto &value) {
             if (!value.isEmpty()) {
-                fmt::print("  {:<{}}: {}\n", name, WIDTH,
+                fmt::print("  {:<{}} : {}\n", name, WIDTH,
                            value.stripWhiteSpace().to8Bit(true));
             }
         };
@@ -162,11 +162,11 @@ void decoder::print_metadata() {
         print_tag("artist", tag->artist());
         print_tag("album", tag->album());
         if (tag->year() != 0) {
-            fmt::print("  {:<{}}: {}\n", "year", WIDTH, tag->year());
+            fmt::print("  {:<{}} : {}\n", "year", WIDTH, tag->year());
         }
         print_tag("comment", tag->comment());
         if (tag->track() != 0) {
-            fmt::print("  {:<{}}: {}\n", "track", WIDTH, tag->track());
+            fmt::print("  {:<{}} : {}\n", "track", WIDTH, tag->track());
         }
         print_tag("genre", tag->genre());
     }
@@ -175,22 +175,22 @@ void decoder::print_metadata() {
         TagLib::AudioProperties *properties = file.audioProperties();
 
         if (properties->bitrate() != 0) {
-            fmt::print("  {:<{}}: {}\n", "bitrate", WIDTH,
+            fmt::print("  {:<{}} : {}\n", "bitrate", WIDTH,
                        properties->bitrate());
         }
         if (properties->sampleRate() != 0) {
-            fmt::print("  {:<{}}: {}\n", "sample-rate", WIDTH,
+            fmt::print("  {:<{}} : {}\n", "sample-rate", WIDTH,
                        properties->sampleRate());
         }
         if (properties->channels() != 0) {
-            fmt::print("  {:<{}}: {}\n", "channels", WIDTH,
+            fmt::print("  {:<{}} : {}\n", "channels", WIDTH,
                        properties->channels());
         }
         if (properties->lengthInMilliseconds() != 0) {
             double seconds =
                 static_cast<double>(properties->lengthInMilliseconds()) / 1000;
             std::string time = utils::get_time(seconds);
-            fmt::print("  {:<{}}: {}\n", "length", WIDTH, time);
+            fmt::print("  {:<{}} : {}\n", "length", WIDTH, time);
         }
     }
 
@@ -200,7 +200,7 @@ void decoder::print_metadata() {
             if (!key.isEmpty() && !values.isEmpty()) {
                 std::string key_str = key.stripWhiteSpace().to8Bit(true);
                 utils::to_lowercase(key_str);
-                fmt::print("  {:<{}}: ", key_str, WIDTH);
+                fmt::print("  {:<{}} : ", key_str, WIDTH);
                 for (const auto &value : values) {
                     if (!value.isEmpty()) {
                         fmt::print("{}", value.stripWhiteSpace().to8Bit(true));

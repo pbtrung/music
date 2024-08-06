@@ -122,9 +122,9 @@ void file_downloader::assemble() {
 
     if (file_download_status == download_status::SUCCEEDED) {
         fmt::print(stdout, "\n");
-        fmt::print(stdout, "{:<{}}: {}\n", "Assemble", WIDTH + 2, filename);
-        fmt::print(stdout, "  {:<{}}: {}\n", "path", WIDTH, album_path);
-        fmt::print(stdout, "  {:<{}}: {}\n", "filename", WIDTH, track_name);
+        fmt::print(stdout, "{:<{}} : {}\n", "Assemble", WIDTH + 2, filename);
+        fmt::print(stdout, "  {:<{}} : {}\n", "path", WIDTH, album_path);
+        fmt::print(stdout, "  {:<{}} : {}\n", "filename", WIDTH, track_name);
         std::cout.flush();
 
         std::string output = config["output"].get<std::string>();

@@ -58,11 +58,11 @@ int main(int argc, char *argv[]) {
             try {
                 if (file_infos[i].file_download_status ==
                     download_status::SUCCEEDED) {
-                    fmt::print(stdout, "{:<{}}: {}\n", "PLAYING", WIDTH + 2,
+                    fmt::print(stdout, "{:<{}} : {}\n", "PLAYING", WIDTH + 2,
                                file_infos[i].filename);
-                    fmt::print(stdout, "  {:<{}}: {}\n", "path", WIDTH,
+                    fmt::print(stdout, "  {:<{}} : {}\n", "path", WIDTH,
                                file_infos[i].album_path);
-                    fmt::print(stdout, "  {:<{}}: {}\n", "filename", WIDTH,
+                    fmt::print(stdout, "  {:<{}} : {}\n", "filename", WIDTH,
                                file_infos[i].track_name);
                     std::cout.flush();
 
