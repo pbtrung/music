@@ -71,8 +71,7 @@ int main(int argc, char *argv[]) {
                         std::filesystem::path(file_infos[i].filename);
 
                     // pipe_name = "test.pcm";
-                    decoder decoder(file_path.string(), file_infos[i].ext,
-                                    pipe_name);
+                    decoder decoder(file_path, file_infos[i].ext, pipe_name);
                     decoder.print_metadata();
                     decoder.decode();
                 }

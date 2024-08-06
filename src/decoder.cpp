@@ -210,4 +210,6 @@ void decoder::print_metadata() {
             }
         }
     }
+
+    std::cout.flush();
 }
