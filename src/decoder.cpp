@@ -119,6 +119,9 @@ static void decode_mp3(const std::string &filename,
     while ((err = mpg123_read(mh, audio.data(), audio.size(), &done)) ==
            MPG123_OK) {
         pipe.write(reinterpret_cast<char *>(audio.data()), done);
+        if (pipe.fail()) {
+            throw std::runtime_error("Error writing to pipe");
+        }
 
         off_t position = mpg123_tell(mh);
         double seconds = static_cast<double>(position) / rate;
