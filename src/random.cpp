@@ -1,5 +1,6 @@
 #include "random.hpp"
 
+#include <algorithm>
 #include <random>
 #include <stdexcept>
 #include <unordered_set>
