@@ -3,220 +3,230 @@
 #include "random.hpp"
 #include "utils.hpp"
 #include <algorithm>
-#include <curl/curl.h>
-#include <filesystem>
 #include <fmt/core.h>
 #include <fstream>
 #include <iostream>
 
-size_t file_downloader::write_cb(void *ptr, size_t size, size_t nmemb,
-                                 void *userdata) {
+size_t FileDownloader::writeCallback(void *ptr, size_t size, size_t nmemb,
+                                     void *userdata) {
     std::ofstream *outfile = static_cast<std::ofstream *>(userdata);
     outfile->write(static_cast<const char *>(ptr), size * nmemb);
     return size * nmemb;
 }
 
-file_downloader::file_downloader(const std::string &filename,
-                                 const std::string &album_path,
-                                 const std::string &track_name,
-                                 const std::string &ext,
-                                 const std::vector<std::string> &cids,
-                                 const json &config)
-    : filename(filename), album_path(album_path), track_name(track_name),
-      ext(ext), cids(cids), config(config) {
-    cid_download_status.resize(cids.size(), download_status::PENDING);
-    file_download_status = download_status::PENDING;
+FileDownloader::FileDownloader(std::string_view filename,
+                               std::string_view albumPath,
+                               std::string_view trackName,
+                               std::string_view extension,
+                               const std::vector<std::string> &cids,
+                               const nlohmann::json &config)
+    : filename(filename), albumPath(albumPath), trackName(trackName),
+      extension(extension), cids(cids), config(config) {
+    cidDownloadStatus.resize(cids.size(), DownloadStatus::Pending);
 }
 
-std::future<void> file_downloader::download() {
-    std::vector<std::unique_ptr<std::future<void>>> futures;
+std::future<void> FileDownloader::download() {
+    std::vector<std::future<void>> futures;
     for (size_t i = 0; i < cids.size(); ++i) {
-        auto future =
-            std::make_unique<std::future<void>>(download_cid(cids[i], i));
-        futures.push_back(std::move(future));
+        futures.push_back(downloadCid(cids[i], i));
     }
+
+    // Return a future that completes when all downloads are done
     return std::async(std::launch::async,
                       [futures = std::move(futures)]() mutable {
                           for (auto &future : futures) {
-                              future->get();
+                              future.wait();
                           }
                       });
 }
 
-std::future<void> file_downloader::download_cid(const std::string &cid,
-                                                size_t index) {
+std::future<void> FileDownloader::downloadCid(const std::string &cid,
+                                              size_t index) {
     return std::async(std::launch::async, [this, cid, index]() {
-        fmt::print(stdout, "Downloading {}\n", cid);
+        std::string url;
+        fmt::print("Downloading {}\n", cid);
         std::cout.flush();
 
-        std::filesystem::path file_path =
-            std::filesystem::path(config["output"].get<std::string>()) /
-            std::filesystem::path(cid);
-
-        std::ofstream outfile(file_path, std::ios::binary);
-        if (!outfile.is_open()) {
-            fmt::print(stderr, "Failed to open file {}\n", file_path.string());
-            cid_download_status[index] = download_status::FAILED;
+        fs::path filePath = fs::path(config["output"]) / cid;
+        std::ofstream outfile(filePath, std::ios::binary);
+        if (!outfile) {
+            fmt::print(stderr, "Failed to open file {}\n", filePath.string());
+            cidDownloadStatus[index] = DownloadStatus::Failed;
             return;
         }
 
-        try {
-            CurlHandle curl;
+        long responseCode = 0;
+        std::vector<std::string> gateways = config["gateways"];
+        int timeout = config["timeout"];
+        int maxRetries = config["max_retries"];
 
-            curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, write_cb);
-            curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);
-            curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
+        CurlHandle curl;
+        curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, writeCallback);
+        curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);
+        curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
 
-            long response_code = 0;
-            std::string url;
-            std::vector<std::string> gateways =
-                config["gateways"].get<std::vector<std::string>>();
-            int timeout = config["timeout"].get<int>();
+        for (int retries = 0; retries < maxRetries; ++retries) {
+            url = (cid.size() == 59)
+                      ? fmt::format("https://{}.ipfs.nftstorage.link", cid)
+                      : fmt::format("https://{}/{}",
+                                    gateways[Random::uniqueInts(
+                                        1, 0, gateways.size() - 1)[0]],
+                                    cid);
 
-            for (int retries = 0; retries < config["max_retries"].get<int>();
-                 ++retries) {
-                if (cid.size() == 59) {
-                    url = fmt::format("https://{}.ipfs.nftstorage.link", cid);
-                    curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, 2 * timeout);
-                } else {
-                    std::vector<int> random_indices =
-                        rng::random_ints(1, 0, gateways.size() - 1);
-                    url = fmt::format("https://{}/{}",
-                                      gateways[random_indices[0]], cid);
-                    curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, timeout);
-                }
+            curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT,
+                             (cid.size() == 59) ? 2 * timeout : timeout);
 
-                curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
-
-                CURLcode res = curl_easy_perform(curl.get());
-                if (res == CURLE_OK) {
-                    curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
-                                      &response_code);
-                    if (response_code == 200) {
-                        cid_download_status[index] = download_status::SUCCEEDED;
-                        break;
-                    }
-                }
-                outfile.clear();
-                outfile.seekp(0, std::ios::beg);
+            CURLcode res = curl_easy_perform(curl.get());
+            if (res != CURLE_OK) {
+                fmt::print(stderr, "CURL error for {} (attempt {}): {}\n", cid,
+                           retries + 1, curl_easy_strerror(res));
+                continue;
             }
 
-            if (response_code != 200) {
-                fmt::print(stderr, "Download of cid {} failed\n", cid);
-                cid_download_status[index] = download_status::FAILED;
+            curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
+                              &responseCode);
+            if (responseCode == 200) {
+                cidDownloadStatus[index] = DownloadStatus::Succeeded;
+                break;
+            } else {
+                fmt::print(stderr,
+                           "Unsuccessful response for {} (attempt {}): {}\n",
+                           cid, retries + 1, responseCode);
             }
-        } catch (const std::exception &e) {
-            fmt::print(stderr, "Error: {}\n", e.what());
-            cid_download_status[index] = download_status::FAILED;
         }
+
+        if (responseCode != 200) {
+            cidDownloadStatus[index] = DownloadStatus::Failed;
+        }
+
+        outfile.close();
     });
 }
 
-void file_downloader::assemble() {
-    file_download_status = download_status::SUCCEEDED;
-    for (size_t i = 0; i < cids.size(); ++i) {
-        if (cid_download_status[i] != download_status::SUCCEEDED) {
-            file_download_status = download_status::FAILED;
-        }
-    }
+void FileDownloader::assemble() {
+    // Check if all CIDs were downloaded successfully
+    downloadStatus =
+        std::all_of(cidDownloadStatus.begin(), cidDownloadStatus.end(),
+                    [](DownloadStatus status) {
+                        return status == DownloadStatus::Succeeded;
+                    })
+            ? DownloadStatus::Succeeded
+            : DownloadStatus::Failed;
 
-    if (file_download_status == download_status::SUCCEEDED) {
-        fmt::print(stdout, "\n");
-        fmt::print(stdout, "{:<{}} : {}\n", "Assemble", WIDTH + 2, filename);
-        fmt::print(stdout, "  {:<{}} : {}\n", "path", WIDTH, album_path);
-        fmt::print(stdout, "  {:<{}} : {}\n", "filename", WIDTH, track_name);
+    if (downloadStatus == DownloadStatus::Succeeded) {
+        fmt::print("\n");
+        fmt::print("{:<{}} : {}\n", "Assemble", WIDTH + 2, filename);
+        fmt::print("  {:<{}} : {}\n", "path", WIDTH, albumPath);
+        fmt::print("  {:<{}} : {}\n", "filename", WIDTH, trackName);
         std::cout.flush();
 
-        std::string output = config["output"].get<std::string>();
-        std::filesystem::path file_path =
-            std::filesystem::path(output) / std::filesystem::path(filename);
-        std::ofstream outfile(file_path, std::ios::binary);
-        if (!outfile.is_open()) {
+        std::string outputDir = config["output"];
+        fs::path filePath = fs::path(outputDir) / filename;
+        std::ofstream outfile(filePath, std::ios::binary);
+
+        if (!outfile) {
             throw std::runtime_error("Failed to open output file: " +
-                                     file_path.string());
+                                     filePath.string());
         }
 
         std::vector<char> buffer(4096);
 
         for (const auto &cid : cids) {
-            std::filesystem::path cid_path =
-                std::filesystem::path(output) / std::filesystem::path(cid);
+            fs::path cidPath = fs::path(outputDir) / cid;
 
-            std::ifstream infile(cid_path, std::ios::binary);
-            if (!infile.is_open()) {
+            std::ifstream infile(cidPath, std::ios::binary);
+            if (!infile) {
                 throw std::runtime_error("Failed to open input file: " +
-                                         cid_path.string());
+                                         cidPath.string());
             }
 
+            // Efficiently copy contents using the buffer
             while (infile) {
                 infile.read(buffer.data(), buffer.size());
                 outfile.write(buffer.data(), infile.gcount());
             }
-
             infile.close();
 
-            if (!std::filesystem::remove(cid_path)) {
-                throw std::runtime_error("Failed to delete file: " +
-                                         cid_path.string());
+            std::error_code ec;
+            fs::remove(cidPath, ec);
+            if (ec) {
+                fmt::print(stderr, "Warning: Failed to delete file: {}",
+                           cidPath.string());
             }
         }
-
         outfile.close();
     }
 }
 
-std::string file_downloader::get_filename() const { return filename; }
-std::string file_downloader::get_ext() const { return ext; }
-download_status file_downloader::get_file_download_status() const {
-    return file_download_status;
+const std::string &FileDownloader::getFilename() const { return filename; }
+
+const std::string &FileDownloader::getExtension() const { return extension; }
+
+DownloadStatus FileDownloader::getDownloadStatus() const {
+    return downloadStatus;
 }
-std::string file_downloader::get_album_path() const { return album_path; }
-std::string file_downloader::get_track_name() const { return track_name; }
 
-downloader::downloader(const json &config, const database &db)
+const std::string &FileDownloader::getAlbumPath() const { return albumPath; }
+
+const std::string &FileDownloader::getTrackName() const { return trackName; }
+
+Downloader::Downloader(const nlohmann::json &config, const Database &db)
     : config(config), db(db) {
-    int min_value = 1;
-    int max_value = db.count_tracks();
-    int num_files = config["num_files"].get<int>();
-    std::vector<int> random_indices =
-        rng::random_ints(num_files, min_value, max_value);
+    int numFilesToDownload = config["num_files"];
 
-    for (int i = 0; i < num_files; ++i) {
-        std::vector<std::string> cids = db.get_cids(random_indices[i]);
-        std::string track_name = db.get_track_name(random_indices[i]);
-        std::string album_path = db.get_album(random_indices[i]);
-        std::string ext = utils::get_extension(track_name);
-        std::string filename = rng::random_string(20) + "." + ext;
+    if (numFilesToDownload <= 0 || numFilesToDownload > db.countTracks()) {
+        throw std::invalid_argument(
+            "Must be between 1 and the total number of tracks.");
+    }
 
-        file_downloaders.emplace_back(std::make_unique<file_downloader>(
-            filename, album_path, track_name, ext, cids, config));
+    std::vector<int> randomTrackIds =
+        Random::uniqueInts(numFilesToDownload, 1, db.countTracks());
+
+    for (int trackId : randomTrackIds) {
+        std::vector<std::string> cids = db.getTrackCIDs(trackId);
+        std::string trackName = db.getTrackName(trackId);
+        std::string albumPath = db.getAlbumPath(trackId);
+        std::string extension = Utils::getExtension(trackName);
+        if (extension.empty()) {
+            extension = "Unknown";
+        }
+
+        std::string filename = Random::alphanumericString(20) + "." + extension;
+        fileDownloaders.emplace_back(std::make_unique<FileDownloader>(
+            filename, albumPath, trackName, extension, cids, config));
     }
 }
 
-void downloader::perform_downloads() {
+void Downloader::performDownloads() {
     std::vector<std::future<void>> futures;
     fmt::print(stdout, "\n");
-    for (auto &fder : file_downloaders) {
-        futures.push_back(fder->download());
+    for (const auto &downloader : fileDownloaders) {
+        futures.push_back(downloader->download());
     }
+
+    // Wait for all downloads to complete
     for (auto &future : futures) {
-        future.get();
+        future.wait();
     }
 }
 
-void downloader::assemble_files() {
-    for (auto &fder : file_downloaders) {
-        fder->assemble();
+void Downloader::assembleFiles() {
+    for (const auto &downloader : fileDownloaders) {
+        downloader->assemble();
     }
     fmt::print(stdout, "\n");
 }
 
-std::vector<file_info> downloader::get_file_info() const {
-    std::vector<file_info> file_infos;
-    for (auto &fder : file_downloaders) {
-        file_infos.push_back({fder->get_filename(),
-                              fder->get_file_download_status(), fder->get_ext(),
-                              fder->get_album_path(), fder->get_track_name()});
+std::vector<FileInfo> Downloader::getFileInfo() const {
+    std::vector<FileInfo> infos;
+    infos.reserve(fileDownloaders.size());
+
+    for (const auto &downloader : fileDownloaders) {
+        infos.push_back({downloader->getFilename(),
+                         downloader->getDownloadStatus(),
+                         downloader->getExtension(), downloader->getAlbumPath(),
+                         downloader->getTrackName()});
     }
-    return file_infos;
+    return infos;
 }

@@ -5,23 +5,24 @@
 #include <sqlite3.h>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
-class database {
+class Database {
   public:
-    explicit database(const std::string &filename);
-    ~database();
+    explicit Database(std::string_view filename);
+    ~Database();
 
-    int count_tracks() const;
-    std::vector<std::string> get_cids(int track_id) const;
-    std::string get_track_name(int track_id) const;
-    std::string get_album(int track_id) const;
+    int countTracks() const;
+    std::vector<std::string> getTrackCIDs(int trackId) const;
+    std::string getTrackName(int trackId) const;
+    std::string getAlbumPath(int trackId) const;
 
   private:
-    class sqlite_statement {
+    class SqliteStatement {
       public:
-        sqlite_statement(sqlite3 *db, const std::string &query);
-        ~sqlite_statement();
+        SqliteStatement(sqlite3 *db, std::string_view query);
+        ~SqliteStatement();
         sqlite3_stmt *get() const;
 
       private:

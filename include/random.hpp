@@ -2,14 +2,17 @@
 #define RANDOM_HPP
 
 #include <string>
+#include <string_view>
 #include <vector>
 
-class rng {
+class Random {
   public:
-    // Static methods for random number generation
-    static std::vector<int> random_ints(int num_samples, int min_value,
-                                        int max_value);
-    static std::string random_string(int length);
+    // Generates a vector of unique random integers within a specified range.
+    static std::vector<int> uniqueInts(int numSamples, int minValue,
+                                       int maxValue);
+
+    // Generates a random alphanumeric string of a specified length.
+    static std::string alphanumericString(int length);
 };
 
 #endif // RANDOM_HPP

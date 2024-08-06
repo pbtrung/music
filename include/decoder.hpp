@@ -3,19 +3,22 @@
 
 #include <filesystem>
 #include <string>
-#include <stdexcept>
+#include <string_view>
 
-class decoder {
+class Decoder {
   public:
-    decoder(const std::filesystem::path &file_path, const std::string &ext,
-            const std::string &pipe_name);
-    void print_metadata();
+    Decoder(const std::filesystem::path &filePath, std::string_view extension,
+            std::string_view pipeName);
+    void printMetadata();
     void decode();
 
   private:
-    std::filesystem::path file_path;
-    std::string ext;
-    std::string pipe_name;
+    void decodeOpus();
+    void decodeMp3();
+
+    std::filesystem::path filePath;
+    std::string extension;
+    std::string pipeName;
 };
 
 #endif // DECODER_HPP

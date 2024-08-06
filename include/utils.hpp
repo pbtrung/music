@@ -1,39 +1,33 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
 
-#include <string>
+#include <chrono>
+#include <format>
+#include <span>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
-class utils {
+class Utils {
   public:
-    static void to_lowercase(std::string &str);
-    static std::string get_extension(const std::string &text);
-    static std::string get_time(double seconds);
+    // Converts the string to lowercase
+    static void toLowercase(std::string &str);
+
+    // Returns the file extension in lowercase, or an empty string if not found
+    static std::string getExtension(std::string_view text);
+
+    // Formats time in seconds to HH:MM:SS or MM:SS
+    static std::string formatTime(std::chrono::seconds seconds);
 };
 
 class Pcre2Pattern {
   public:
-    Pcre2Pattern(const std::string &pattern) {
-        int errcode;
-        PCRE2_SIZE erroffset;
-        re = pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern.c_str()),
-                           PCRE2_ZERO_TERMINATED, PCRE2_CASELESS, &errcode,
-                           &erroffset, nullptr);
-        if (!re) {
-            throw std::runtime_error("PCRE2 compilation failed");
-        }
-    }
-
-    ~Pcre2Pattern() {
-        if (re) {
-            pcre2_code_free(re);
-        }
-    }
-
-    pcre2_code *get() const { return re; }
+    explicit Pcre2Pattern(std::string_view pattern);
+    ~Pcre2Pattern();
+    pcre2_code *get() const;
 
   private:
     pcre2_code *re = nullptr;
@@ -41,20 +35,9 @@ class Pcre2Pattern {
 
 class Pcre2MatchData {
   public:
-    Pcre2MatchData(pcre2_code *pattern) {
-        match_data = pcre2_match_data_create_from_pattern(pattern, nullptr);
-        if (!match_data) {
-            throw std::runtime_error("Failed to create match data");
-        }
-    }
-
-    ~Pcre2MatchData() {
-        if (match_data) {
-            pcre2_match_data_free(match_data);
-        }
-    }
-
-    pcre2_match_data *get() const { return match_data; }
+    explicit Pcre2MatchData(const Pcre2Pattern &pattern);
+    ~Pcre2MatchData();
+    pcre2_match_data *get() const;
 
   private:
     pcre2_match_data *match_data = nullptr;
