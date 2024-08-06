@@ -1,8 +1,8 @@
 #include "random.hpp"
 
-#include <algorithm> // for std::shuffle
 #include <random>
 #include <stdexcept>
+#include <unordered_set>
 
 std::vector<int> Random::uniqueInts(int numSamples, int minValue,
                                     int maxValue) {
@@ -11,14 +11,20 @@ std::vector<int> Random::uniqueInts(int numSamples, int minValue,
             "number of samples exceeds the range of unique values");
     }
 
-    std::vector<int> result(maxValue - minValue + 1);
-    std::iota(result.begin(), result.end(), minValue);
-
+    std::unordered_set<int> uniqueSet;
+    std::vector<int> result;
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::shuffle(result.begin(), result.end(), gen);
+    std::uniform_int_distribution<> dis(minValue, maxValue);
 
-    return std::vector<int>(result.begin(), result.begin() + numSamples);
+    while (result.size() < numSamples) {
+        int value = dis(gen);
+        if (uniqueSet.insert(value).second) {
+            result.push_back(value);
+        }
+    }
+
+    return result;
 }
 
 std::string Random::alphanumericString(int length) {
