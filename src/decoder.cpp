@@ -1,11 +1,9 @@
 #include "decoder.hpp"
 #include "const.hpp"
 #include "utils.hpp"
-#include <chrono>
 #include <fmt/core.h>
 #include <fstream>
 #include <iostream>
-#include <samplerate.h>
 #include <sndfile.hh>
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
@@ -102,94 +100,51 @@ void Decoder::printMetadata() {
 }
 
 void Decoder::decodeSndFile() {
-    // Open the input file
-    SndfileHandle sndFile(filePath.string());
-    if (sndFile.error()) {
+    SndfileHandle infile(filePath.string());
+    if (infile.error()) {
         throw std::runtime_error(fmt::format("{}: {} File: {}",
                                              "Error opening sound file",
-                                             sndFile.strError(),
+                                             infile.strError(),
                                              filePath.string()));
     }
-
-    // Initialize resampler
-    constexpr int targetSampleRate = 48000;
-    constexpr int targetChannels = 2;
-    constexpr size_t bufferSize = 4096;
-
-    // Initialize resampler state
-    SRC_STATE *srcState =
-        src_new(SRC_SINC_BEST_QUALITY, sndFile.channels(), nullptr);
-    if (!srcState) {
-        throw std::runtime_error("Error initializing resampler");
-    }
-    auto srcStateDeleter = [](SRC_STATE *state) { src_delete(state); };
-    std::unique_ptr<SRC_STATE, decltype(srcStateDeleter)> srcStatePtr(
-        srcState, srcStateDeleter);
-
-    // Set the resampling ratio
-    if (src_set_ratio(srcState,
-                      static_cast<double>(targetSampleRate) /
-                          sndFile.samplerate()) != 0) {
-        throw std::runtime_error("Error setting resampler ratio");
-    }
-
-    // Open the output pipe
-    SndfileHandle pipe(pipeName,
-                       SFM_WRITE,
-                       SF_FORMAT_RAW | SF_FORMAT_PCM_16 | SF_ENDIAN_LITTLE,
-                       targetChannels,
-                       targetSampleRate);
-    if (pipe.error()) {
+    SndfileHandle outfile(pipeName,
+                          SFM_WRITE,
+                          SF_FORMAT_RAW | SF_FORMAT_PCM_16 | SF_ENDIAN_LITTLE,
+                          2,
+                          48000);
+    if (outfile.error()) {
         throw std::runtime_error(fmt::format("{}: {} File: {}",
                                              "Error opening pipe",
-                                             pipe.strError(),
+                                             outfile.strError(),
                                              pipeName));
     }
 
-    std::vector<float> inputBuffer(bufferSize * sndFile.channels());
-    // std::vector<float> outputBuffer(bufferSize * targetChannels);
+    constexpr size_t bufferSize = 4096;
+    std::vector<short> buffer(bufferSize * infile.channels());
+
+    // Calculate and display duration
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::duration<double>(static_cast<double>(infile.frames()) /
+                                      infile.samplerate()));
+    std::string durationStr = Utils::formatTime(duration);
 
     sf_count_t framesRead;
-    std::string durStr =
-        Utils::formatTime(std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::duration<double>(
-                static_cast<double>(sndFile.frames()) / sndFile.samplerate())));
+    while ((framesRead = infile.readf(buffer.data(), bufferSize)) > 0) {
+        sf_count_t framesWritten = outfile.writef(buffer.data(), framesRead);
+        if (framesWritten != framesRead) {
+            throw std::runtime_error("Error writing to pipe");
+        }
 
-    while ((framesRead = sndFile.readf(inputBuffer.data(), bufferSize)) > 0) {
-        // SRC_DATA srcData;
-        // srcData.data_in = inputBuffer.data();
-        // srcData.data_out = outputBuffer.data();
-        // srcData.input_frames = framesRead;
-        // srcData.output_frames = bufferSize;
-        // srcData.end_of_input = 0;
-        // srcData.src_ratio =
-        //     static_cast<double>(targetSampleRate) / sndFile.samplerate();
-
-        // int result = src_process(srcState, &srcData);
-        // if (result != 0) {
-        //     throw std::runtime_error(fmt::format("Error during resampling:
-        //     {}",
-        //                                          src_strerror(result)));
-        // }
-
-        pipe.writef(inputBuffer.data(), framesRead);
+        // Calculate and display progress
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::duration<double>(
-                static_cast<double>(sndFile.seek(0, SEEK_CUR)) /
-                sndFile.samplerate()));
+                static_cast<double>(infile.seek(0, SEEK_CUR)) /
+                infile.samplerate()));
         fmt::print("  {:<{}} : {} / {}\r",
                    "position",
                    WIDTH,
                    Utils::formatTime(currentPosition),
-                   durStr);
+                   durationStr);
         std::cout.flush();
-    }
-
-    if (sndFile.error() != SF_ERR_NO_ERROR) {
-        fmt::print(stdout,
-                   "\n  {:<{}} : {}",
-                   "error",
-                   WIDTH,
-                   "error decoding sound file");
     }
 }
