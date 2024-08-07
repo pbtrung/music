@@ -1,10 +1,12 @@
 #include "decoder.hpp"
 #include "const.hpp"
 #include "utils.hpp"
+#include <chrono>
 #include <fmt/core.h>
 #include <fstream>
 #include <iostream>
-#include <sndfile.h>
+#include <samplerate.h>
+#include <sndfile.hh>
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
 #include <taglib/tpropertymap.h>
@@ -12,17 +14,11 @@
 namespace fs = std::filesystem;
 
 Decoder::Decoder(const std::filesystem::path &filePath,
-                 std::string_view extension,
                  std::string_view pipeName)
-    : filePath(filePath), extension(extension), pipeName(pipeName) {}
+    : filePath(filePath), pipeName(pipeName) {}
 
 void Decoder::decode() {
-    if (extension == "opus" || extension == "mp3" || extension == "ogg" ||
-        extension == "flac" || extension == "m4a" || extension == "wav") {
-        decodeSndFile();
-    } else {
-        fmt::print("  {:<{}} : {}", "error", WIDTH, "Unsupported format");
-    }
+    decodeSndFile();
     fmt::print("\n\n");
 }
 
@@ -106,61 +102,72 @@ void Decoder::printMetadata() {
 }
 
 void Decoder::decodeSndFile() {
-    SF_INFO sfInfo;
-    SNDFILE *sndFileRaw = sf_open(filePath.string().data(), SFM_READ, &sfInfo);
-    if (!sndFileRaw) {
-        throw std::runtime_error(
-            std::format("Error opening sound file: {}", filePath.string()));
-    }
-
-    auto sndFile =
-        std::unique_ptr<SNDFILE, decltype(&sf_close)>(sndFileRaw, &sf_close);
-
-    // clang-format off
-    bool isSupportedFormat = (sfInfo.format == SF_FORMAT_WAV ||
-                              sfInfo.format == SF_FORMAT_FLAC ||
-                              sfInfo.format == SF_FORMAT_OGG ||
-                              sfInfo.format == SF_FORMAT_VORBIS ||
-                              sfInfo.format == SF_FORMAT_OPUS ||
-                              sfInfo.format == SF_FORMAT_ALAC_16 ||
-                              sfInfo.format == SF_FORMAT_ALAC_20 ||
-                              sfInfo.format == SF_FORMAT_ALAC_24 ||
-                              sfInfo.format == SF_FORMAT_ALAC_32 ||
-                              sfInfo.format == SF_FORMAT_MPEG_LAYER_III);
-    // clang-format on
-
-    if (!isSupportedFormat) {
+    // Open the input file
+    SndfileHandle sndFile(filePath.string());
+    if (sndFile.error()) {
         throw std::runtime_error(fmt::format(
-            "  {:<{}} : {}\n", "error", WIDTH, "Unsupported format"));
+            "{}: {}", "Error opening sound file", sndFile.strError()));
     }
 
-    auto totalDuration = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::duration<double>(sfInfo.frames /
-                                      static_cast<double>(sfInfo.samplerate)));
-
-    std::ofstream pipe(pipeName, std::ios::binary);
-    if (!pipe) {
-        throw std::runtime_error(
-            std::format("Error opening pipe: {}", pipeName));
-    }
-
+    // Initialize resampler
+    constexpr int targetSampleRate = 48000;
+    constexpr int targetChannels = 2;
     constexpr size_t bufferSize = 4096;
-    std::vector<short> buffer(bufferSize);
-    sf_count_t framesRead;
-    std::string durStr = Utils::formatTime(totalDuration);
 
-    while ((framesRead =
-                sf_readf_short(sndFile.get(), buffer.data(), bufferSize)) > 0) {
-        pipe.write(reinterpret_cast<const char *>(buffer.data()),
-                   framesRead * sfInfo.channels * sizeof(short));
-        if (pipe.fail()) {
-            throw std::runtime_error("Error writing to pipe");
+    // Initialize resampler state
+    SRC_STATE *srcState =
+        src_new(SRC_SINC_BEST_QUALITY, sndFile.channels(), nullptr);
+    if (!srcState) {
+        throw std::runtime_error("Error initializing resampler");
+    }
+    auto srcStateDeleter = [](SRC_STATE *state) { src_delete(state); };
+    std::unique_ptr<SRC_STATE, decltype(srcStateDeleter)> srcStatePtr(
+        srcState, srcStateDeleter);
+
+    // Set the resampling ratio
+    if (src_set_ratio(srcState,
+                      static_cast<double>(targetSampleRate) /
+                          sndFile.samplerate()) != 0) {
+        throw std::runtime_error("Error setting resampler ratio");
+    }
+
+    // Open the output pipe
+    SndfileHandle pipe(pipeName,
+                       SFM_WRITE,
+                       SF_FORMAT_PCM_16,
+                       targetChannels,
+                       targetSampleRate);
+    if (pipe.error()) {
+        throw std::runtime_error(
+            fmt::format("Error opening pipe: {}", pipeName));
+    }
+
+    std::vector<float> inputBuffer(bufferSize * sndFile.channels());
+    std::vector<float> outputBuffer(bufferSize * targetChannels);
+
+    sf_count_t framesRead;
+    std::string durStr =
+        Utils::formatTime(std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::duration<double>(
+                static_cast<double>(sndFile.frames()) / sndFile.samplerate())));
+
+    while ((framesRead = sndFile.readf(inputBuffer.data(), bufferSize)) > 0) {
+        SRC_DATA srcData;
+        srcData.data_in = inputBuffer.data();
+        srcData.data_out = outputBuffer.data();
+        srcData.input_frames = framesRead;
+        srcData.output_frames = bufferSize;
+        srcData.end_of_input = 0;
+
+        if (src_process(srcState, &srcData) != 0) {
+            throw std::runtime_error("Error during resampling");
         }
 
+        pipe.writef(outputBuffer.data(), srcData.output_frames_gen);
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::duration<double>(
-                sf_seek(sndFile.get(), 0, SEEK_CUR) /
-                static_cast<double>(sfInfo.samplerate)));
+                static_cast<double>(sndFile.seek(0, SEEK_CUR)) /
+                sndFile.samplerate()));
         fmt::print("  {:<{}} : {} / {}\r",
                    "position",
                    WIDTH,
@@ -169,8 +176,7 @@ void Decoder::decodeSndFile() {
         std::cout.flush();
     }
 
-    // Check for any errors during reading
-    if (sf_error(sndFile.get()) != SF_ERR_NO_ERROR) {
+    if (sndFile.error() != SF_ERR_NO_ERROR) {
         fmt::print(stdout,
                    "\n  {:<{}} : {}",
                    "error",

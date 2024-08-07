@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
 
             fileInfos = downloader.getFileInfo();
         } catch (const std::exception &e) {
-            fmt::print(stderr, "Error: {}\n", e.what());
+            fmt::print(stderr, "Error: {}\n\n", e.what());
             return EXIT_FAILURE;
         }
 
@@ -81,12 +81,12 @@ int main(int argc, char *argv[]) {
 
                     fs::path filePath = fs::path(outputDir) / fileInfo.filename;
                     // pipeName = "test.pcm";
-                    Decoder decoder(filePath, fileInfo.extension, pipeName);
+                    Decoder decoder(filePath, pipeName);
                     decoder.printMetadata();
                     decoder.decode();
                 }
             } catch (const std::exception &e) {
-                fmt::print(stderr, "Error: {}\n", e.what());
+                fmt::print(stderr, "Error: {}\n\n", e.what());
                 continue;
             }
         }

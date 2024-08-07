@@ -21,6 +21,7 @@ pkg_check_modules(PCRE2 REQUIRED libpcre2-8)
 pkg_check_modules(FMT REQUIRED fmt)
 pkg_check_modules(TAGLIB2 REQUIRED taglib)
 pkg_check_modules(SNDFILE REQUIRED sndfile)
+pkg_check_modules(SAMPLERATE REQUIRED samplerate)
 
 add_executable(music
     src/main.cpp
@@ -39,6 +40,7 @@ target_include_directories(music PRIVATE
     ${FMT_INCLUDE_DIRS}
     ${TAGLIB2_INCLUDE_DIRS}
     ${SNDFILE_INCLUDE_DIRS}
+    ${SAMPLERATE_INCLUDE_DIRS}
     include
 )
 
@@ -49,6 +51,7 @@ target_link_directories(music PRIVATE
     ${FMT_LIBRARY_DIRS}
     ${TAGLIB2_LIBRARY_DIRS}
     ${SNDFILE_LIBRARY_DIRS}
+    ${SAMPLERATE_LIBRARY_DIRS}
 )
 
 target_link_libraries(music PRIVATE
@@ -59,4 +62,5 @@ target_link_libraries(music PRIVATE
     ${TAGLIB2_LIBRARIES}
     ${OPUSFILE_LIBRARIES}
     ${SNDFILE_LIBRARIES}
+    ${SAMPLERATE_LIBRARIES}
 )
