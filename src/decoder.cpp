@@ -136,7 +136,7 @@ void Decoder::decodeSndFile() {
     // Open the output pipe
     SndfileHandle pipe(pipeName,
                        SFM_WRITE,
-                       SF_FORMAT_RAW | SF_FORMAT_PCM_16,
+                       SF_FORMAT_RAW | SF_FORMAT_PCM_16 | SF_ENDIAN_LITTLE,
                        targetChannels,
                        targetSampleRate);
     if (pipe.error()) {
