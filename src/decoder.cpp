@@ -142,7 +142,7 @@ void Decoder::decodeSndFile() {
     if (pipe.error()) {
         throw std::runtime_error(fmt::format("{}: {} File: {}",
                                              "Error opening pipe",
-                                             sndFile.strError(),
+                                             pipe.strError(),
                                              pipeName));
     }
 
