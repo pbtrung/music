@@ -7,7 +7,8 @@
 
 class Decoder {
   public:
-    Decoder(const std::filesystem::path &filePath, std::string_view extension,
+    Decoder(const std::filesystem::path &filePath,
+            std::string_view extension,
             std::string_view pipeName);
     void printMetadata();
     void decode();
@@ -15,6 +16,8 @@ class Decoder {
   private:
     void decodeOpus();
     void decodeMp3();
+    void printDecodingProgress(const std::chrono::seconds currentPosition,
+                               const std::string &durStr);
 
     std::filesystem::path filePath;
     std::string extension;

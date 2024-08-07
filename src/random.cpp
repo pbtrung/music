@@ -5,8 +5,8 @@
 #include <stdexcept>
 #include <unordered_set>
 
-std::vector<int> Random::uniqueInts(int numSamples, int minValue,
-                                    int maxValue) {
+std::vector<int>
+Random::uniqueInts(int numSamples, int minValue, int maxValue) {
     if (numSamples > (maxValue - minValue + 1)) {
         throw std::invalid_argument(
             "number of samples exceeds the range of unique values");
@@ -37,7 +37,7 @@ std::string Random::alphanumericString(int length) {
     std::uniform_int_distribution<> dis(0, alphabet.size() - 1);
 
     std::string result(length, '\0');
-    std::generate(result.begin(), result.end(),
-                  [&]() { return alphabet[dis(gen)]; });
+    std::generate(
+        result.begin(), result.end(), [&]() { return alphabet[dis(gen)]; });
     return result;
 }

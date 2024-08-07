@@ -25,9 +25,13 @@ Database::SqliteStatement::SqliteStatement(sqlite3 *db,
     }
 }
 
-Database::SqliteStatement::~SqliteStatement() { sqlite3_finalize(stmt); }
+Database::SqliteStatement::~SqliteStatement() {
+    sqlite3_finalize(stmt);
+}
 
-sqlite3_stmt *Database::SqliteStatement::get() const { return stmt; }
+sqlite3_stmt *Database::SqliteStatement::get() const {
+    return stmt;
+}
 
 // Database Implementation (continued)
 
@@ -73,7 +77,8 @@ std::string Database::getTrackName(int trackId) const {
 
 std::string Database::getAlbumPath(int trackId) const {
     const std::string_view query =
-        "SELECT path FROM albums WHERE album_id = (SELECT album_id FROM tracks WHERE track_id = ?)";
+        "SELECT path FROM albums WHERE album_id = (SELECT album_id FROM tracks "
+        "WHERE track_id = ?)";
 
     SqliteStatement stmt(db, query);
     sqlite3_bind_int(stmt.get(), 1, trackId);

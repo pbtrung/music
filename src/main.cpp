@@ -62,11 +62,20 @@ int main(int argc, char *argv[]) {
         for (const auto &fileInfo : fileInfos) {
             try {
                 if (fileInfo.downloadStatus == DownloadStatus::Succeeded) {
-                    fmt::print(stdout, "{:<{}} : {}\n", "PLAYING", WIDTH + 2,
+                    fmt::print(stdout,
+                               "{:<{}} : {}\n",
+                               "PLAYING",
+                               WIDTH + 2,
                                fileInfo.filename);
-                    fmt::print(stdout, "  {:<{}} : {}\n", "path", WIDTH,
+                    fmt::print(stdout,
+                               "  {:<{}} : {}\n",
+                               "path",
+                               WIDTH,
                                fileInfo.albumPath);
-                    fmt::print(stdout, "  {:<{}} : {}\n", "filename", WIDTH,
+                    fmt::print(stdout,
+                               "  {:<{}} : {}\n",
+                               "filename",
+                               WIDTH,
                                fileInfo.trackName);
                     std::cout.flush();
 

@@ -7,7 +7,9 @@
 #include <fstream>
 #include <iostream>
 
-size_t FileDownloader::writeCallback(void *ptr, size_t size, size_t nmemb,
+size_t FileDownloader::writeCallback(void *ptr,
+                                     size_t size,
+                                     size_t nmemb,
                                      void *userdata) {
     std::ofstream *outfile = static_cast<std::ofstream *>(userdata);
     outfile->write(static_cast<const char *>(ptr), size * nmemb);
@@ -42,77 +44,80 @@ std::future<void> FileDownloader::download() {
 
 std::future<void> FileDownloader::downloadCid(const std::string &cid,
                                               size_t index) {
-    return std::async(std::launch::async, [this, cid, index]() {
-        std::string url;
-        fmt::print("Downloading {}\n", cid);
-        std::cout.flush();
+    return std::async(std::launch::async,
+                      [this, cid, index]() { performDownload(cid, index); });
+}
 
-        fs::path filePath = fs::path(config["output"]) / cid;
-        std::ofstream outfile(filePath, std::ios::binary);
-        if (!outfile) {
-            fmt::print(stderr, "Failed to open file {}\n", filePath.string());
-            cidDownloadStatus[index] = DownloadStatus::Failed;
-            return;
+void FileDownloader::performDownload(const std::string &cid, size_t index) {
+    std::string url;
+    fmt::print("Downloading {}\n", cid);
+    std::cout.flush();
+
+    fs::path filePath = fs::path(config["output"]) / cid;
+    std::ofstream outfile(filePath, std::ios::binary);
+    if (!outfile) {
+        fmt::print(stderr, "Failed to open file {}\n", filePath.string());
+        cidDownloadStatus[index] = DownloadStatus::Failed;
+        return;
+    }
+
+    long responseCode = 0;
+    std::vector<std::string> gateways = config["gateways"];
+    int timeout = config["timeout"];
+    int maxRetries = config["max_retries"];
+
+    CurlHandle curl;
+    curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);
+    curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
+
+    for (int retries = 0; retries < maxRetries; ++retries) {
+        if (cid.size() == 59) {
+            url = fmt::format("https://{}.ipfs.nftstorage.link", cid);
+        } else {
+            std::string gateway =
+                gateways[Random::uniqueInts(1, 0, gateways.size() - 1)[0]];
+            url = fmt::format("https://{}/{}", gateway, cid);
         }
 
-        long responseCode = 0;
-        std::vector<std::string> gateways = config["gateways"];
-        int timeout = config["timeout"];
-        int maxRetries = config["max_retries"];
+        curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl.get(),
+                         CURLOPT_TIMEOUT,
+                         (cid.size() == 59) ? 2 * timeout : timeout);
 
-        CurlHandle curl;
-        curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, writeCallback);
-        curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);
-        curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
-
-        for (int retries = 0; retries < maxRetries; ++retries) {
-            url = (cid.size() == 59)
-                      ? fmt::format("https://{}.ipfs.nftstorage.link", cid)
-                      : fmt::format("https://{}/{}",
-                                    gateways[Random::uniqueInts(
-                                        1, 0, gateways.size() - 1)[0]],
-                                    cid);
-
-            curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
-            curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT,
-                             (cid.size() == 59) ? 2 * timeout : timeout);
-
-            CURLcode res = curl_easy_perform(curl.get());
-            if (res != CURLE_OK) {
-                fmt::print(stderr, "CURL error for {} (attempt {}): {}\n", cid,
-                           retries + 1, curl_easy_strerror(res));
-                continue;
-            }
-
-            curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
-                              &responseCode);
-            if (responseCode == 200) {
-                cidDownloadStatus[index] = DownloadStatus::Succeeded;
-                break;
-            } else {
-                fmt::print(stderr,
-                           "Unsuccessful response for {} (attempt {}): {}\n",
-                           cid, retries + 1, responseCode);
-            }
+        CURLcode res = curl_easy_perform(curl.get());
+        if (res != CURLE_OK) {
+            fmt::print(stderr,
+                       "CURL error for {} (attempt {}): {}\n",
+                       cid,
+                       retries + 1,
+                       curl_easy_strerror(res));
+            continue;
         }
 
-        if (responseCode != 200) {
-            cidDownloadStatus[index] = DownloadStatus::Failed;
+        curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &responseCode);
+        if (responseCode == 200) {
+            cidDownloadStatus[index] = DownloadStatus::Succeeded;
+            break;
+        } else {
+            fmt::print(stderr,
+                       "Unsuccessful response for {} (attempt {}): {}\n",
+                       cid,
+                       retries + 1,
+                       responseCode);
         }
+    }
 
-        outfile.close();
-    });
+    if (responseCode != 200) {
+        cidDownloadStatus[index] = DownloadStatus::Failed;
+    }
+
+    outfile.close();
 }
 
 void FileDownloader::assemble() {
-    // Check if all CIDs were downloaded successfully
-    downloadStatus =
-        std::all_of(cidDownloadStatus.begin(), cidDownloadStatus.end(),
-                    [](DownloadStatus status) {
-                        return status == DownloadStatus::Succeeded;
-                    })
-            ? DownloadStatus::Succeeded
-            : DownloadStatus::Failed;
+    downloadStatus = areAllDownloadsSucceeded() ? DownloadStatus::Succeeded
+                                                : DownloadStatus::Failed;
 
     if (downloadStatus == DownloadStatus::Succeeded) {
         fmt::print("\n");
@@ -141,7 +146,6 @@ void FileDownloader::assemble() {
                                          cidPath.string());
             }
 
-            // Efficiently copy contents using the buffer
             while (infile) {
                 infile.read(buffer.data(), buffer.size());
                 outfile.write(buffer.data(), infile.gcount());
@@ -151,7 +155,8 @@ void FileDownloader::assemble() {
             std::error_code ec;
             fs::remove(cidPath, ec);
             if (ec) {
-                fmt::print(stderr, "Warning: Failed to delete file: {}",
+                fmt::print(stderr,
+                           "Warning: Failed to delete file: {}",
                            cidPath.string());
             }
         }
@@ -159,17 +164,33 @@ void FileDownloader::assemble() {
     }
 }
 
-const std::string &FileDownloader::getFilename() const { return filename; }
+bool FileDownloader::areAllDownloadsSucceeded() const {
+    return std::all_of(cidDownloadStatus.begin(),
+                       cidDownloadStatus.end(),
+                       [](DownloadStatus status) {
+                           return status == DownloadStatus::Succeeded;
+                       });
+}
 
-const std::string &FileDownloader::getExtension() const { return extension; }
+const std::string &FileDownloader::getFilename() const {
+    return filename;
+}
+
+const std::string &FileDownloader::getExtension() const {
+    return extension;
+}
 
 DownloadStatus FileDownloader::getDownloadStatus() const {
     return downloadStatus;
 }
 
-const std::string &FileDownloader::getAlbumPath() const { return albumPath; }
+const std::string &FileDownloader::getAlbumPath() const {
+    return albumPath;
+}
 
-const std::string &FileDownloader::getTrackName() const { return trackName; }
+const std::string &FileDownloader::getTrackName() const {
+    return trackName;
+}
 
 Downloader::Downloader(const nlohmann::json &config, const Database &db)
     : config(config), db(db) {
@@ -205,7 +226,6 @@ void Downloader::performDownloads() {
         futures.push_back(downloader->download());
     }
 
-    // Wait for all downloads to complete
     for (auto &future : futures) {
         future.wait();
     }
@@ -225,7 +245,8 @@ std::vector<FileInfo> Downloader::getFileInfo() const {
     for (const auto &downloader : fileDownloaders) {
         infos.push_back({downloader->getFilename(),
                          downloader->getDownloadStatus(),
-                         downloader->getExtension(), downloader->getAlbumPath(),
+                         downloader->getExtension(),
+                         downloader->getAlbumPath(),
                          downloader->getTrackName()});
     }
     return infos;

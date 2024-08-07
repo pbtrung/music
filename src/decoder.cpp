@@ -13,7 +13,8 @@
 namespace fs = std::filesystem;
 
 Decoder::Decoder(const std::filesystem::path &filePath,
-                 std::string_view extension, std::string_view pipeName)
+                 std::string_view extension,
+                 std::string_view pipeName)
     : filePath(filePath), extension(extension), pipeName(pipeName) {}
 
 void Decoder::decode() {
@@ -30,14 +31,16 @@ void Decoder::decode() {
 void Decoder::printMetadata() {
     TagLib::FileRef f(filePath.string().data());
     if (f.isNull()) {
-        fmt::print("  {:<{}} : {}\n", "error", WIDTH,
-                   "Invalid or unsupported file");
+        fmt::print(
+            "  {:<{}} : {}\n", "error", WIDTH, "Invalid or unsupported file");
         return;
     }
 
     auto printTag = [](std::string_view name, const TagLib::String &value) {
         if (!value.isEmpty()) {
-            fmt::print("  {:<{}} : {}\n", name, WIDTH,
+            fmt::print("  {:<{}} : {}\n",
+                       name,
+                       WIDTH,
                        value.stripWhiteSpace().to8Bit(true));
         }
     };
@@ -58,22 +61,28 @@ void Decoder::printMetadata() {
 
     if (auto *properties = f.audioProperties()) {
         if (properties->bitrate() != 0) {
-            fmt::print("  {:<{}} : {} kbps\n", "bitrate", WIDTH,
+            fmt::print("  {:<{}} : {} kbps\n",
+                       "bitrate",
+                       WIDTH,
                        properties->bitrate());
         }
         if (properties->sampleRate() != 0) {
-            fmt::print("  {:<{}} : {} Hz\n", "sample-rate", WIDTH,
+            fmt::print("  {:<{}} : {} Hz\n",
+                       "sample-rate",
+                       WIDTH,
                        properties->sampleRate());
         }
         if (properties->channels() != 0) {
-            fmt::print("  {:<{}} : {}\n", "channels", WIDTH,
-                       properties->channels());
+            fmt::print(
+                "  {:<{}} : {}\n", "channels", WIDTH, properties->channels());
         }
         if (properties->lengthInMilliseconds() != 0) {
             auto length =
                 std::chrono::milliseconds(properties->lengthInMilliseconds());
             fmt::print(
-                "  {:<{}} : {}\n", "length", WIDTH,
+                "  {:<{}} : {}\n",
+                "length",
+                WIDTH,
                 Utils::formatTime(
                     std::chrono::duration_cast<std::chrono::seconds>(length)));
         }
@@ -129,22 +138,22 @@ void Decoder::decodeOpus() {
 
     while ((samplesRead =
                 op_read_stereo(of.get(), pcmBuffer.data(), bufferSize)) > 0) {
-        pipe.write(reinterpret_cast<char *>(pcmBuffer.data()),
+        pipe.write(reinterpret_cast<const char *>(pcmBuffer.data()),
                    samplesRead * channels * (bitsPerSample / 8));
-
         if (pipe.fail()) {
             throw std::runtime_error("Error writing to pipe");
         }
 
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::duration<double>(op_pcm_tell(of.get()) / sampleRate));
-        fmt::print("  {:<{}} : {} / {}\r", "position", WIDTH,
-                   Utils::formatTime(currentPosition), durStr);
-        std::cout.flush();
+        printDecodingProgress(currentPosition, durStr);
     }
 
     if (samplesRead < 0) {
-        fmt::print(stdout, "\n  {:<{}} : {}", "error", WIDTH,
+        fmt::print(stdout,
+                   "\n  {:<{}} : {}",
+                   "error",
+                   WIDTH,
                    "error decoding Opus file");
     }
 }
@@ -214,10 +223,10 @@ void Decoder::decodeMp3() {
     size_t bytesRead;
     std::string durStr = Utils::formatTime(totalDuration);
 
-    while ((err = mpg123_read(mh, audioBuffer.data(), bufferSize,
-                              &bytesRead)) == MPG123_OK) {
-        pipe.write(reinterpret_cast<char *>(audioBuffer.data()), bytesRead);
-
+    while ((err = mpg123_read(
+                mh, audioBuffer.data(), bufferSize, &bytesRead)) == MPG123_OK) {
+        pipe.write(reinterpret_cast<const char *>(audioBuffer.data()),
+                   bytesRead);
         if (pipe.fail()) {
             throw std::runtime_error("Error writing to pipe");
         }
@@ -225,14 +234,26 @@ void Decoder::decodeMp3() {
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::duration<double>(mpg123_tell(mh) /
                                           static_cast<double>(sampleRate)));
-        fmt::print("  {:<{}} : {} / {}\r", "position", WIDTH,
-                   Utils::formatTime(currentPosition), durStr);
-        std::cout.flush();
+        printDecodingProgress(currentPosition, durStr);
     }
 
     // Check for decoding errors explicitly and print detailed error
     if (err != MPG123_DONE) {
-        fmt::print(stdout, "\n  {:<{}} : {}: {}", "error", WIDTH,
-                   "error decoding MP3 file", mpg123_strerror(mh));
+        fmt::print(stdout,
+                   "\n  {:<{}} : {}: {}",
+                   "error",
+                   WIDTH,
+                   "error decoding MP3 file",
+                   mpg123_strerror(mh));
     }
+}
+
+void Decoder::printDecodingProgress(const std::chrono::seconds currentPosition,
+                                    const std::string &durStr) {
+    fmt::print("  {:<{}} : {} / {}\r",
+               "position",
+               WIDTH,
+               Utils::formatTime(currentPosition),
+               durStr);
+    std::cout.flush();
 }

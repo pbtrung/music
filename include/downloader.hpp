@@ -29,7 +29,9 @@ class CurlHandle {
         }
     }
 
-    CURL *get() const { return handle; }
+    CURL *get() const {
+        return handle;
+    }
 
   private:
     CURL *handle;
@@ -45,8 +47,10 @@ struct FileInfo {
 
 class FileDownloader {
   public:
-    FileDownloader(std::string_view filename, std::string_view albumPath,
-                   std::string_view trackName, std::string_view extension,
+    FileDownloader(std::string_view filename,
+                   std::string_view albumPath,
+                   std::string_view trackName,
+                   std::string_view extension,
                    const std::vector<std::string> &cids,
                    const nlohmann::json &config);
 
@@ -59,9 +63,11 @@ class FileDownloader {
     const std::string &getTrackName() const;
 
   private:
-    static size_t writeCallback(void *ptr, size_t size, size_t nmemb,
-                                void *userdata);
+    static size_t
+    writeCallback(void *ptr, size_t size, size_t nmemb, void *userdata);
     std::future<void> downloadCid(const std::string &cid, size_t index);
+    void performDownload(const std::string &cid, size_t index);
+    bool areAllDownloadsSucceeded() const;
 
     std::string filename;
     std::string albumPath;
