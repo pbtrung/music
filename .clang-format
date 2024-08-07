@@ -1,4 +1,24 @@
----
+# General Layout
 BasedOnStyle: LLVM
 IndentWidth: 4
+UseTab: Never
+ColumnLimit: 80
 BreakStringLiterals: false
+
+# Braces
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+BreakBeforeBraces: Custom
+
+# Spacing
+SpacesInParentheses: False
+SpacesInSquareBrackets: False
+
+# Line Wrapping
+AllowAllParametersOfDeclarationOnNextLine: false
+BinPackArguments: false
+BinPackParameters: false
+
+# Other
+ReflowComments: true
+SortIncludes: true
