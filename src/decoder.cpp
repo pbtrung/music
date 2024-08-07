@@ -162,6 +162,16 @@ void Decoder::decodeSndFile() {
         srcData.input_frames = framesRead;
         srcData.output_frames = bufferSize;
         srcData.end_of_input = 0;
+        srcData.src_ratio =
+            static_cast<double>(targetSampleRate) / sndFile.samplerate();
+
+        int result = src_process(srcState, &srcData);
+        if (result != 0) {
+            throw std::runtime_error(fmt::format("Error during resampling: {}",
+                                                 src_strerror(result)));
+        }
+
+        pipe.writef(outputBuffer.data(), srcData.output_frames_gen);
 
         if (src_process(srcState, &srcData) != 0) {
             throw std::runtime_error("Error during resampling");
