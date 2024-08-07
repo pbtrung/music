@@ -147,7 +147,7 @@ void Decoder::decodeSndFile() {
     }
 
     std::vector<float> inputBuffer(bufferSize * sndFile.channels());
-    std::vector<float> outputBuffer(bufferSize * targetChannels);
+    // std::vector<float> outputBuffer(bufferSize * targetChannels);
 
     sf_count_t framesRead;
     std::string durStr =
@@ -156,22 +156,22 @@ void Decoder::decodeSndFile() {
                 static_cast<double>(sndFile.frames()) / sndFile.samplerate())));
 
     while ((framesRead = sndFile.readf(inputBuffer.data(), bufferSize)) > 0) {
-        SRC_DATA srcData;
-        srcData.data_in = inputBuffer.data();
-        srcData.data_out = outputBuffer.data();
-        srcData.input_frames = framesRead;
-        srcData.output_frames = bufferSize;
-        srcData.end_of_input = 0;
-        srcData.src_ratio =
-            static_cast<double>(targetSampleRate) / sndFile.samplerate();
+        // SRC_DATA srcData;
+        // srcData.data_in = inputBuffer.data();
+        // srcData.data_out = outputBuffer.data();
+        // srcData.input_frames = framesRead;
+        // srcData.output_frames = bufferSize;
+        // srcData.end_of_input = 0;
+        // srcData.src_ratio =
+        //     static_cast<double>(targetSampleRate) / sndFile.samplerate();
 
-        int result = src_process(srcState, &srcData);
-        if (result != 0) {
-            throw std::runtime_error(fmt::format("Error during resampling: {}",
-                                                 src_strerror(result)));
-        }
+        // int result = src_process(srcState, &srcData);
+        // if (result != 0) {
+        //     throw std::runtime_error(fmt::format("Error during resampling: {}",
+        //                                          src_strerror(result)));
+        // }
 
-        pipe.writef(outputBuffer.data(), srcData.output_frames_gen);
+        pipe.writef(outputBuffer.data(), framesRead);
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::duration<double>(
                 static_cast<double>(sndFile.seek(0, SEEK_CUR)) /
