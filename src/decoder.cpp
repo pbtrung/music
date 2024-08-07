@@ -172,12 +172,6 @@ void Decoder::decodeSndFile() {
         }
 
         pipe.writef(outputBuffer.data(), srcData.output_frames_gen);
-
-        if (src_process(srcState, &srcData) != 0) {
-            throw std::runtime_error("Error during resampling");
-        }
-
-        pipe.writef(outputBuffer.data(), srcData.output_frames_gen);
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::duration<double>(
                 static_cast<double>(sndFile.seek(0, SEEK_CUR)) /
