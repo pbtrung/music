@@ -2,6 +2,7 @@
 #define DECODER_HPP
 
 #include <filesystem>
+#include <sndfile.h>
 #include <string>
 #include <string_view>
 
@@ -14,10 +15,7 @@ class Decoder {
     void decode();
 
   private:
-    void decodeOpus();
-    void decodeMp3();
-    void printDecodingProgress(const std::chrono::seconds currentPosition,
-                               const std::string &durStr);
+    void decodeSndFile();
 
     std::filesystem::path filePath;
     std::string extension;

@@ -20,8 +20,7 @@ pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(PCRE2 REQUIRED libpcre2-8)
 pkg_check_modules(FMT REQUIRED fmt)
 pkg_check_modules(TAGLIB2 REQUIRED taglib)
-pkg_check_modules(OPUSFILE REQUIRED opusfile)
-pkg_check_modules(MPG123 REQUIRED libmpg123)
+pkg_check_modules(SNDFILE REQUIRED sndfile)
 
 add_executable(music
     src/main.cpp
@@ -39,8 +38,7 @@ target_include_directories(music PRIVATE
     ${PCRE2_INCLUDE_DIRS}
     ${FMT_INCLUDE_DIRS}
     ${TAGLIB2_INCLUDE_DIRS}
-    ${OPUSFILE_INCLUDE_DIRS}
-    ${MPG123_INCLUDE_DIRS}
+    ${SNDFILE_INCLUDE_DIRS}
     include
 )
 
@@ -50,8 +48,7 @@ target_link_directories(music PRIVATE
     ${PCRE2_LIBRARY_DIRS}
     ${FMT_LIBRARY_DIRS}
     ${TAGLIB2_LIBRARY_DIRS}
-    ${OPUSFILE_LIBRARY_DIRS}
-    ${MPG123_LIBRARY_DIRS}
+    ${SNDFILE_LIBRARY_DIRS}
 )
 
 target_link_libraries(music PRIVATE
@@ -61,5 +58,5 @@ target_link_libraries(music PRIVATE
     ${FMT_LIBRARIES}
     ${TAGLIB2_LIBRARIES}
     ${OPUSFILE_LIBRARIES}
-    ${MPG123_LIBRARIES}
+    ${SNDFILE_LIBRARIES}
 )

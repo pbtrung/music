@@ -4,8 +4,7 @@
 #include <fmt/core.h>
 #include <fstream>
 #include <iostream>
-#include <mpg123.h>
-#include <opusfile.h>
+#include <sndfile.h>
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
 #include <taglib/tpropertymap.h>
@@ -18,10 +17,9 @@ Decoder::Decoder(const std::filesystem::path &filePath,
     : filePath(filePath), extension(extension), pipeName(pipeName) {}
 
 void Decoder::decode() {
-    if (extension == "mp3") {
-        decodeMp3();
-    } else if (extension == "opus") {
-        decodeOpus();
+    if (extension == "opus" || extension == "mp3" || extension == "ogg" ||
+        extension == "flac" || extension == "m4a" || extension == "wav") {
+        decodeSndFile();
     } else {
         fmt::print("  {:<{}} : {}", "error", WIDTH, "Unsupported format");
     }
@@ -107,20 +105,38 @@ void Decoder::printMetadata() {
     std::cout.flush();
 }
 
-void Decoder::decodeOpus() {
-    int error;
-    constexpr double sampleRate = 48000;
-
-    std::unique_ptr<OggOpusFile, decltype(&op_free)> of(
-        op_open_file(filePath.string().data(), &error), &op_free);
-    if (!of) {
+void Decoder::decodeSndFile() {
+    SF_INFO sfInfo;
+    SNDFILE *sndFileRaw = sf_open(filePath.string().data(), SFM_READ, &sfInfo);
+    if (!sndFileRaw) {
         throw std::runtime_error(
-            std::format("Error opening Opus file: {}", filePath.string()));
+            std::format("Error opening sound file: {}", filePath.string()));
     }
 
-    opus_int64 totalSamples = op_pcm_total(of.get(), -1);
+    auto sndFile =
+        std::unique_ptr<SNDFILE, decltype(&sf_close)>(sndFileRaw, &sf_close);
+
+    // clang-format off
+    bool isSupportedFormat = (sfInfo.format == SF_FORMAT_WAV ||
+                              sfInfo.format == SF_FORMAT_FLAC ||
+                              sfInfo.format == SF_FORMAT_OGG ||
+                              sfInfo.format == SF_FORMAT_VORBIS ||
+                              sfInfo.format == SF_FORMAT_OPUS ||
+                              sfInfo.format == SF_FORMAT_ALAC_16 ||
+                              sfInfo.format == SF_FORMAT_ALAC_20 ||
+                              sfInfo.format == SF_FORMAT_ALAC_24 ||
+                              sfInfo.format == SF_FORMAT_ALAC_32 ||
+                              sfInfo.format == SF_FORMAT_MPEG_LAYER_III);
+    // clang-format on
+
+    if (!isSupportedFormat) {
+        throw std::runtime_error(fmt::format(
+            "  {:<{}} : {}\n", "error", WIDTH, "Unsupported format"));
+    }
+
     auto totalDuration = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::duration<double>(totalSamples / sampleRate));
+        std::chrono::duration<double>(sfInfo.frames /
+                                      static_cast<double>(sfInfo.samplerate)));
 
     std::ofstream pipe(pipeName, std::ios::binary);
     if (!pipe) {
@@ -128,132 +144,37 @@ void Decoder::decodeOpus() {
             std::format("Error opening pipe: {}", pipeName));
     }
 
-    constexpr int channels = 2;
-    constexpr int bitsPerSample = 16;
     constexpr size_t bufferSize = 4096;
-
-    std::vector<opus_int16> pcmBuffer(bufferSize * channels);
-    int samplesRead;
+    std::vector<short> buffer(bufferSize);
+    sf_count_t framesRead;
     std::string durStr = Utils::formatTime(totalDuration);
 
-    while ((samplesRead =
-                op_read_stereo(of.get(), pcmBuffer.data(), bufferSize)) > 0) {
-        pipe.write(reinterpret_cast<const char *>(pcmBuffer.data()),
-                   samplesRead * channels * (bitsPerSample / 8));
+    while ((framesRead =
+                sf_readf_short(sndFile.get(), buffer.data(), bufferSize)) > 0) {
+        pipe.write(reinterpret_cast<const char *>(buffer.data()),
+                   framesRead * sfInfo.channels * sizeof(short));
         if (pipe.fail()) {
             throw std::runtime_error("Error writing to pipe");
         }
 
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::duration<double>(op_pcm_tell(of.get()) / sampleRate));
-        printDecodingProgress(currentPosition, durStr);
+            std::chrono::duration<double>(
+                sf_seek(sndFile.get(), 0, SEEK_CUR) /
+                static_cast<double>(sfInfo.samplerate)));
+        fmt::print("  {:<{}} : {} / {}\r",
+                   "position",
+                   WIDTH,
+                   Utils::formatTime(currentPosition),
+                   durStr);
+        std::cout.flush();
     }
 
-    if (samplesRead < 0) {
+    // Check for any errors during reading
+    if (sf_error(sndFile.get()) != SF_ERR_NO_ERROR) {
         fmt::print(stdout,
                    "\n  {:<{}} : {}",
                    "error",
                    WIDTH,
-                   "error decoding Opus file");
+                   "error decoding sound file");
     }
-}
-
-void Decoder::decodeMp3() {
-    mpg123_handle *mh = nullptr;
-    int err;
-
-    if (mpg123_init() != MPG123_OK) {
-        throw std::runtime_error("Unable to initialize mpg123 library");
-    }
-
-    mh = mpg123_new(nullptr, &err);
-    if (!mh) {
-        mpg123_exit();
-        throw std::runtime_error(std::format("Error creating mpg123 handle: {}",
-                                             mpg123_strerror(mh)));
-    }
-
-    auto cleanup = [](mpg123_handle *mh) {
-        mpg123_close(mh);
-        mpg123_delete(mh);
-        mpg123_exit();
-    };
-    std::unique_ptr<mpg123_handle, decltype(cleanup)> mhPtr(mh, cleanup);
-
-    if (mpg123_open(mh, filePath.string().data()) != MPG123_OK) {
-        throw std::runtime_error(
-            std::format("Error opening MP3 file: {}", filePath.string()));
-    }
-
-    long sampleRate;
-    int channels, encoding;
-    if (mpg123_getformat(mh, &sampleRate, &channels, &encoding) != MPG123_OK) {
-        throw std::runtime_error(
-            std::format("Error getting MP3 format: {}", mpg123_strerror(mh)));
-    }
-
-    sampleRate = 48000;
-    channels = 2;
-    encoding = MPG123_ENC_SIGNED_16;
-    // Force stereo 16-bit 48kHz output
-    if (mpg123_format_none(mh) != MPG123_OK ||
-        mpg123_format(mh, sampleRate, channels, encoding) != MPG123_OK) {
-        throw std::runtime_error(
-            std::format("Error setting MP3 format: {}", mpg123_strerror(mh)));
-    }
-
-    off_t totalFrames = mpg123_length(mh);
-    if (totalFrames == MPG123_ERR) { // Check for error specifically
-        throw std::runtime_error(std::format(
-            "Error getting total length of MP3 file: {}", mpg123_strerror(mh)));
-    }
-
-    auto totalDuration = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::duration<double>(totalFrames /
-                                      static_cast<double>(sampleRate)));
-
-    std::ofstream pipe(pipeName, std::ios::binary);
-    if (!pipe) {
-        throw std::runtime_error(
-            std::format("Error opening pipe: {}", pipeName));
-    }
-
-    constexpr size_t bufferSize = 4096;
-    std::vector<unsigned char> audioBuffer(bufferSize);
-    size_t bytesRead;
-    std::string durStr = Utils::formatTime(totalDuration);
-
-    while ((err = mpg123_read(
-                mh, audioBuffer.data(), bufferSize, &bytesRead)) == MPG123_OK) {
-        pipe.write(reinterpret_cast<const char *>(audioBuffer.data()),
-                   bytesRead);
-        if (pipe.fail()) {
-            throw std::runtime_error("Error writing to pipe");
-        }
-
-        auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::duration<double>(mpg123_tell(mh) /
-                                          static_cast<double>(sampleRate)));
-        printDecodingProgress(currentPosition, durStr);
-    }
-
-    // Check for decoding errors explicitly and print detailed error
-    if (err != MPG123_DONE) {
-        fmt::print(stdout,
-                   "\n  {:<{}} : {}: {}",
-                   "error",
-                   WIDTH,
-                   "error decoding MP3 file",
-                   mpg123_strerror(mh));
-    }
-}
-
-void Decoder::printDecodingProgress(const std::chrono::seconds currentPosition,
-                                    const std::string &durStr) {
-    fmt::print("  {:<{}} : {} / {}\r",
-               "position",
-               WIDTH,
-               Utils::formatTime(currentPosition),
-               durStr);
-    std::cout.flush();
 }
