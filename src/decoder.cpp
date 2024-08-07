@@ -105,8 +105,10 @@ void Decoder::decodeSndFile() {
     // Open the input file
     SndfileHandle sndFile(filePath.string());
     if (sndFile.error()) {
-        throw std::runtime_error(fmt::format(
-            "{}: {}", "Error opening sound file", sndFile.strError()));
+        throw std::runtime_error(fmt::format("{}: {} File: {}",
+                                             "Error opening sound file",
+                                             sndFile.strError(),
+                                             filePath.string()));
     }
 
     // Initialize resampler
@@ -138,8 +140,10 @@ void Decoder::decodeSndFile() {
                        targetChannels,
                        targetSampleRate);
     if (pipe.error()) {
-        throw std::runtime_error(
-            fmt::format("Error opening pipe: {}", pipeName));
+        throw std::runtime_error(fmt::format("{}: {} File: {}",
+                                             "Error opening pipe",
+                                             sndFile.strError(),
+                                             pipeName));
     }
 
     std::vector<float> inputBuffer(bufferSize * sndFile.channels());
