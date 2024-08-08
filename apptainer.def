@@ -5,42 +5,15 @@ Stage: build
 %post
     apk update
     apk add git
-    apk add --no-cache alpine-sdk git pkgconf autoconf automake \
-        cmake bash curl-dev sqlite-dev pcre2-dev fmt-dev mpg123-dev \
-        utfcpp zlib-dev opus-dev flac-dev libogg-dev libtool \
-        libvorbis-dev python3 lame-dev
+    apk add --no-cache alpine-sdk git pkgconf cmake autoconf automake \
+        curl-dev sqlite-dev pcre2-dev fmt-dev ffmpeg-dev
 
-    cd /root/
-    git clone https://github.com/libsndfile/libsndfile
-    cd libsndfile
-    mkdir -p build/libsndfile
-    cd build
-    cmake -B libsndfile -DBUILD_SHARED_LIBS=ON -DENABLE_EXTERNAL_LIBS=ON \
-        -DENABLE_MPEG=ON -DBUILD_EXAMPLES=OFF -DBUILD_PROGRAMS=OFF \
-        -DENABLE_CPACK=OFF -DINSTALL_PKGCONFIG_MODULE=ON -DCMAKE_BUILD_TYPE=MinSizeRel \
-        -Wno-dev ..
-    cmake --build libsndfile --config MinSizeRel
-    cmake --install libsndfile --config MinSizeRel --prefix pkg --strip
-    cmake --install libsndfile --config MinSizeRel --prefix /usr --strip
-        
     cd /root/
     git clone https://github.com/allinurl/gwsocket
     cd gwsocket
     autoreconf -fiv
     ./configure
     make
-
-    cd /root/
-    git clone https://github.com/taglib/taglib
-    cd taglib
-    mkdir -p build/taglib
-    cd build
-    cmake -B taglib -DBUILD_SHARED_LIBS=ON -DVISIBILITY_HIDDEN=ON \
-        -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BINDINGS=OFF \
-        -DCMAKE_BUILD_TYPE=Release ..
-    cmake --build taglib --config Release
-    cmake --install taglib --config Release --prefix pkg --strip
-    cmake --install taglib --config Release --prefix /usr --strip
 
     cd /root/
     git clone https://github.com/pbtrung/music
@@ -55,16 +28,14 @@ Stage: final
 
 %files from build
     /root/music/build/music /usr/bin/
-    /root/taglib/build/pkg/lib/* /usr/lib/
-    /root/libsndfile/build/pkg/lib/* /usr/lib/
     /root/gwsocket/gwsocket /usr/bin/
 
 %post
     apk update
     apk upgrade
     apk add --no-cache curl sqlite-libs pcre2 fmt \
-        snapcast-server zlib mpg123-libs opus libflac \
-        libogg libvorbis lame-libs
+        ffmpeg-libavcodec ffmpeg-libavformat ffmpeg-libswresample ffmpeg-libavutil \
+        snapcast-server
 
 %startscript
     #!/bin/ash
