@@ -144,7 +144,7 @@ void SoxrHandle::process(const std::vector<short> &audioBuffer,
 
 void Decoder::decodeSndFile() {
     SndfileHandle infile(filePath.string());
-    if (infile.error()) {
+    if (infile.error() != SF_ERR_NO_ERROR) {
         throw std::runtime_error(fmt::format("{}: {} File: {}",
                                              "Error opening sound file",
                                              infile.strError(),
@@ -155,7 +155,7 @@ void Decoder::decodeSndFile() {
                           SF_FORMAT_RAW | SF_FORMAT_PCM_16 | SF_ENDIAN_LITTLE,
                           2,
                           48000);
-    if (outfile.error()) {
+    if (outfile.error() != SF_ERR_NO_ERROR) {
         throw std::runtime_error(fmt::format("{}: {} File: {}",
                                              "Error opening pipe",
                                              outfile.strError(),
