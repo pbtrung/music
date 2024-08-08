@@ -176,9 +176,6 @@ void Decoder::decodeSndFile() {
                           out_type,
                           quality);
 
-    constexpr size_t bufferSize = 4096;
-    std::vector<short> buffer(bufferSize * infile.channels());
-
     // Calculate and display duration
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::duration<double>(static_cast<double>(infile.frames()) /
@@ -199,6 +196,8 @@ void Decoder::decodeSndFile() {
                    outfile.samplerate());
     }
 
+    constexpr size_t bufferSize = 4096;
+    std::vector<short> buffer(bufferSize * infile.channels());
     sf_count_t framesRead, framesWritten;
     while ((framesRead = infile.readf(buffer.data(), bufferSize)) > 0) {
         if (static_cast<int>(outfile.samplerate()) == infile.samplerate()) {
