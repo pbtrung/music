@@ -1,41 +1,66 @@
 #ifndef DECODER_HPP
 #define DECODER_HPP
 
-#include <fstream>
+#include <filesystem>
+#include <mpg123.h>
+#include <soxr.h>
 #include <string>
+#include <string_view>
+#include <vector>
 
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/opt.h>
-#include <libswresample/swresample.h>
-}
+class SoxrHandle {
+  public:
+    SoxrHandle(double inputRate,
+               double outputRate,
+               int channels,
+               const soxr_datatype_t &in_type,
+               const soxr_datatype_t &out_type,
+               int quality);
+    ~SoxrHandle();
+    soxr_t get() const;
+    void process(const std::vector<unsigned char> &audioBuffer,
+                 std::vector<unsigned char> &resampledBuffer,
+                 size_t bytesRead,
+                 size_t *resampledSize);
+
+  private:
+    soxr_error_t error;
+    soxr_t handle;
+    soxr_io_spec_t iospec;
+    soxr_quality_spec_t q_spec;
+};
 
 class Decoder {
   public:
-    Decoder(const std::string &input_filename, const std::string &output_pipe);
-    ~Decoder();
+    Decoder(const std::filesystem::path &filePath,
+            std::string_view extension,
+            std::string_view pipeName);
 
-    void printMetadata() const;
+    void printMetadata();
     void decode();
 
   private:
-    void init();
-    void decodeFrame();
-    void processFrame();
-    void flushDecoder();
+    std::filesystem::path filePath;
+    std::string extension;
+    std::string pipeName;
 
-    std::string input_filename_;
-    std::string output_pipe_;
-    AVFormatContext *fmt_ctx_ = nullptr;
-    AVCodecContext *codec_ctx_ = nullptr;
-    AVPacket *packet_ = nullptr;
-    AVFrame *frame_ = nullptr;
-    SwrContext *swr_ctx_ = nullptr;
-    std::ofstream output_fp_;
-    int stream_index_ = -1;
-    int64_t duration_ = 0;
-    std::string duration_str_;
+    void decodeMp3();
+    void decodeOpus();
+    void decodeMp3File(
+        std::unique_ptr<mpg123_handle, decltype(&mpg123_delete)> &mhPtr,
+        SoxrHandle &soxrHandle,
+        std::ofstream &pipe,
+        long sampleRate,
+        int channels);
+    void writeToPipe(std::ofstream &pipe,
+                     const std::vector<unsigned char> &buffer,
+                     size_t size);
+    void printDecodingProgress(const std::chrono::seconds currentPosition,
+                               const std::string &durStr);
+    void configureMpg123(mpg123_handle *mh,
+                         long &sampleRate,
+                         int &channels,
+                         int &encoding);
 };
 
 #endif // DECODER_HPP
