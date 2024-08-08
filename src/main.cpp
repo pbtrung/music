@@ -61,30 +61,28 @@ int main(int argc, char *argv[]) {
 
         for (const auto &fileInfo : fileInfos) {
             try {
-                if (fileInfo.downloadStatus == DownloadStatus::Succeeded) {
-                    fmt::print(stdout,
-                               "{:<{}} : {}\n",
-                               "PLAYING",
-                               WIDTH + 2,
-                               fileInfo.filename);
-                    fmt::print(stdout,
-                               "  {:<{}} : {}\n",
-                               "path",
-                               WIDTH,
-                               fileInfo.albumPath);
-                    fmt::print(stdout,
-                               "  {:<{}} : {}\n",
-                               "filename",
-                               WIDTH,
-                               fileInfo.trackName);
-                    std::cout.flush();
+                fmt::print(stdout,
+                           "{:<{}} : {}\n",
+                           "PLAYING",
+                           WIDTH + 2,
+                           fileInfo.filename);
+                fmt::print(stdout,
+                           "  {:<{}} : {}\n",
+                           "path",
+                           WIDTH,
+                           fileInfo.albumPath);
+                fmt::print(stdout,
+                           "  {:<{}} : {}\n",
+                           "filename",
+                           WIDTH,
+                           fileInfo.trackName);
+                std::cout.flush();
 
-                    fs::path filePath = fs::path(outputDir) / fileInfo.filename;
-                    // pipeName = "test.pcm";
-                    Decoder decoder(filePath, pipeName);
-                    decoder.printMetadata();
-                    decoder.decode();
-                }
+                fs::path filePath = fs::path(outputDir) / fileInfo.filename;
+                // pipeName = "test.pcm";
+                Decoder decoder(filePath, pipeName);
+                decoder.printMetadata();
+                decoder.decode();
             } catch (const std::exception &e) {
                 fmt::print(stderr, "Error: {}\n\n", e.what());
                 continue;

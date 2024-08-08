@@ -39,7 +39,6 @@ class CurlHandle {
 
 struct FileInfo {
     std::string filename;
-    DownloadStatus downloadStatus;
     std::string extension;
     std::string albumPath;
     std::string trackName;

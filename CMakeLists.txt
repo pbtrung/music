@@ -57,6 +57,5 @@ target_link_libraries(music PRIVATE
     ${PCRE2_LIBRARIES}
     ${FMT_LIBRARIES}
     ${TAGLIB2_LIBRARIES}
-    ${OPUSFILE_LIBRARIES}
     ${SNDFILE_LIBRARIES}
 )

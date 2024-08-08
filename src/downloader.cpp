@@ -225,7 +225,6 @@ void Downloader::performDownloads() {
     for (const auto &downloader : fileDownloaders) {
         futures.push_back(downloader->download());
     }
-
     for (auto &future : futures) {
         future.wait();
     }
@@ -240,14 +239,13 @@ void Downloader::assembleFiles() {
 
 std::vector<FileInfo> Downloader::getFileInfo() const {
     std::vector<FileInfo> infos;
-    infos.reserve(fileDownloaders.size());
-
     for (const auto &downloader : fileDownloaders) {
-        infos.push_back({downloader->getFilename(),
-                         downloader->getDownloadStatus(),
-                         downloader->getExtension(),
-                         downloader->getAlbumPath(),
-                         downloader->getTrackName()});
+        if (downloader->getDownloadStatus() == DownloadStatus::Succeeded) {
+            infos.push_back({downloader->getFilename(),
+                             downloader->getExtension(),
+                             downloader->getAlbumPath(),
+                             downloader->getTrackName()});
+        }
     }
     return infos;
 }
