@@ -2,11 +2,10 @@
 #define DECODER_HPP
 
 #include <filesystem>
-#include <mpg123.h>
+#include <sndfile.h>
 #include <soxr.h>
 #include <string>
 #include <string_view>
-#include <vector>
 
 class SoxrHandle {
   public:
@@ -18,9 +17,9 @@ class SoxrHandle {
                int quality);
     ~SoxrHandle();
     soxr_t get() const;
-    void process(const std::vector<int16_t> &audioBuffer,
-                 std::vector<int16_t> &resampledBuffer,
-                 size_t bytesRead,
+    void process(const std::vector<short> &audioBuffer,
+                 std::vector<short> &resampledBuffer,
+                 size_t framesRead,
                  size_t *resampledSize);
 
   private:
@@ -32,35 +31,15 @@ class SoxrHandle {
 
 class Decoder {
   public:
-    Decoder(const std::filesystem::path &filePath,
-            std::string_view extension,
-            std::string_view pipeName);
-
+    Decoder(const std::filesystem::path &filePath, std::string_view pipeName);
     void printMetadata();
     void decode();
 
   private:
-    std::filesystem::path filePath;
-    std::string extension;
-    std::string pipeName;
+    void decodeSndFile();
 
-    void decodeMp3();
-    void decodeOpus();
-    void decodeMp3File(
-        std::unique_ptr<mpg123_handle, decltype(&mpg123_delete)> &mhPtr,
-        SoxrHandle &soxrHandle,
-        std::ofstream &pipe,
-        long sampleRate,
-        int channels);
-    void writeToPipe(std::ofstream &pipe,
-                     const std::vector<unsigned char> &buffer,
-                     size_t size);
-    void printDecodingProgress(const std::chrono::seconds currentPosition,
-                               const std::string &durStr);
-    void configureMpg123(mpg123_handle *mh,
-                         long &sampleRate,
-                         int &channels,
-                         int &encoding);
+    std::filesystem::path filePath;
+    std::string pipeName;
 };
 
 #endif // DECODER_HPP

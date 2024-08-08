@@ -80,8 +80,7 @@ int main(int argc, char *argv[]) {
 
                 fs::path filePath = fs::path(outputDir) / fileInfo.filename;
                 // pipeName = "test.pcm";
-                Decoder decoder(
-                    filePath.string(), fileInfo.extension, pipeName);
+                Decoder decoder(filePath.string(), pipeName);
                 decoder.printMetadata();
                 decoder.decode();
             } catch (const std::exception &e) {
