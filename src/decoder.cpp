@@ -171,7 +171,6 @@ SoxrHandle::SoxrHandle(double inputRate,
                        const soxr_datatype_t &out_type,
                        const int quality) {
     iospec = soxr_io_spec(in_type, out_type);
-    // HQ should be fine: http://sox.sourceforge.net/Docs/FAQ
     q_spec = soxr_quality_spec(quality, 0);
     handle = soxr_create(
         inputRate, outputRate, channels, &error, &iospec, &q_spec, nullptr);
@@ -213,7 +212,6 @@ void SoxrHandle::process(const std::vector<unsigned char> &audioBuffer,
 void Decoder::decodeMp3() {
     mpg123_handle *mh = nullptr;
     int err;
-    constexpr double targetSampleRate = 48000;
 
     // Initialize mpg123
     if (mpg123_init() != MPG123_OK) {
@@ -255,23 +253,14 @@ void Decoder::decodeMp3() {
     soxr_datatype_t in_type = SOXR_INT16_I;
     soxr_datatype_t out_type = SOXR_INT16_I;
     int quality = SOXR_HQ;
+    constexpr int targetChannels = 2;
+    constexpr double targetSampleRate = 48000;
     SoxrHandle soxrHandle(static_cast<double>(sampleRate),
                           targetSampleRate,
-                          channels,
+                          targetChannels,
                           in_type,
                           out_type,
                           quality);
-
-    // Force stereo 16-bit 48kHz output
-    sampleRate = 48000;
-    channels = 2;
-    encoding = MPG123_ENC_SIGNED_16;
-    if (mpg123_format_none(mhPtr.get()) != MPG123_OK ||
-        mpg123_format(mhPtr.get(), sampleRate, channels, encoding) !=
-            MPG123_OK) {
-        throw std::runtime_error(std::format("Error setting MP3 format: {}",
-                                             mpg123_strerror(mhPtr.get())));
-    }
 
     off_t totalFrames = mpg123_length(mhPtr.get());
     if (totalFrames == MPG123_ERR) {
@@ -303,7 +292,7 @@ void Decoder::decodeMp3() {
             audioBuffer, resampledBuffer, bytesRead, &resampledSize);
 
         pipe.write(reinterpret_cast<const char *>(resampledBuffer.data()),
-                   resampledSize * sizeof(float));
+                   resampledSize * sizeof(int16_t));
         if (pipe.fail()) {
             throw std::runtime_error("Error writing to pipe");
         }
