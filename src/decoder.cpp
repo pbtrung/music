@@ -178,10 +178,6 @@ void Decoder::decodeSndFile() {
 
     constexpr size_t bufferSize = 4096;
     std::vector<short> buffer(bufferSize * infile.channels());
-    double freqRatio =
-        outfile.samplerate() / static_cast<double>(infile.samplerate());
-    std::vector<short> resampledBuffer(
-        static_cast<size_t>(bufferSize * freqRatio + 0.5) * outfile.channels());
 
     // Calculate and display duration
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(
@@ -206,9 +202,17 @@ void Decoder::decodeSndFile() {
                        WIDTH,
                        infile.samplerate(),
                        outfile.samplerate());
+            size_t resampledSize;
+            double freqRatio =
+                outfile.samplerate() / static_cast<double>(infile.samplerate());
+            std::vector<short> resampledBuffer(
+                static_cast<size_t>(bufferSize * freqRatio + 0.5) *
+                outfile.channels());
             soxrHandle.process(
-                buffer, resampledBuffer, framesRead, reinterpret_cast<size_t *>(&framesRead));
-            framesWritten = outfile.writef(resampledBuffer.data(), framesRead);
+                buffer, resampledBuffer, framesRead, &resampledSize);
+            framesWritten =
+                outfile.writef(resampledBuffer.data(), resampledSize);
+            framesRead = resampledSize;
         }
         if (framesWritten != framesRead) {
             throw std::runtime_error("Error writing to pipe");

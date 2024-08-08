@@ -6,6 +6,7 @@
 #include <soxr.h>
 #include <string>
 #include <string_view>
+#include <vector>
 
 class SoxrHandle {
   public:
