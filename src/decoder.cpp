@@ -190,8 +190,8 @@ soxr_t SoxrHandle::get() const {
     return handle;
 }
 
-void SoxrHandle::process(const std::vector<unsigned char> &audioBuffer,
-                         std::vector<unsigned char> &resampledBuffer,
+void SoxrHandle::process(const std::vector<int16_t> &audioBuffer,
+                         std::vector<int16_t> &resampledBuffer,
                          size_t bytesRead,
                          size_t *resampledSize) {
     size_t inputLength = bytesRead / sizeof(int16_t);
