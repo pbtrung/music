@@ -13,7 +13,14 @@ Decoder::Decoder(const std::string &input_filename,
 }
 
 Decoder::~Decoder() {
-    cleanup();
+    if (output_fp_.is_open()) {
+        output_fp_.close();
+    }
+    av_frame_free(&frame_);
+    av_packet_free(&packet_);
+    avcodec_free_context(&codec_ctx_);
+    avformat_close_input(&fmt_ctx_);
+    swr_free(&swr_ctx_);
 }
 
 void Decoder::init() {
@@ -111,17 +118,6 @@ void Decoder::init() {
         Utils::formatTime(std::chrono::seconds(static_cast<long>(duration_)));
 }
 
-void Decoder::cleanup() {
-    if (output_fp_.is_open()) {
-        output_fp_.close();
-    }
-    av_frame_free(&frame_);
-    av_packet_free(&packet_);
-    avcodec_free_context(&codec_ctx_);
-    avformat_close_input(&fmt_ctx_);
-    swr_free(&swr_ctx_);
-}
-
 void Decoder::printMetadata() const {
     AVDictionaryEntry *tag = nullptr;
 
@@ -192,30 +188,39 @@ void Decoder::decodeFrame() {
 }
 
 void Decoder::processFrame() {
-    uint8_t *output_buffer = nullptr;
-    int output_buffer_size = av_samples_alloc(
-        &output_buffer, nullptr, 2, frame_->nb_samples, AV_SAMPLE_FMT_S16, 0);
+    auto deleter = [](uint8_t *ptr) { av_freep(&ptr); };
+    std::unique_ptr<uint8_t, decltype(deleter)> output_buffer(nullptr, deleter);
+
+    // Allocate the buffer
+    int output_buffer_size =
+        av_samples_alloc(reinterpret_cast<uint8_t **>(&output_buffer),
+                         nullptr,
+                         2,
+                         frame_->nb_samples,
+                         AV_SAMPLE_FMT_S16,
+                         0);
 
     if (output_buffer_size < 0) {
         throw std::runtime_error("Could not allocate output buffer");
     }
 
+    // Convert the samples
     int nb_samples = swr_convert(swr_ctx_,
-                                 &output_buffer,
+                                 reinterpret_cast<uint8_t **>(&output_buffer),
                                  frame_->nb_samples,
                                  (const uint8_t **)frame_->data,
                                  frame_->nb_samples);
 
     if (nb_samples < 0) {
-        av_freep(&output_buffer);
         throw std::runtime_error("Error while converting");
     }
 
-    output_fp_.write(reinterpret_cast<char *>(output_buffer),
+    // Write buffer to file
+    output_fp_.write(reinterpret_cast<char *>(output_buffer.get()),
                      nb_samples * 2 *
                          av_get_bytes_per_sample(AV_SAMPLE_FMT_S16));
-    av_freep(&output_buffer);
 
+    // Calculate and print position
     int64_t current_pts =
         frame_->pts * av_q2d(fmt_ctx_->streams[stream_index_]->time_base);
     std::string cur_str =

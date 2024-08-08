@@ -21,7 +21,6 @@ class Decoder {
 
   private:
     void init();
-    void cleanup();
     void decodeFrame();
     void processFrame();
     void flushDecoder();
