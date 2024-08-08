@@ -13,14 +13,13 @@ endif()
 set(CMAKE_C_FLAGS_DEBUG "-g -O0")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
 
-set(ENV{PKG_CONFIG_PATH} "/opt/homebrew/usr/local/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+set(ENV{PKG_CONFIG_PATH} "/opt/homebrew/usr/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBCURL REQUIRED libcurl)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(PCRE2 REQUIRED libpcre2-8)
 pkg_check_modules(FMT REQUIRED fmt)
-pkg_check_modules(TAGLIB2 REQUIRED taglib)
-pkg_check_modules(SNDFILE REQUIRED sndfile)
+pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libswresample libavutil)
 
 add_executable(music
     src/main.cpp
@@ -37,8 +36,7 @@ target_include_directories(music PRIVATE
     ${SQLITE3_INCLUDE_DIRS}
     ${PCRE2_INCLUDE_DIRS}
     ${FMT_INCLUDE_DIRS}
-    ${TAGLIB2_INCLUDE_DIRS}
-    ${SNDFILE_INCLUDE_DIRS}
+    ${FFMPEG_INCLUDE_DIRS}
     include
 )
 
@@ -47,8 +45,7 @@ target_link_directories(music PRIVATE
     ${SQLITE3_LIBRARY_DIRS}
     ${PCRE2_LIBRARY_DIRS}
     ${FMT_LIBRARY_DIRS}
-    ${TAGLIB2_LIBRARY_DIRS}
-    ${SNDFILE_LIBRARY_DIRS}
+    ${FFMPEG_LIBRARY_DIRS}
 )
 
 target_link_libraries(music PRIVATE
@@ -56,6 +53,5 @@ target_link_libraries(music PRIVATE
     ${SQLITE3_LIBRARIES}
     ${PCRE2_LIBRARIES}
     ${FMT_LIBRARIES}
-    ${TAGLIB2_LIBRARIES}
-    ${SNDFILE_LIBRARIES}
+    ${FFMPEG_LIBRARIES}
 )
