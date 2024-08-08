@@ -151,13 +151,11 @@ void Decoder::decodeSndFile() {
                                              infile.strError(),
                                              filePath.string()));
     }
-    constexpr int targetChannels = 2;
-    constexpr double targetSampleRate = 48000;
     SndfileHandle outfile(pipeName,
                           SFM_WRITE,
                           SF_FORMAT_RAW | SF_FORMAT_PCM_16 | SF_ENDIAN_LITTLE,
-                          targetChannels,
-                          static_cast<int>(targetSampleRate));
+                          2,
+                          48000);
     if (outfile.error()) {
         throw std::runtime_error(fmt::format("{}: {} File: {}",
                                              "Error opening pipe",
@@ -167,8 +165,8 @@ void Decoder::decodeSndFile() {
 
     // Configure the resampler
     SoxrHandle soxrHandle(static_cast<double>(infile.samplerate()),
-                          targetSampleRate,
-                          targetChannels,
+                          48000,
+                          2,
                           SOXR_INT16_I,
                           SOXR_INT16_I,
                           SOXR_HQ);
@@ -196,6 +194,7 @@ void Decoder::decodeSndFile() {
     constexpr size_t bufferSize = 4096;
     std::vector<short> buffer(bufferSize * infile.channels());
     sf_count_t framesRead, framesWritten;
+
     while ((framesRead = infile.readf(buffer.data(), bufferSize)) > 0) {
         if (static_cast<int>(outfile.samplerate()) == infile.samplerate()) {
             framesWritten = outfile.writef(buffer.data(), framesRead);
