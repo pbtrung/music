@@ -182,30 +182,28 @@ void Decoder::decodeSndFile() {
                "outfile.samplerate",
                WIDTH,
                outfile.samplerate());
-
-    constexpr size_t bufferSize = 4096;
-    std::vector<short> buffer(bufferSize * infile.channels());
-    sf_count_t framesRead, framesWritten;
-    double freqRatio =
-        outfile.samplerate() / static_cast<double>(infile.samplerate());
-    size_t resampledSize;
-    std::vector<short> resampledBuffer;
-
     if (static_cast<int>(outfile.samplerate()) != infile.samplerate()) {
         fmt::print("  {:<{}} : {} to {} Hz\n",
                    "resample",
                    WIDTH,
                    infile.samplerate(),
                    outfile.samplerate());
-        resampledBuffer.reserve(
-            static_cast<size_t>(bufferSize * freqRatio + 0.5) *
-            outfile.channels());
     }
+
+    constexpr size_t bufferSize = 4096;
+    std::vector<short> buffer(bufferSize * infile.channels());
+    sf_count_t framesRead, framesWritten;
 
     while ((framesRead = infile.readf(buffer.data(), bufferSize)) > 0) {
         if (static_cast<int>(outfile.samplerate()) == infile.samplerate()) {
             framesWritten = outfile.writef(buffer.data(), framesRead);
         } else {
+            double freqRatio =
+                outfile.samplerate() / static_cast<double>(infile.samplerate());
+            size_t resampledSize;
+            std::vector<short> resampledBuffer(
+                static_cast<size_t>(bufferSize * freqRatio + 0.5) *
+                outfile.channels());
             soxrHandle.process(
                 buffer, resampledBuffer, framesRead, &resampledSize);
             framesWritten =
