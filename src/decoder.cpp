@@ -23,9 +23,8 @@ void Decoder::decode() {
 void Decoder::printMetadata() {
     TagLib::FileRef f(filePath.string().data());
     if (f.isNull()) {
-        fmt::print(
-            "  {:<{}} : {}\n", "error", WIDTH, "Invalid or unsupported file");
-        return;
+        throw std::runtime_error(fmt::format(
+            "  {:<{}} : {}", "error", WIDTH, "Invalid or unsupported file"));
     }
 
     auto printTag = [](std::string_view name, const TagLib::String &value) {
