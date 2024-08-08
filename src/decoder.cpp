@@ -191,6 +191,13 @@ void Decoder::decodeSndFile() {
                "outfile.samplerate",
                WIDTH,
                outfile.samplerate());
+    if (static_cast<int>(outfile.samplerate()) != infile.samplerate()) {
+        fmt::print("  {:<{}} : {} to {} Hz\n",
+                   "resample",
+                   WIDTH,
+                   infile.samplerate(),
+                   outfile.samplerate());
+    }
 
     sf_count_t framesRead, framesWritten;
     while ((framesRead = infile.readf(buffer.data(), bufferSize)) > 0) {
