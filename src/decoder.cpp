@@ -249,6 +249,16 @@ void Decoder::decodeMp3() {
                                              mpg123_strerror(mhPtr.get())));
     }
 
+    sampleRate = 48000;
+    channels = 2;
+    encoding = MPG123_ENC_SIGNED_16;
+    if (mpg123_format_none(mhPtr.get()) != MPG123_OK ||
+        mpg123_format(mhPtr.get(), sampleRate, channels, encoding) !=
+            MPG123_OK) {
+        throw std::runtime_error(std::format("Error setting MP3 format: {}",
+                                             mpg123_strerror(mhPtr.get())));
+    }
+
     // Configure the resampler
     soxr_datatype_t in_type = SOXR_INT16_I;
     soxr_datatype_t out_type = SOXR_INT16_I;
@@ -279,8 +289,8 @@ void Decoder::decodeMp3() {
     }
 
     constexpr size_t bufferSize = 4096;
-    std::vector<unsigned char> audioBuffer(bufferSize);
-    std::vector<unsigned char> resampledBuffer(bufferSize * 2);
+    std::vector<int16_t> audioBuffer(bufferSize / 2);
+    std::vector<int16_t> resampledBuffer(bufferSize);
     size_t bytesRead;
     std::string durStr = Utils::formatTime(totalDuration);
 
