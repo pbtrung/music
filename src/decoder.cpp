@@ -204,11 +204,6 @@ void Decoder::decodeSndFile() {
         if (static_cast<int>(outfile.samplerate()) == infile.samplerate()) {
             framesWritten = outfile.writef(buffer.data(), framesRead);
         } else {
-            fmt::print("  {:<{}} : {} to {} Hz\n",
-                       "resample",
-                       WIDTH,
-                       infile.samplerate(),
-                       outfile.samplerate());
             size_t resampledSize;
             double freqRatio =
                 outfile.samplerate() / static_cast<double>(infile.samplerate());
