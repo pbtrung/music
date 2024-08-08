@@ -288,7 +288,7 @@ void Decoder::decodeMp3() {
             std::format("Error opening pipe: {}", pipeName));
     }
 
-    constexpr size_t bufferSize = 4096;
+    constexpr size_t bufferSize = 8192;
     std::vector<int16_t> audioBuffer(bufferSize / 2);
     std::vector<int16_t> resampledBuffer(bufferSize);
     size_t bytesRead;

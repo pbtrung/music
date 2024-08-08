@@ -55,7 +55,7 @@ Stage: final
     cd ~/music
     rm -rf mopidy nohup.out
     mkdir mopidy
-    snapserver --config snapserver.conf &
+    snapserver -d --config snapserver.conf
     music config.json | gwsocket --port=9000 --addr=0.0.0.0 --std
 
 %runscript
@@ -63,5 +63,5 @@ Stage: final
     cd ~/music
     rm -rf mopidy nohup.out
     mkdir mopidy
-    snapserver --config snapserver.conf &
+    snapserver -d --config snapserver.conf
     music config.json | gwsocket --port=9000 --addr=0.0.0.0 --std
