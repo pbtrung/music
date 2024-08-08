@@ -193,14 +193,14 @@ void Decoder::decodeSndFile() {
     constexpr size_t bufferSize = 4096;
     std::vector<short> buffer(bufferSize * infile.channels());
     sf_count_t framesRead, framesWritten;
+    double freqRatio =
+        outfile.samplerate() / static_cast<double>(infile.samplerate());
 
     while ((framesRead = infile.readf(buffer.data(), bufferSize)) > 0) {
         if (static_cast<int>(outfile.samplerate()) == infile.samplerate()) {
             framesWritten = outfile.writef(buffer.data(), framesRead);
         } else {
             size_t resampledSize;
-            double freqRatio =
-                outfile.samplerate() / static_cast<double>(infile.samplerate());
             std::vector<short> resampledBuffer(
                 static_cast<size_t>(bufferSize * freqRatio + 0.5) *
                 outfile.channels());
