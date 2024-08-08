@@ -166,15 +166,12 @@ void Decoder::decodeSndFile() {
     }
 
     // Configure the resampler
-    soxr_datatype_t in_type = SOXR_INT16_I;
-    soxr_datatype_t out_type = SOXR_INT16_I;
-    int quality = SOXR_HQ;
     SoxrHandle soxrHandle(static_cast<double>(infile.samplerate()),
                           targetSampleRate,
                           targetChannels,
-                          in_type,
-                          out_type,
-                          quality);
+                          SOXR_INT16_I,
+                          SOXR_INT16_I,
+                          SOXR_HQ);
 
     // Calculate and display duration
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(
