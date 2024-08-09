@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <mpg123.h>
+#include <opusfile.h>
 #include <soxr.h>
 #include <string>
 #include <string_view>
@@ -45,10 +46,37 @@ class Decoder {
     std::string extension;
     std::string pipeName;
 
-    void decodeMp3();
-    void decodeOpus();
+    std::ofstream openPipe();
     void printDecodingProgress(const std::chrono::seconds currentPosition,
                                const std::string &durStr);
+
+    void decodeOpus();
+    OggOpusFile *openOpusFile(int &error);
+    void readAndWriteOpusData(OggOpusFile *of,
+                              std::ofstream &pipe,
+                              opus_int64 totalSamples,
+                              const std::string &durStr);
+
+    void decodeMp3();
+    void initializeMpg123();
+    mpg123_handle *createMpg123Handle(int &err);
+    void openMp3File(mpg123_handle *mh);
+    void getMp3Format(mpg123_handle *mh,
+                      long &inSampleRate,
+                      int &inChannels,
+                      int &encoding);
+    void setMp3Format(mpg123_handle *mh,
+                      int outChannels,
+                      long outSampleRate,
+                      int encoding);
+    std::chrono::seconds getMp3TotalDuration(mpg123_handle *mh,
+                                             long inSampleRate);
+    void readResampleAndWriteMp3Data(mpg123_handle *mh,
+                                     std::ofstream &pipe,
+                                     long inSampleRate,
+                                     int inChannels,
+                                     const std::chrono::seconds totalDuration,
+                                     SoxrHandle &soxrHandle);
 };
 
 #endif // DECODER_HPP

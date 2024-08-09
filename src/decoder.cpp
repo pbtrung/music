@@ -6,13 +6,10 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <mpg123.h>
-#include <opusfile.h>
 #include <stdexcept>
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
 #include <taglib/tpropertymap.h>
-#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -113,10 +110,11 @@ void Decoder::printMetadata() {
 
 void Decoder::decodeOpus() {
     int error;
-    constexpr double inSampleRate = 48000;
 
-    std::unique_ptr<OggOpusFile, decltype(&op_free)> of(
-        op_open_file(filePath.string().data(), &error), &op_free);
+    // Use std::unique_ptr to manage the Opus file handle
+    std::unique_ptr<OggOpusFile, decltype(&op_free)> of(openOpusFile(error),
+                                                        op_free);
+
     if (!of) {
         throw std::runtime_error(
             std::format("Error opening Opus file: {}", filePath.string()));
@@ -124,24 +122,35 @@ void Decoder::decodeOpus() {
 
     opus_int64 totalSamples = op_pcm_total(of.get(), -1);
     auto totalDuration = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::duration<double>(totalSamples / inSampleRate));
+        std::chrono::duration<double>(totalSamples / 48000));
 
-    std::ofstream pipe(pipeName, std::ios::binary);
+    std::ofstream pipe = openPipe();
     if (!pipe) {
         throw std::runtime_error(
             std::format("Error opening pipe: {}", pipeName));
     }
 
+    std::string durStr = Utils::formatTime(totalDuration);
+    readAndWriteOpusData(of.get(), pipe, totalSamples, durStr);
+}
+
+OggOpusFile *Decoder::openOpusFile(int &error) {
+    return op_open_file(filePath.string().data(), &error);
+}
+
+void Decoder::readAndWriteOpusData(OggOpusFile *of,
+                                   std::ofstream &pipe,
+                                   opus_int64 totalSamples,
+                                   const std::string &durStr) {
     constexpr int inChannels = 2;
     constexpr int bitsPerSample = 16;
     constexpr size_t bufferSize = 4096;
 
     std::vector<opus_int16> pcmBuffer(bufferSize * inChannels);
     int samplesRead;
-    std::string durStr = Utils::formatTime(totalDuration);
 
-    while ((samplesRead =
-                op_read_stereo(of.get(), pcmBuffer.data(), bufferSize)) > 0) {
+    while ((samplesRead = op_read_stereo(of, pcmBuffer.data(), bufferSize)) >
+           0) {
         pipe.write(reinterpret_cast<const char *>(pcmBuffer.data()),
                    samplesRead * inChannels * (bitsPerSample / 8));
         if (pipe.fail()) {
@@ -149,8 +158,7 @@ void Decoder::decodeOpus() {
         }
 
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::duration<double>(op_pcm_tell(of.get()) /
-                                          inSampleRate));
+            std::chrono::duration<double>(op_pcm_tell(of) / 48000));
         printDecodingProgress(currentPosition, durStr);
     }
 
@@ -207,18 +215,11 @@ void SoxrHandle::process(const std::vector<int16_t> &audioBuffer,
 }
 
 void Decoder::decodeMp3() {
-    mpg123_handle *mh = nullptr;
+    initializeMpg123();
+
     int err;
-
-    // Initialize mpg123
-    if (mpg123_init() != MPG123_OK) {
-        throw std::runtime_error("Unable to initialize mpg123 library");
-    }
-
-    // Create mpg123 handle
-    mh = mpg123_new(nullptr, &err);
+    mpg123_handle *mh = createMpg123Handle(err);
     if (!mh) {
-        mpg123_exit();
         throw std::runtime_error(fmt::format("Error creating mpg123 handle: {}",
                                              mpg123_strerror(mh)));
     }
@@ -232,59 +233,105 @@ void Decoder::decodeMp3() {
     std::unique_ptr<mpg123_handle, decltype(cleanupMpg123)> mhPtr(
         mh, cleanupMpg123);
 
-    // Open MP3 file
-    if (mpg123_open(mhPtr.get(), filePath.string().data()) != MPG123_OK) {
-        throw std::runtime_error(
-            fmt::format("Error opening MP3 file: {}", filePath.string()));
-    }
+    openMp3File(mhPtr.get());
 
     long inSampleRate;
     int inChannels, encoding;
-    if (mpg123_getformat(mhPtr.get(), &inSampleRate, &inChannels, &encoding) !=
-        MPG123_OK) {
-        throw std::runtime_error(fmt::format("Error getting MP3 format: {}",
-                                             mpg123_strerror(mhPtr.get())));
-    }
+    getMp3Format(mhPtr.get(), inSampleRate, inChannels, encoding);
 
     constexpr int outChannels = 2;
     constexpr long outSampleRate = 48000;
     encoding = MPG123_ENC_SIGNED_16;
-    if (mpg123_format_none(mhPtr.get()) != MPG123_OK ||
-        mpg123_format(mhPtr.get(), outSampleRate, outChannels, encoding) !=
-            MPG123_OK) {
-        throw std::runtime_error(fmt::format("Error setting MP3 format: {}",
-                                             mpg123_strerror(mhPtr.get())));
-    }
+    setMp3Format(mhPtr.get(), outChannels, outSampleRate, encoding);
 
     // Configure the resampler
-    SoxrHandle soxrHandle(static_cast<double>(inSampleRate),
+    SoxrHandle soxrHandle(inSampleRate,
                           outSampleRate,
                           outChannels,
                           SOXR_INT16_I,
                           SOXR_INT16_I,
                           SOXR_HQ);
 
-    std::ofstream pipe(pipeName, std::ios::binary);
+    std::ofstream pipe = openPipe();
     if (!pipe) {
         throw std::runtime_error(
             fmt::format("Error opening pipe: {}", pipeName));
     }
 
-    off_t totalFrames = mpg123_length(mhPtr.get());
-    if (totalFrames == MPG123_ERR) {
-        throw std::runtime_error(
-            std::format("Error getting total length of MP3 file: {}",
-                        mpg123_strerror(mhPtr.get())));
-    }
-    auto totalDuration = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::duration<double>(totalFrames / inSampleRate));
+    std::chrono::seconds totalDuration =
+        getMp3TotalDuration(mhPtr.get(), inSampleRate);
     std::string durStr = Utils::formatTime(totalDuration);
+
+    readResampleAndWriteMp3Data(
+        mhPtr.get(), pipe, inSampleRate, inChannels, totalDuration, soxrHandle);
+}
+
+void Decoder::initializeMpg123() {
+    if (mpg123_init() != MPG123_OK) {
+        throw std::runtime_error("Unable to initialize mpg123 library");
+    }
+}
+
+mpg123_handle *Decoder::createMpg123Handle(int &err) {
+    return mpg123_new(nullptr, &err);
+}
+
+void Decoder::openMp3File(mpg123_handle *mh) {
+    if (mpg123_open(mh, filePath.string().data()) != MPG123_OK) {
+        throw std::runtime_error(
+            fmt::format("Error opening MP3 file: {}", filePath.string()));
+    }
+}
+
+void Decoder::getMp3Format(mpg123_handle *mh,
+                           long &inSampleRate,
+                           int &inChannels,
+                           int &encoding) {
+    if (mpg123_getformat(mh, &inSampleRate, &inChannels, &encoding) !=
+        MPG123_OK) {
+        throw std::runtime_error(
+            fmt::format("Error getting MP3 format: {}", mpg123_strerror(mh)));
+    }
+}
+
+void Decoder::setMp3Format(mpg123_handle *mh,
+                           int outChannels,
+                           long outSampleRate,
+                           int encoding) {
+    if (mpg123_format_none(mh) != MPG123_OK ||
+        mpg123_format(mh, outSampleRate, outChannels, encoding) != MPG123_OK) {
+        throw std::runtime_error(
+            fmt::format("Error setting MP3 format: {}", mpg123_strerror(mh)));
+    }
+}
+
+std::chrono::seconds Decoder::getMp3TotalDuration(mpg123_handle *mh,
+                                                  long inSampleRate) {
+    off_t totalFrames = mpg123_length(mh);
+    if (totalFrames == MPG123_ERR) {
+        throw std::runtime_error(fmt::format(
+            "Error getting total length of MP3 file: {}", mpg123_strerror(mh)));
+    }
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::duration<double>(totalFrames / inSampleRate));
+}
+
+void Decoder::readResampleAndWriteMp3Data(
+    mpg123_handle *mh,
+    std::ofstream &pipe,
+    long inSampleRate,
+    int inChannels,
+    const std::chrono::seconds totalDuration,
+    SoxrHandle &soxrHandle) {
 
     constexpr size_t bufferSize = 4096;
     std::vector<int16_t> audioBuffer(bufferSize * inChannels);
     size_t outBufferSize;
     std::vector<int16_t> resampledBuffer;
     size_t bytesRead;
+
+    constexpr int outChannels = 2;
+    constexpr long outSampleRate = 48000;
 
     fmt::print("  {:<{}} : {} Hz\n", "i-samplerate", WIDTH, inSampleRate);
     fmt::print("  {:<{}} : {} Hz\n", "o-samplerate", WIDTH, outSampleRate);
@@ -299,7 +346,10 @@ void Decoder::decodeMp3() {
         resampledBuffer.reserve(outBufferSize * outChannels);
     }
 
-    while ((err = mpg123_read(mhPtr.get(),
+    int err;
+    std::string durStr = Utils::formatTime(totalDuration);
+
+    while ((err = mpg123_read(mh,
                               audioBuffer.data(),
                               bufferSize * inChannels * sizeof(int16_t),
                               &bytesRead)) == MPG123_OK) {
@@ -322,8 +372,7 @@ void Decoder::decodeMp3() {
         }
 
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::duration<double>(mpg123_tell(mhPtr.get()) /
-                                          inSampleRate));
+            std::chrono::duration<double>(mpg123_tell(mh) / inSampleRate));
         printDecodingProgress(currentPosition, durStr);
     }
 
@@ -333,8 +382,12 @@ void Decoder::decodeMp3() {
                    "error",
                    WIDTH,
                    "error decoding MP3 file",
-                   mpg123_strerror(mhPtr.get()));
+                   mpg123_strerror(mh));
     }
+}
+
+std::ofstream Decoder::openPipe() {
+    return std::ofstream(pipeName, std::ios::binary);
 }
 
 void Decoder::printDecodingProgress(const std::chrono::seconds currentPosition,
