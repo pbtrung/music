@@ -134,7 +134,7 @@ void SoxrHandle::process(const std::vector<short> &audioBuffer,
                      framesRead,
                      nullptr,
                      reinterpret_cast<soxr_out_t *>(resampledBuffer.data()),
-                     resampledBuffer.size(),
+                     resampledBuffer.capacity(),
                      resampledSize);
     if (error) {
         throw std::runtime_error(
@@ -196,7 +196,7 @@ void Decoder::decodeSndFile() {
         double freqRatio =
             outfile.samplerate() / static_cast<double>(infile.samplerate());
         resampledBuffer.reserve(
-            static_cast<size_t>(bufferSize * freqRatio + 0.5) *
+            static_cast<size_t>(bufferSize * freqRatio + 1.0) *
             outfile.channels());
     }
 
