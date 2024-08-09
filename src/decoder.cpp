@@ -150,6 +150,7 @@ void SoxrHandle::process(const std::vector<short> &audioBuffer,
 }
 
 void Decoder::decodeSndFile() {
+    fmt::print(stdout, "  {:<{}} : {}", "log", WIDTH, "SndfileHandle infile");
     SndfileHandle infile(filePath.string());
     if (infile.error() != SF_ERR_NO_ERROR) {
         throw std::runtime_error(fmt::format("  {:<{}} : {}: {} File: {}",
@@ -159,6 +160,7 @@ void Decoder::decodeSndFile() {
                                              infile.strError(),
                                              filePath.string()));
     }
+    fmt::print(stdout, "  {:<{}} : {}", "log", WIDTH, "SndfileHandle outfile");
     SndfileHandle outfile(pipeName,
                           SFM_WRITE,
                           SF_FORMAT_RAW | SF_FORMAT_PCM_16 | SF_ENDIAN_LITTLE,
@@ -174,6 +176,7 @@ void Decoder::decodeSndFile() {
     }
 
     // Configure the resampler
+    fmt::print(stdout, "  {:<{}} : {}", "log", WIDTH, "SoxrHandle soxrHandle");
     SoxrHandle soxrHandle(static_cast<double>(infile.samplerate()),
                           48000,
                           2,
@@ -182,11 +185,13 @@ void Decoder::decodeSndFile() {
                           SOXR_HQ);
 
     // Calculate and display duration
+    fmt::print(stdout, "  {:<{}} : {}", "log", WIDTH, "durationStr");
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::duration<double>(static_cast<double>(infile.frames()) /
                                       infile.samplerate()));
     std::string durationStr = Utils::formatTime(duration);
 
+    fmt::print(stdout, "  {:<{}} : {}", "log", WIDTH, "resampledBuffer");
     constexpr size_t bufferSize = 4096;
     std::vector<short> buffer(bufferSize * infile.channels());
     std::vector<short> resampledBuffer;
