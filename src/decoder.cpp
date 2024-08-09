@@ -130,6 +130,7 @@ soxr_t SoxrHandle::get() const {
 void SoxrHandle::process(const std::vector<short> &audioBuffer,
                          std::vector<short> &resampledBuffer,
                          size_t framesRead,
+                         size_t outBufferSize,
                          size_t *resampledSize) {
     error =
         soxr_process(handle,
@@ -137,7 +138,7 @@ void SoxrHandle::process(const std::vector<short> &audioBuffer,
                      framesRead,
                      nullptr,
                      reinterpret_cast<soxr_out_t *>(resampledBuffer.data()),
-                     resampledBuffer.capacity(),
+                     outBufferSize,
                      resampledSize);
     if (error) {
         throw std::runtime_error(fmt::format("  {:<{}} : {}: {}",
@@ -189,6 +190,7 @@ void Decoder::decodeSndFile() {
     constexpr size_t bufferSize = 4096;
     std::vector<short> buffer(bufferSize * infile.channels());
     std::vector<short> resampledBuffer;
+    size_t outBufferSize;
     sf_count_t framesRead, framesWritten;
 
     fmt::print(
@@ -205,9 +207,8 @@ void Decoder::decodeSndFile() {
                    outfile.samplerate());
         double freqRatio =
             outfile.samplerate() / static_cast<double>(infile.samplerate());
-        resampledBuffer.reserve(
-            static_cast<size_t>(bufferSize * freqRatio + 1.0) *
-            outfile.channels());
+        outBufferSize = static_cast<size_t>(bufferSize * freqRatio + 1.0);
+        resampledBuffer.reserve(outBufferSize * outfile.channels());
     }
 
     while ((framesRead = infile.readf(buffer.data(), bufferSize)) > 0) {
@@ -215,8 +216,11 @@ void Decoder::decodeSndFile() {
             framesWritten = outfile.writef(buffer.data(), framesRead);
         } else {
             size_t resampledSize;
-            soxrHandle.process(
-                buffer, resampledBuffer, framesRead, &resampledSize);
+            soxrHandle.process(buffer,
+                               resampledBuffer,
+                               framesRead,
+                               outBufferSize,
+                               &resampledSize);
             framesWritten =
                 outfile.writef(resampledBuffer.data(), resampledSize);
             framesRead = resampledSize;

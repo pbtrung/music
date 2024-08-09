@@ -21,6 +21,7 @@ class SoxrHandle {
     void process(const std::vector<short> &audioBuffer,
                  std::vector<short> &resampledBuffer,
                  size_t framesRead,
+                 size_t outBufferSize,
                  size_t *resampledSize);
 
   private:
