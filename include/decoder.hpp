@@ -2,7 +2,7 @@
 #define DECODER_HPP
 
 #include <filesystem>
-#include <sndfile.h>
+#include <mpg123.h>
 #include <soxr.h>
 #include <string>
 #include <string_view>
@@ -17,10 +17,9 @@ class SoxrHandle {
                const soxr_datatype_t &out_type,
                int quality);
     ~SoxrHandle();
-    soxr_t get() const;
-    void process(const std::vector<short> &audioBuffer,
-                 std::vector<short> &resampledBuffer,
-                 size_t framesRead,
+    void process(const std::vector<int16_t> &audioBuffer,
+                 std::vector<int16_t> &resampledBuffer,
+                 size_t bytesRead,
                  size_t outBufferSize,
                  size_t *resampledSize);
 
@@ -33,15 +32,22 @@ class SoxrHandle {
 
 class Decoder {
   public:
-    Decoder(const std::filesystem::path &filePath, std::string_view pipeName);
+    Decoder(const std::filesystem::path &filePath,
+            std::string_view extension,
+            std::string_view pipeName);
+
     void printMetadata();
     void decode();
 
   private:
-    void decodeSndFile();
-
     std::filesystem::path filePath;
+    std::string extension;
     std::string pipeName;
+
+    void decodeMp3();
+    void decodeOpus();
+    void printDecodingProgress(const std::chrono::seconds currentPosition,
+                               const std::string &durStr);
 };
 
 #endif // DECODER_HPP
