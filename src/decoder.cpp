@@ -109,7 +109,10 @@ SoxrHandle::SoxrHandle(double inputRate,
     handle = soxr_create(
         inputRate, outputRate, channels, &error, &iospec, &q_spec, nullptr);
     if (!handle) {
-        throw std::runtime_error(fmt::format("Failed to create SoXR handle: {}",
+        throw std::runtime_error(fmt::format("  {:<{}} : {}: {}",
+                                             "error",
+                                             WIDTH,
+                                             "Failed to create SoXR handle",
                                              soxr_strerror(error)));
     }
 }
@@ -137,15 +140,20 @@ void SoxrHandle::process(const std::vector<short> &audioBuffer,
                      resampledBuffer.capacity(),
                      resampledSize);
     if (error) {
-        throw std::runtime_error(
-            fmt::format("Failed to process sample: {}", soxr_strerror(error)));
+        throw std::runtime_error(fmt::format("  {:<{}} : {}: {}",
+                                             "error",
+                                             WIDTH,
+                                             "Failed to process sample",
+                                             soxr_strerror(error)));
     }
 }
 
 void Decoder::decodeSndFile() {
     SndfileHandle infile(filePath.string());
     if (infile.error() != SF_ERR_NO_ERROR) {
-        throw std::runtime_error(fmt::format("{}: {} File: {}",
+        throw std::runtime_error(fmt::format("  {:<{}} : {}: {} File: {}",
+                                             "error",
+                                             WIDTH,
                                              "Error opening sound file",
                                              infile.strError(),
                                              filePath.string()));
@@ -156,7 +164,9 @@ void Decoder::decodeSndFile() {
                           2,
                           48000);
     if (outfile.error() != SF_ERR_NO_ERROR) {
-        throw std::runtime_error(fmt::format("{}: {} File: {}",
+        throw std::runtime_error(fmt::format("  {:<{}} : {}: {} File: {}",
+                                             "error",
+                                             WIDTH,
                                              "Error opening pipe",
                                              outfile.strError(),
                                              pipeName));
@@ -212,7 +222,8 @@ void Decoder::decodeSndFile() {
             framesRead = resampledSize;
         }
         if (framesWritten != framesRead) {
-            throw std::runtime_error("Error writing to pipe");
+            throw std::runtime_error(fmt::format(
+                "  {:<{}} : {}", "error", WIDTH, "Error writing to pipe"));
         }
 
         // Calculate and display progress
