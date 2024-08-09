@@ -18,9 +18,10 @@ class SoxrHandle {
                int quality);
     ~SoxrHandle();
     void process(const std::vector<int16_t> &audioBuffer,
+                 const int channels,
                  std::vector<int16_t> &resampledBuffer,
-                 size_t bytesRead,
-                 size_t outBufferSize,
+                 const size_t bytesRead,
+                 const size_t outBufferSize,
                  size_t *resampledSize);
 
   private:
