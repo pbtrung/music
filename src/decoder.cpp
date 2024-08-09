@@ -189,7 +189,7 @@ void SoxrHandle::process(const std::vector<int16_t> &audioBuffer,
                          size_t bytesRead,
                          size_t outBufferSize,
                          size_t *resampledSize) {
-    size_t inputLength = bytesRead / sizeof(int16_t);
+    size_t inputLength = bytesRead / 4;
     error =
         soxr_process(handle,
                      reinterpret_cast<const soxr_in_t *>(audioBuffer.data()),
@@ -280,8 +280,8 @@ void Decoder::decodeMp3() {
         std::chrono::duration<double>(totalFrames / sampleRate));
     std::string durStr = Utils::formatTime(totalDuration);
 
-    constexpr size_t bufferSize = 8192;
-    std::vector<int16_t> audioBuffer(bufferSize / channels);
+    constexpr size_t bufferSize = 4096;
+    std::vector<int16_t> audioBuffer(bufferSize * channels);
     size_t outBufferSize;
     std::vector<int16_t> resampledBuffer;
     size_t bytesRead;
@@ -295,23 +295,27 @@ void Decoder::decodeMp3() {
                    sampleRate,
                    static_cast<long>(targetSampleRate));
         double freqRatio = targetSampleRate / sampleRate;
-        outBufferSize =
-            static_cast<size_t>(bufferSize * freqRatio / targetChannels + 1.0);
-        resampledBuffer.reserve(outBufferSize);
+        outBufferSize = static_cast<size_t>(bufferSize * freqRatio + 1.0);
+        resampledBuffer.reserve(outBufferSize * targetChannels);
     }
 
-    while ((err = mpg123_read(
-                mhPtr.get(), audioBuffer.data(), bufferSize, &bytesRead)) ==
-           MPG123_OK) {
-        size_t resampledSize;
-        soxrHandle.process(audioBuffer,
-                           resampledBuffer,
-                           bytesRead,
-                           outBufferSize,
-                           &resampledSize);
-
-        pipe.write(reinterpret_cast<const char *>(resampledBuffer.data()),
-                   resampledSize * sizeof(int16_t));
+    while ((err = mpg123_read(mhPtr.get(),
+                              audioBuffer.data(),
+                              bufferSize * channels * sizeof(int16_t),
+                              &bytesRead)) == MPG123_OK) {
+        if (static_cast<long>(targetSampleRate) != sampleRate) {
+            size_t resampledSize;
+            soxrHandle.process(audioBuffer,
+                               resampledBuffer,
+                               bytesRead,
+                               outBufferSize,
+                               &resampledSize);
+            pipe.write(reinterpret_cast<const char *>(resampledBuffer.data()),
+                       resampledSize * sizeof(int16_t) * targetChannels);
+        } else {
+            pipe.write(reinterpret_cast<const char *>(audioBuffer.data()),
+                       bytesRead);
+        }
         if (pipe.fail()) {
             throw std::runtime_error("Error writing to pipe");
         }
