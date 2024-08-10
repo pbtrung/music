@@ -137,9 +137,12 @@ void FileDownloader::assemble() {
                                          cidPath.string());
             }
 
-            while (infile) {
-                infile.read(buffer.data(), buffer.size());
+            while (infile.read(buffer.data(), buffer.size())) {
                 outfile.write(buffer.data(), infile.gcount());
+            }
+            if (infile.bad()) {
+                throw std::runtime_error("Error reading input file: " +
+                                         cidPath.string());
             }
             infile.close();
 
@@ -149,6 +152,10 @@ void FileDownloader::assemble() {
                 fmt::print(stderr, "Warning: Failed to delete file: {}",
                            cidPath.string());
             }
+        }
+        if (!outfile) {
+            throw std::runtime_error("Error writing to output file: " +
+                                     filePath.string());
         }
         outfile.close();
     }
