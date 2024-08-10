@@ -43,17 +43,17 @@ int main(int argc, char *argv[]) {
     std::string dbPath = config["db"];
 
     while (true) {
-        std::vector<FileInfo> fileInfos;
+        std::vector<file_info> fileInfos;
         try {
             Database db(dbPath);
             Dir::deleteDirectory(outputDir);
             Dir::createDirectory(outputDir);
 
-            Downloader downloader(config, db);
-            downloader.performDownloads();
-            downloader.assembleFiles();
+            downloader downloader(config, db);
+            downloader.perform_downloads();
+            downloader.assemble_files();
 
-            fileInfos = downloader.getFileInfo();
+            fileInfos = downloader.get_file_info();
         } catch (const std::exception &e) {
             fmt::print(stderr, "Error: {}\n\n", e.what());
             return EXIT_FAILURE;

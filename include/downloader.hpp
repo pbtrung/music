@@ -2,18 +2,16 @@
 #define DOWNLOADER_HPP
 
 #include "database.hpp"
-#include "json.hpp"
 #include <curl/curl.h>
-#include <filesystem>
-#include <future>
 #include <stdexcept>
 #include <string>
-#include <string_view>
+#include <uv.h>
 #include <vector>
 
-namespace fs = std::filesystem;
+#include "json.hpp"
+using json = nlohmann::json;
 
-enum class DownloadStatus { Pending, Succeeded, Failed };
+enum class download_status { PENDING, SUCCEEDED, FAILED };
 
 class CurlHandle {
   public:
@@ -37,58 +35,51 @@ class CurlHandle {
     CURL *handle;
 };
 
-struct FileInfo {
+struct file_info {
     std::string filename;
     std::string extension;
     std::string albumPath;
     std::string trackName;
 };
 
-class FileDownloader {
+class file_downloader {
   public:
-    FileDownloader(std::string_view filename, std::string_view albumPath,
-                   std::string_view trackName, std::string_view extension,
-                   const std::vector<std::string> &cids,
-                   const nlohmann::json &config);
-
-    std::future<void> download();
+    file_downloader(const std::string &filename, const std::string &album_path,
+                    const std::string &track_name, const std::string &ext,
+                    const std::vector<std::string> &cids, const json &config);
+    void download(uv_loop_t *loop);
     void assemble();
-    const std::string &getFilename() const;
-    const std::string &getExtension() const;
-    DownloadStatus getDownloadStatus() const;
-    const std::string &getAlbumPath() const;
-    const std::string &getTrackName() const;
+    std::string get_filename() const;
+    std::string get_ext() const;
+    download_status get_file_download_status() const;
+    std::string get_album_path() const;
+    std::string get_track_name() const;
 
   private:
-    static size_t writeCallback(void *ptr, size_t size, size_t nmemb,
-                                void *userdata);
-    static size_t headerCallback(void *contents, size_t size, size_t nmemb,
-                                 void *userp);
-    std::future<void> downloadCid(const std::string &cid, size_t index);
-    void performDownload(const std::string &cid, size_t index);
-    bool areAllDownloadsSucceeded() const;
+    static void on_cid_download_completed(uv_work_t *req, int status);
+    static void download_cid(uv_work_t *req);
 
     std::string filename;
-    std::string albumPath;
-    std::string trackName;
-    std::string extension;
+    std::string album_path;
+    std::string track_name;
+    std::string ext;
     std::vector<std::string> cids;
-    nlohmann::json config;
-    std::vector<DownloadStatus> cidDownloadStatus;
-    DownloadStatus downloadStatus = DownloadStatus::Pending;
+    json config;
+    std::vector<download_status> cid_download_status;
+    download_status file_download_status;
 };
 
-class Downloader {
+class downloader {
   public:
-    Downloader(const nlohmann::json &config, const Database &db);
-    void performDownloads();
-    void assembleFiles();
-    std::vector<FileInfo> getFileInfo() const;
+    downloader(const json &config, const Database &db);
+    void perform_downloads();
+    void assemble_files();
+    std::vector<file_info> get_file_info() const;
 
   private:
-    nlohmann::json config;
+    json config;
     Database db;
-    std::vector<std::unique_ptr<FileDownloader>> fileDownloaders;
+    std::vector<std::unique_ptr<file_downloader>> file_downloaders;
 };
 
 #endif // DOWNLOADER_HPP
