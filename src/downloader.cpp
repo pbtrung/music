@@ -131,6 +131,10 @@ void FileDownloader::assemble() {
         for (const auto &cid : cids) {
             fs::path cidPath = fs::path(outputDir) / cid;
 
+            if (fs::file_size(cidPath) < 69999) {
+                throw std::runtime_error("Wrong file size: " +
+                                         cidPath.string());
+            }
             std::ifstream infile(cidPath, std::ios::binary);
             if (!infile) {
                 throw std::runtime_error("Failed to open input file: " +
