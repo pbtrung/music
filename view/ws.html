@@ -71,7 +71,7 @@
         term.options.disableStdin = true;
         term.options.fontFamily = '"Fira Code", monospace';
         term.options.fontSize = 12;
-        // term.write('\x1b[?1003h');
+        term.write('\x1b[?1003h');
         term.write('\x1b[?25l');
 
         const fitAddon = new FitAddon.FitAddon();

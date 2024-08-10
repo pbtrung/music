@@ -15,8 +15,6 @@ Database::~Database() {
     }
 }
 
-// SqliteStatement Implementation
-
 Database::SqliteStatement::SqliteStatement(sqlite3 *db,
                                            std::string_view query) {
     if (sqlite3_prepare_v2(db, query.data(), -1, &stmt, nullptr) != SQLITE_OK) {
@@ -32,8 +30,6 @@ Database::SqliteStatement::~SqliteStatement() {
 sqlite3_stmt *Database::SqliteStatement::get() const {
     return stmt;
 }
-
-// Database Implementation (continued)
 
 int Database::countTracks() const {
     const std::string_view query = "SELECT count(*) FROM tracks";

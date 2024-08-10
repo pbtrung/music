@@ -121,7 +121,6 @@ void FileDownloader::assemble() {
         std::string outputDir = config["output"];
         fs::path filePath = fs::path(outputDir) / filename;
         std::ofstream outfile(filePath, std::ios::binary);
-
         if (!outfile) {
             throw std::runtime_error("Failed to open output file: " +
                                      filePath.string());
@@ -184,15 +183,17 @@ const std::string &FileDownloader::getTrackName() const {
 
 Downloader::Downloader(const nlohmann::json &config, const Database &db)
     : config(config), db(db) {
-    int numFilesToDownload = config["num_files"];
+    const int numFilesToDownload = config["num_files"];
+    const int min_value = config["min_value"];
+    const int num_tracks = db.countTracks();
 
-    if (numFilesToDownload <= 0 || numFilesToDownload > db.countTracks()) {
+    if (numFilesToDownload <= 0 || numFilesToDownload > num_tracks) {
         throw std::invalid_argument(
             "Must be between 1 and the total number of tracks.");
     }
 
     std::vector<int> randomTrackIds =
-        Random::uniqueInts(numFilesToDownload, 1, db.countTracks());
+        Random::uniqueInts(numFilesToDownload, min_value, num_tracks);
 
     for (int trackId : randomTrackIds) {
         std::vector<std::string> cids = db.getTrackCIDs(trackId);
