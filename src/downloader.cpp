@@ -200,9 +200,9 @@ std::string file_downloader::get_track_name() const {
 
 downloader::downloader(const json &config, const Database &db)
     : config(config), db(db) {
-    int min_value = 1;
     int max_value = db.countTracks();
     int num_files = config["num_files"].get<int>();
+    const int min_value = config["min_value"];
     std::vector<int> random_indices =
         Random::uniqueInts(num_files, min_value, max_value);
 
