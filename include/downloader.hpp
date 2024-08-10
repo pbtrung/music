@@ -62,6 +62,8 @@ class FileDownloader {
   private:
     static size_t writeCallback(void *ptr, size_t size, size_t nmemb,
                                 void *userdata);
+    static size_t headerCallback(void *contents, size_t size, size_t nmemb,
+                                 void *userp);
     std::future<void> downloadCid(const std::string &cid, size_t index);
     void performDownload(const std::string &cid, size_t index);
     bool areAllDownloadsSucceeded() const;

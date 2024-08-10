@@ -7,7 +7,8 @@
 #include <fstream>
 #include <iostream>
 
-size_t headerCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+size_t FileDownloader::headerCallback(void *contents, size_t size, size_t nmemb,
+                                      void *userp) {
     std::string header(static_cast<char *>(contents), size * nmemb);
     std::string *contentLengthStr = static_cast<std::string *>(userp);
 
