@@ -2,16 +2,17 @@
 #define DOWNLOADER_HPP
 
 #include "database.hpp"
+#include "json.hpp"
 #include <curl/curl.h>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <uv.h>
 #include <vector>
 
-#include "json.hpp"
 using json = nlohmann::json;
 
-enum class download_status { PENDING, SUCCEEDED, FAILED };
+enum class DownloadStatus { Pending, Succeeded, Failed };
 
 class CurlHandle {
   public:
@@ -35,51 +36,54 @@ class CurlHandle {
     CURL *handle;
 };
 
-struct file_info {
+struct FileInfo {
     std::string filename;
     std::string extension;
     std::string albumPath;
     std::string trackName;
 };
 
-class file_downloader {
+class FileDownloader {
   public:
-    file_downloader(const std::string &filename, const std::string &album_path,
-                    const std::string &track_name, const std::string &ext,
-                    const std::vector<std::string> &cids, const json &config);
+    FileDownloader(const std::string &filename, const std::string &albumPath,
+                   const std::string &trackName, const std::string &ext,
+                   const std::vector<std::string> &cids, const json &config);
+
     void download(uv_loop_t *loop);
     void assemble();
-    std::string get_filename() const;
-    std::string get_ext() const;
-    download_status get_file_download_status() const;
-    std::string get_album_path() const;
-    std::string get_track_name() const;
+
+    std::string getFilename() const;
+    std::string getExtension() const;
+    DownloadStatus getFileDownloadStatus() const;
+    std::string getAlbumPath() const;
+    std::string getTrackName() const;
 
   private:
-    static void on_cid_download_completed(uv_work_t *req, int status);
-    static void download_cid(uv_work_t *req);
+    static void onCidDownloadCompleted(uv_work_t *req, int status);
+    static void downloadCid(uv_work_t *req);
 
     std::string filename;
-    std::string album_path;
-    std::string track_name;
-    std::string ext;
+    std::string albumPath;
+    std::string trackName;
+    std::string extension;
     std::vector<std::string> cids;
     json config;
-    std::vector<download_status> cid_download_status;
-    download_status file_download_status;
+    std::vector<DownloadStatus> cidDownloadStatus;
+    DownloadStatus fileDownloadStatus;
 };
 
-class downloader {
+class Downloader {
   public:
-    downloader(const json &config, const Database &db);
-    void perform_downloads();
-    void assemble_files();
-    std::vector<file_info> get_file_info() const;
+    Downloader(const json &config, const Database &db);
+
+    void performDownloads();
+    void assembleFiles();
+    std::vector<FileInfo> getFileInfo() const;
 
   private:
     json config;
     Database db;
-    std::vector<std::unique_ptr<file_downloader>> file_downloaders;
+    std::vector<std::unique_ptr<FileDownloader>> fileDownloaders;
 };
 
 #endif // DOWNLOADER_HPP
