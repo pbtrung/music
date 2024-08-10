@@ -28,8 +28,12 @@ size_t FileDownloader::headerCallback(void *contents, size_t size, size_t nmemb,
 size_t FileDownloader::writeCallback(void *ptr, size_t size, size_t nmemb,
                                      void *userdata) {
     std::ofstream *outfile = static_cast<std::ofstream *>(userdata);
-    outfile->write(static_cast<const char *>(ptr), size * nmemb);
-    return size * nmemb;
+    size_t totalSize = size * nmemb;
+    if (!outfile->write(static_cast<const char *>(ptr), totalSize)) {
+        // If the write operation fails, return 0 to indicate an error
+        return 0;
+    }
+    return totalSize;
 }
 
 FileDownloader::FileDownloader(std::string_view filename,
@@ -84,15 +88,30 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
 
     std::string contentLengthStr;
     CurlHandle curl;
-    curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, writeCallback);
-    curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);
-    curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl.get(), CURLOPT_HEADERFUNCTION, headerCallback);
-    curl_easy_setopt(curl.get(), CURLOPT_HEADERDATA, &contentLengthStr);
-    curl_easy_setopt(curl.get(), CURLOPT_VERBOSE, 1L);
+
+    auto resetCurlOptions = [&]() {
+        curl_easy_reset(curl.get());
+        curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, writeCallback);
+        curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);
+        curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl.get(), CURLOPT_HEADERFUNCTION, headerCallback);
+        curl_easy_setopt(curl.get(), CURLOPT_HEADERDATA, &contentLengthStr);
+    };
+
+    resetCurlOptions();
 
     std::string gateway;
     for (int retries = 0; retries < maxRetries; ++retries) {
+        // Reopen the file to ensure it's empty on retries
+        outfile.close();
+        outfile.open(filePath, std::ios::binary | std::ios::trunc);
+
+        if (!outfile) {
+            fmt::print(stderr, "Failed to reopen file {}\n", filePath.string());
+            cidDownloadStatus[index] = DownloadStatus::Failed;
+            return;
+        }
+
         if (cid.size() == 59) {
             url = fmt::format("https://{}.ipfs.nftstorage.link", cid);
         } else {
@@ -109,7 +128,7 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
         if (res != CURLE_OK) {
             fmt::print(stderr, "CURL error for {} (attempt {}): {}\n", cid,
                        retries + 1, curl_easy_strerror(res));
-            outfile.seekp(0);
+            resetCurlOptions();
             continue;
         }
 
@@ -119,6 +138,7 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
             std::stringstream ss(contentLengthStr);
             long contentLength = 0;
             ss >> contentLength;
+
             // Check the size of the downloaded file
             size_t fileSize = fs::file_size(filePath);
             if (fileSize == contentLength) {
@@ -129,7 +149,7 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
                     stderr,
                     "File size mismatch for {}: Expected {}, but got {} from {}\n",
                     cid, contentLength, fileSize, gateway);
-                outfile.seekp(0);
+                resetCurlOptions();
                 continue;
             }
         } else {
