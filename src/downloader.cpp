@@ -89,6 +89,7 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
     curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl.get(), CURLOPT_HEADERFUNCTION, headerCallback);
     curl_easy_setopt(curl.get(), CURLOPT_HEADERDATA, &contentLengthStr);
+    curl_easy_setopt(curl.get(), CURLOPT_VERBOSE, 1L);
 
     std::string gateway;
     for (int retries = 0; retries < maxRetries; ++retries) {
