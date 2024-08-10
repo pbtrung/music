@@ -61,27 +61,18 @@ int main(int argc, char *argv[]) {
 
         for (const auto &fileInfo : fileInfos) {
             try {
-                fmt::print(stdout,
-                           "{:<{}} : {}\n",
-                           "PLAYING",
-                           WIDTH + 2,
+                fmt::print(stdout, "{:<{}} : {}\n", "PLAYING", WIDTH + 2,
                            fileInfo.filename);
-                fmt::print(stdout,
-                           "  {:<{}} : {}\n",
-                           "path",
-                           WIDTH,
+                fmt::print(stdout, "  {:<{}} : {}\n", "path", WIDTH,
                            fileInfo.albumPath);
-                fmt::print(stdout,
-                           "  {:<{}} : {}\n",
-                           "filename",
-                           WIDTH,
+                fmt::print(stdout, "  {:<{}} : {}\n", "filename", WIDTH,
                            fileInfo.trackName);
                 std::cout.flush();
 
                 fs::path filePath = fs::path(outputDir) / fileInfo.filename;
                 // pipeName = "test.pcm";
-                Decoder decoder(
-                    filePath.string(), fileInfo.extension, pipeName);
+                Decoder decoder(filePath.string(), fileInfo.extension,
+                                pipeName);
                 decoder.printMetadata();
                 decoder.decode();
             } catch (const std::exception &e) {

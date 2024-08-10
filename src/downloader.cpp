@@ -7,9 +7,7 @@
 #include <fstream>
 #include <iostream>
 
-size_t FileDownloader::writeCallback(void *ptr,
-                                     size_t size,
-                                     size_t nmemb,
+size_t FileDownloader::writeCallback(void *ptr, size_t size, size_t nmemb,
                                      void *userdata) {
     std::ofstream *outfile = static_cast<std::ofstream *>(userdata);
     outfile->write(static_cast<const char *>(ptr), size * nmemb);
@@ -81,17 +79,13 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
         }
 
         curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl.get(),
-                         CURLOPT_TIMEOUT,
+        curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT,
                          (cid.size() == 59) ? 2 * timeout : timeout);
 
         CURLcode res = curl_easy_perform(curl.get());
         if (res != CURLE_OK) {
-            fmt::print(stderr,
-                       "CURL error for {} (attempt {}): {}\n",
-                       cid,
-                       retries + 1,
-                       curl_easy_strerror(res));
+            fmt::print(stderr, "CURL error for {} (attempt {}): {}\n", cid,
+                       retries + 1, curl_easy_strerror(res));
             continue;
         }
 
@@ -101,10 +95,8 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
             break;
         } else {
             fmt::print(stderr,
-                       "Unsuccessful response for {} (attempt {}): {}\n",
-                       cid,
-                       retries + 1,
-                       responseCode);
+                       "Unsuccessful response for {} (attempt {}): {}\n", cid,
+                       retries + 1, responseCode);
         }
     }
 
@@ -155,8 +147,7 @@ void FileDownloader::assemble() {
             std::error_code ec;
             fs::remove(cidPath, ec);
             if (ec) {
-                fmt::print(stderr,
-                           "Warning: Failed to delete file: {}",
+                fmt::print(stderr, "Warning: Failed to delete file: {}",
                            cidPath.string());
             }
         }
@@ -165,8 +156,7 @@ void FileDownloader::assemble() {
 }
 
 bool FileDownloader::areAllDownloadsSucceeded() const {
-    return std::all_of(cidDownloadStatus.begin(),
-                       cidDownloadStatus.end(),
+    return std::all_of(cidDownloadStatus.begin(), cidDownloadStatus.end(),
                        [](DownloadStatus status) {
                            return status == DownloadStatus::Succeeded;
                        });
@@ -241,10 +231,9 @@ std::vector<FileInfo> Downloader::getFileInfo() const {
     std::vector<FileInfo> infos;
     for (const auto &downloader : fileDownloaders) {
         if (downloader->getDownloadStatus() == DownloadStatus::Succeeded) {
-            infos.push_back({downloader->getFilename(),
-                             downloader->getExtension(),
-                             downloader->getAlbumPath(),
-                             downloader->getTrackName()});
+            infos.push_back(
+                {downloader->getFilename(), downloader->getExtension(),
+                 downloader->getAlbumPath(), downloader->getTrackName()});
         }
     }
     return infos;

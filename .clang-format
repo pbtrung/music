@@ -16,8 +16,6 @@ SpacesInSquareBrackets: False
 
 # Line Wrapping
 AllowAllParametersOfDeclarationOnNextLine: false
-BinPackArguments: false
-BinPackParameters: false
 
 # Other
 ReflowComments: true

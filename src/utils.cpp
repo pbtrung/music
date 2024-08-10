@@ -4,21 +4,17 @@
 // Utils Implementation
 
 void Utils::toLowercase(std::string &str) {
-    std::ranges::transform(
-        str, str.begin(), [](unsigned char c) { return std::tolower(c); });
+    std::ranges::transform(str, str.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
 }
 
 std::string Utils::getExtension(std::string_view text) {
     Pcre2Pattern pattern("(.*)\\.(opus|mp3|m4a)$");
     Pcre2MatchData matchData(pattern);
 
-    int rc = pcre2_match(pattern.get(),
-                         reinterpret_cast<PCRE2_SPTR>(text.data()),
-                         text.length(),
-                         0,
-                         PCRE2_ANCHORED,
-                         matchData.get(),
-                         nullptr);
+    int rc =
+        pcre2_match(pattern.get(), reinterpret_cast<PCRE2_SPTR>(text.data()),
+                    text.length(), 0, PCRE2_ANCHORED, matchData.get(), nullptr);
 
     if (rc >= 3) {
         PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(matchData.get());
@@ -38,8 +34,8 @@ std::string Utils::formatTime(std::chrono::seconds seconds) {
     auto secs = seconds - hrs - mins;
 
     if (hrs.count() > 0) {
-        return std::format(
-            "{:02d}:{:02d}:{:02d}", hrs.count(), mins.count(), secs.count());
+        return std::format("{:02d}:{:02d}:{:02d}", hrs.count(), mins.count(),
+                           secs.count());
     } else {
         return std::format("{:02d}:{:02d}", mins.count(), secs.count());
     }
@@ -51,11 +47,8 @@ Pcre2Pattern::Pcre2Pattern(std::string_view pattern) {
     int errcode;
     PCRE2_SIZE erroffset;
     re = pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern.data()),
-                       PCRE2_ZERO_TERMINATED,
-                       PCRE2_CASELESS,
-                       &errcode,
-                       &erroffset,
-                       nullptr);
+                       PCRE2_ZERO_TERMINATED, PCRE2_CASELESS, &errcode,
+                       &erroffset, nullptr);
     if (!re) {
         throw std::runtime_error("PCRE2 compilation failed");
     }
