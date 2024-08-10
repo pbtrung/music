@@ -228,6 +228,7 @@ void Downloader::assembleFiles() {
     for (auto &fileDownloader : fileDownloaders) {
         fileDownloader->assemble();
     }
+    fmt::print(stdout, "\n");
 }
 
 std::vector<FileInfo> Downloader::getFileInfo() const {
