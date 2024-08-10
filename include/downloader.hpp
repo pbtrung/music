@@ -2,14 +2,12 @@
 #define DOWNLOADER_HPP
 
 #include "database.hpp"
-#include "json.hpp"
 #include <curl/curl.h>
-#include <memory>
-#include <stdexcept>
 #include <string>
 #include <uv.h>
 #include <vector>
 
+#include "json.hpp"
 using json = nlohmann::json;
 
 enum class DownloadStatus { Pending, Succeeded, Failed };
@@ -46,7 +44,7 @@ struct FileInfo {
 class FileDownloader {
   public:
     FileDownloader(const std::string &filename, const std::string &albumPath,
-                   const std::string &trackName, const std::string &ext,
+                   const std::string &trackName, const std::string &extension,
                    const std::vector<std::string> &cids, const json &config);
 
     void download(uv_loop_t *loop);
