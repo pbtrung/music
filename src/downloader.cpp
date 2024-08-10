@@ -90,11 +90,12 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
     curl_easy_setopt(curl.get(), CURLOPT_HEADERFUNCTION, headerCallback);
     curl_easy_setopt(curl.get(), CURLOPT_HEADERDATA, &contentLengthStr);
 
+    std::string gateway;
     for (int retries = 0; retries < maxRetries; ++retries) {
         if (cid.size() == 59) {
             url = fmt::format("https://{}.ipfs.nftstorage.link", cid);
         } else {
-            std::string gateway =
+            gateway =
                 gateways[Random::uniqueInts(1, 0, gateways.size() - 1)[0]];
             url = fmt::format("https://{}/{}", gateway, cid);
         }
@@ -125,8 +126,8 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
             } else {
                 fmt::print(
                     stderr,
-                    "File size mismatch for {}: Expected {}, but got {}\n", cid,
-                    contentLength, fileSize);
+                    "File size mismatch for {}: Expected {}, but got {} from {}\n",
+                    cid, contentLength, fileSize, gateway);
                 outfile.seekp(0);
                 continue;
             }
