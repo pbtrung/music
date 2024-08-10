@@ -7,6 +7,23 @@
 #include <fstream>
 #include <iostream>
 
+size_t headerCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+    std::string header(static_cast<char *>(contents), size * nmemb);
+    std::string *contentLengthStr = static_cast<std::string *>(userp);
+
+    // Look for the Content-Length header
+    if (header.find("Content-Length:") == 0) {
+        size_t pos = header.find(':');
+        if (pos != std::string::npos) {
+            *contentLengthStr = header.substr(pos + 1);
+            contentLengthStr->erase(
+                0, contentLengthStr->find_first_not_of(" \t\r\n"));
+        }
+    }
+
+    return size * nmemb;
+}
+
 size_t FileDownloader::writeCallback(void *ptr, size_t size, size_t nmemb,
                                      void *userdata) {
     std::ofstream *outfile = static_cast<std::ofstream *>(userdata);
@@ -64,10 +81,13 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
     int timeout = config["timeout"];
     int maxRetries = config["max_retries"];
 
+    std::string contentLengthStr;
     CurlHandle curl;
     curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);
     curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl.get(), CURLOPT_HEADERFUNCTION, headerCallback);
+    curl_easy_setopt(curl.get(), CURLOPT_HEADERDATA, &contentLengthStr);
 
     for (int retries = 0; retries < maxRetries; ++retries) {
         if (cid.size() == 59) {
@@ -86,13 +106,29 @@ void FileDownloader::performDownload(const std::string &cid, size_t index) {
         if (res != CURLE_OK) {
             fmt::print(stderr, "CURL error for {} (attempt {}): {}\n", cid,
                        retries + 1, curl_easy_strerror(res));
+            outfile.seekp(0);
             continue;
         }
 
         curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &responseCode);
         if (responseCode == 200) {
-            cidDownloadStatus[index] = DownloadStatus::Succeeded;
-            break;
+            // Convert contentLengthStr to a number
+            std::stringstream ss(contentLengthStr);
+            long contentLength = 0;
+            ss >> contentLength;
+            // Check the size of the downloaded file
+            size_t fileSize = fs::file_size(filePath);
+            if (fileSize == contentLength) {
+                cidDownloadStatus[index] = DownloadStatus::Succeeded;
+                break;
+            } else {
+                fmt::print(
+                    stderr,
+                    "File size mismatch for {}: Expected {}, but got {}\n", cid,
+                    contentLength, fileSize);
+                outfile.seekp(0);
+                continue;
+            }
         } else {
             fmt::print(stderr,
                        "Unsuccessful response for {} (attempt {}): {}\n", cid,
@@ -131,10 +167,6 @@ void FileDownloader::assemble() {
         for (const auto &cid : cids) {
             fs::path cidPath = fs::path(outputDir) / cid;
 
-            if (fs::file_size(cidPath) < 69999) {
-                throw std::runtime_error("Wrong file size: " +
-                                         cidPath.string());
-            }
             std::ifstream infile(cidPath, std::ios::binary);
             if (!infile) {
                 throw std::runtime_error("Failed to open input file: " +
