@@ -6,6 +6,7 @@
 #include <fmt/core.h>
 #include <fstream>
 #include <iostream>
+#include <semaphore>
 
 size_t FileDownloader::headerCallback(void *contents, size_t size, size_t nmemb,
                                       void *userp) {
@@ -277,11 +278,19 @@ Downloader::Downloader(const nlohmann::json &config, const Database &db)
 }
 
 void Downloader::performDownloads() {
+    const size_t maxConcurrentDownloads = 10;
+    std::counting_semaphore<maxConcurrentDownloads> semaphore(maxConcurrentDownloads);
     std::vector<std::future<void>> futures;
-    fmt::print(stdout, "\n");
+
     for (const auto &downloader : fileDownloaders) {
-        futures.push_back(downloader->download());
+        semaphore.acquire(); // Acquire a slot before starting a new download
+
+        futures.push_back(std::async(std::launch::async, [this, &semaphore, &downloader]() {
+            downloader->download().wait(); // Perform the download
+            semaphore.release();           // Release the slot after the download completes
+        }));
     }
+
     for (auto &future : futures) {
         future.wait();
     }
