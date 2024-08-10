@@ -11,11 +11,11 @@
 
 namespace fs = std::filesystem;
 
-typedef struct {
+struct DownloadInfo {
     std::string cid;
     DownloadStatus *cidDownloadStatus;
     json config;
-} DownloadInfo;
+};
 
 static size_t writeCallback(void *ptr, size_t size, size_t nmemb,
                             void *userdata) {
@@ -111,13 +111,9 @@ void FileDownloader::onCidDownloadCompleted(uv_work_t *req, int status) {
 void FileDownloader::download(uv_loop_t *loop) {
     for (size_t i = 0; i < cids.size(); ++i) {
         auto *req = new uv_work_t;
-        auto *downloadInfo = new DownloadInfo;
-
-        downloadInfo->cid = cids[i];
-        downloadInfo->cidDownloadStatus = &cidDownloadStatus[i];
-        downloadInfo->config = config;
+        auto *downloadInfo =
+            new DownloadInfo{cids[i], &cidDownloadStatus[i], config};
         req->data = downloadInfo;
-
         uv_queue_work(loop, req, downloadCid, onCidDownloadCompleted);
     }
 }
