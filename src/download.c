@@ -136,7 +136,7 @@ void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
     apr_pool_t *subpool;
     apr_pool_create(&subpool, pool);
 
-    status = apr_thread_pool_create(&thread_pool, 10, 20, pool);
+    status = apr_thread_pool_create(&thread_pool, 10, 20, subpool);
     if (status != APR_SUCCESS) {
         fprintf(stderr, "Error creating thread pool\n");
         exit(-1);
