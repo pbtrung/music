@@ -217,6 +217,7 @@ Downloader::Downloader(const json &config, const Database &db)
 }
 void Downloader::performDownloads() {
     uv_loop_t *loop = uv_default_loop();
+    fmt::print(stdout, "\n");
     for (auto &fileDownloader : fileDownloaders) {
         fileDownloader->download(loop);
     }
