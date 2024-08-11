@@ -237,9 +237,13 @@ std::vector<FileInfo> Downloader::getFileInfo() const {
     fileInfo.reserve(fileDownloaders.size());
 
     for (const auto &fileDownloader : fileDownloaders) {
-        fileInfo.push_back(
-            {fileDownloader->getFilename(), fileDownloader->getExtension(),
-             fileDownloader->getAlbumPath(), fileDownloader->getTrackName()});
+        if (fileDownloader->getFileDownloadStatus() ==
+            DownloadStatus::Succeeded) {
+            fileInfo.push_back({fileDownloader->getFilename(),
+                                fileDownloader->getExtension(),
+                                fileDownloader->getAlbumPath(),
+                                fileDownloader->getTrackName()});
+        }
     }
     return fileInfo;
 }
