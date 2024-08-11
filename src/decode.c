@@ -154,7 +154,7 @@ void decode_audio(config_t *config, char *input_filename) {
             codec_ctx->codec->long_name);
     if (codec_ctx->bit_rate != 0) {
         fprintf(stdout, "  %-*s: %lld kbps\n", WIDTH, "bit-rate",
-                codec_ctx->bit_rate);
+                codec_ctx->bit_rate / 1000);
     }
     fprintf(stdout, "  %-*s: %d\n", WIDTH, "sample-rate",
             codec_ctx->sample_rate);
