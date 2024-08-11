@@ -26,6 +26,17 @@ static void decode_print_metadata(AVFormatContext *fmt_ctx) {
     }
 }
 
+static int64_t decode_duration(AVFormatContext *fmt_ctx, int stream_index) {
+    int64_t duration = -1;
+    if (fmt_ctx->streams[stream_index]->duration != AV_NOPTS_VALUE) {
+        duration = fmt_ctx->streams[stream_index]->duration *
+                   av_q2d(fmt_ctx->streams[stream_index]->time_base);
+    } else if (fmt_ctx->duration != AV_NOPTS_VALUE) {
+        duration = fmt_ctx->duration / AV_TIME_BASE;
+    }
+    return duration;
+}
+
 void decode_audio(config_t *config, char *input_filename) {
     AVFormatContext *fmt_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
@@ -130,9 +141,9 @@ void decode_audio(config_t *config, char *input_filename) {
         goto cleanup;
     }
 
-    double duration_seconds = fmt_ctx->duration / (double)AV_TIME_BASE;
+    int64_t duration = decode_duration(fmt_ctx, stream_index);
     char dur_str[9];
-    util_seconds_to_time((int)duration_seconds, dur_str, sizeof(dur_str));
+    util_seconds_to_time((int)duration, dur_str, sizeof(dur_str));
 
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
         if (pkt->stream_index == stream_index) {
@@ -152,9 +163,12 @@ void decode_audio(config_t *config, char *input_filename) {
                 }
 
                 uint8_t *output_buffer = NULL;
+                int max_dst_nb_samples =
+                    av_rescale_rnd(frame->nb_samples, out_samplerate,
+                                   codec_ctx->sample_rate, AV_ROUND_UP);
                 int output_buffer_size =
                     av_samples_alloc(&output_buffer, NULL, out_channels,
-                                     frame->nb_samples, AV_SAMPLE_FMT_S16, 0);
+                                     max_dst_nb_samples, AV_SAMPLE_FMT_S16, 0);
                 if (output_buffer_size < 0) {
                     fprintf(stderr, "Could not allocate output buffer\n");
                     goto cleanup;

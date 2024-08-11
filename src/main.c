@@ -5,9 +5,9 @@
 #include "dir.h"
 #include "download.h"
 #include <apr_pools.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 
 int main(int argc, const char *argv[]) {
     if (argc != 2) {
