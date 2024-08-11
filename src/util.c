@@ -8,6 +8,33 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
+void util_remove_spaces(char *str) {
+    int i = 0, j = 0;
+    int length = strlen(str);
+    int spaceFound = 0;
+
+    while (i < length) {
+        if (str[i] != ' ') {
+            str[j++] = str[i++];
+            spaceFound = 0;
+        } else {
+            if (!spaceFound) {
+                str[j++] = ' ';
+                spaceFound = 1;
+            }
+            i++;
+        }
+    }
+
+    // Remove trailing space if present
+    if (j > 0 && str[j - 1] == ' ') {
+        j--;
+    }
+
+    // Null-terminate the string
+    str[j] = '\0';
+}
+
 void util_seconds_to_time(int seconds, char *time_str, size_t time_str_size) {
     int hours = seconds / 3600;
     int minutes = (seconds % 3600) / 60;

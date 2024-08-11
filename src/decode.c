@@ -152,13 +152,16 @@ void decode_audio(config_t *config, char *input_filename) {
 
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "codec",
             codec_ctx->codec->long_name);
-    fprintf(stdout, "  %-*s: %lld kbps\n", WIDTH, "bit-rate",
-            codec_ctx->bit_rate);
+    if (codec_ctx->bit_rate != 0) {
+        fprintf(stdout, "  %-*s: %lld kbps\n", WIDTH, "bit-rate",
+                codec_ctx->bit_rate);
+    }
     fprintf(stdout, "  %-*s: %d\n", WIDTH, "sample-rate",
             codec_ctx->sample_rate);
-    char sample_fmt[32];
+    char sample_fmt[16];
     av_get_sample_fmt_string(sample_fmt, sizeof(sample_fmt),
                              codec_ctx->sample_fmt);
+    util_remove_spaces(sample_fmt);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "sample-fmt", sample_fmt);
     fprintf(stdout, "  %-*s: %d\n", WIDTH, "channels",
             codec_ctx->ch_layout.nb_channels);
