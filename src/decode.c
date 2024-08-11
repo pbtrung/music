@@ -51,12 +51,14 @@ void decode_audio(config_t *config, char *input_filename) {
     av_log_set_level(AV_LOG_ERROR);
 
     if ((ret = avformat_open_input(&fmt_ctx, input_filename, NULL, NULL)) < 0) {
-        fprintf(stderr, "Could not open source file %s\n", input_filename);
+        fprintf(stderr, "Could not open source file %s: %s\n", input_filename,
+                av_err2str(ret));
         goto cleanup;
     }
 
     if ((ret = avformat_find_stream_info(fmt_ctx, NULL)) < 0) {
-        fprintf(stderr, "Could not find stream information\n");
+        fprintf(stderr, "Could not find stream information: %s\n",
+                av_err2str(ret));
         goto cleanup;
     }
 
@@ -130,7 +132,8 @@ void decode_audio(config_t *config, char *input_filename) {
     av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
 
     if ((ret = swr_init(swr_ctx)) < 0) {
-        fprintf(stderr, "Failed to initialize the resampling context\n");
+        fprintf(stderr, "Failed to initialize the resampling context: %s\n",
+                av_err2str(ret));
         goto cleanup;
     }
 
@@ -149,7 +152,9 @@ void decode_audio(config_t *config, char *input_filename) {
         if (pkt->stream_index == stream_index) {
             ret = avcodec_send_packet(codec_ctx, pkt);
             if (ret < 0) {
-                fprintf(stderr, "Error submitting the packet to the decoder\n");
+                fprintf(stderr,
+                        "Error submitting the packet to the decoder: %s\n",
+                        av_err2str(ret));
                 break;
             }
 
@@ -158,7 +163,8 @@ void decode_audio(config_t *config, char *input_filename) {
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                     break;
                 } else if (ret < 0) {
-                    fprintf(stderr, "Error during decoding\n");
+                    fprintf(stderr, "Error during decoding: %s\n",
+                            av_err2str(ret));
                     goto cleanup;
                 }
 
@@ -175,7 +181,7 @@ void decode_audio(config_t *config, char *input_filename) {
                 }
 
                 int nb_samples = swr_convert(
-                    swr_ctx, &output_buffer, frame->nb_samples,
+                    swr_ctx, &output_buffer, max_dst_nb_samples,
                     (const uint8_t **)frame->data, frame->nb_samples);
                 if (nb_samples < 0) {
                     fprintf(stderr, "Error while converting\n");
@@ -184,7 +190,7 @@ void decode_audio(config_t *config, char *input_filename) {
                 }
 
                 fwrite(output_buffer, 1,
-                       nb_samples * out_channels *
+                       max_dst_nb_samples * out_channels *
                            av_get_bytes_per_sample(AV_SAMPLE_FMT_S16),
                        output_fp);
                 av_freep(&output_buffer);
@@ -206,10 +212,16 @@ void decode_audio(config_t *config, char *input_filename) {
     fprintf(stdout, "\n\n");
 
 cleanup:
-    fclose(output_fp);
-    av_frame_free(&frame);
-    av_packet_free(&pkt);
-    avcodec_free_context(&codec_ctx);
-    avformat_close_input(&fmt_ctx);
-    swr_free(&swr_ctx);
+    if (output_fp)
+        fclose(output_fp);
+    if (frame)
+        av_frame_free(&frame);
+    if (pkt)
+        av_packet_free(&pkt);
+    if (codec_ctx)
+        avcodec_free_context(&codec_ctx);
+    if (fmt_ctx)
+        avformat_close_input(&fmt_ctx);
+    if (swr_ctx)
+        swr_free(&swr_ctx);
 }
