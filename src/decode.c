@@ -121,7 +121,7 @@ void decode_audio(config_t *config, char *input_filename) {
 
     av_opt_set_chlayout(swr_ctx, "in_chlayout", &codec_ctx->ch_layout, 0);
     av_opt_set_int(swr_ctx, "in_sample_rate", codec_ctx->sample_rate, 0);
-    av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", codec_ctx->sample_fmt, 0);
+    av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", AV_SAMPLE_FMT_S16, 0);
 
     const int out_channels = 2;
     const int out_samplerate = 48000;
