@@ -1,19 +1,22 @@
+#include "database.h"
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "database.h"
-
 apr_status_t database_close(void *data) {
+    log_trace("database_close: start");
     sqlite3 *db = (sqlite3 *)data;
     sqlite3_close(db);
+    log_trace("database_close: finish");
     return APR_SUCCESS;
 }
 
 void database_open_readonly(const char *filename, sqlite3 **db) {
     int rc = sqlite3_open_v2(filename, db, SQLITE_OPEN_READONLY, NULL);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(*db));
+        log_trace("database_open_readonly: Failed to open database: %s",
+                  sqlite3_errmsg(*db));
         exit(-1);
     }
 }
@@ -24,8 +27,8 @@ int database_count_tracks(sqlite3 *db) {
     int count = 0;
 
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        fprintf(stderr, "Failed to prepare statement: %s\n",
-                sqlite3_errmsg(db));
+        log_trace("database_count_tracks: Failed to prepare statement: %s",
+                  sqlite3_errmsg(db));
         exit(-1);
     }
 
@@ -44,8 +47,8 @@ char **database_get_cids(sqlite3 *db, int track_id, int *num_cids) {
     int index = 0;
 
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        fprintf(stderr, "Failed to prepare statement: %s\n",
-                sqlite3_errmsg(db));
+        log_trace("database_get_cids: Failed to prepare statement: %s",
+                  sqlite3_errmsg(db));
         exit(-1);
     }
 
@@ -59,7 +62,7 @@ char **database_get_cids(sqlite3 *db, int track_id, int *num_cids) {
 
     cids = (char **)malloc((*num_cids) * sizeof(char *));
     if (cids == NULL) {
-        fprintf(stderr, "Memory allocation failed\n");
+        log_trace("database_get_cids: Memory allocation failed");
         exit(-1);
     }
 
@@ -80,8 +83,8 @@ char *database_get_track_name(sqlite3 *db, int track_id) {
     char *track_name = NULL;
 
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        fprintf(stderr, "Failed to prepare statement: %s\n",
-                sqlite3_errmsg(db));
+        log_trace("database_get_track_name: Failed to prepare statement: %s",
+                  sqlite3_errmsg(db));
         exit(-1);
     }
 
@@ -103,8 +106,8 @@ char *database_get_album(sqlite3 *db, int track_id) {
     char *album_path = NULL;
 
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        fprintf(stderr, "Failed to prepare statement: %s\n",
-                sqlite3_errmsg(db));
+        log_trace("database_get_album: Failed to prepare statement: %s",
+                  sqlite3_errmsg(db));
         exit(-1);
     }
 

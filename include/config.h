@@ -14,6 +14,8 @@ typedef struct {
     int min_value;
     int num_files;
     char *pipe_name;
+    char *log;
+    char *ffmpeg_log;
 } config_t;
 
 void config_read(const char *config_file, config_t *config);

@@ -1,16 +1,20 @@
 #include "config.h"
+#include "log.h"
 #include <jansson.h>
 #include <string.h>
 
 apr_status_t config_free(void *data) {
+    log_trace("config_free: start");
     config_t *config = (config_t *)data;
     free(config->db);
     free(config->output);
+    free(config->log);
     free(config->pipe_name);
     for (int i = 0; i < config->num_gateways; ++i) {
         free(config->gateways[i]);
     }
     free(config->gateways);
+    log_trace("config_free: finish");
     return APR_SUCCESS;
 }
 
@@ -19,7 +23,7 @@ void config_read(const char *config_file, config_t *config) {
     json_t *root = json_load_file(config_file, 0, &error);
 
     if (!root) {
-        fprintf(stderr, "Failed to parse JSON config: %s\n", error.text);
+        log_trace("config_read: Failed to parse JSON config: %s", error.text);
         exit(-1);
     }
 
@@ -31,13 +35,15 @@ void config_read(const char *config_file, config_t *config) {
     json_t *num_files_obj = json_object_get(root, "num_files");
     json_t *min_value_obj = json_object_get(root, "min_value");
     json_t *pipe_name_obj = json_object_get(root, "pipe_name");
+    json_t *log_obj = json_object_get(root, "log");
 
     if (!json_is_string(db_obj) || !json_is_string(output_obj) ||
         !json_is_integer(max_retries_obj) || !json_is_integer(timeout_obj) ||
         !json_is_array(gateways_array) || !json_is_integer(num_files_obj) ||
-        !json_is_string(pipe_name_obj) || !json_is_integer(min_value_obj)) {
+        !json_is_string(pipe_name_obj) || !json_is_integer(min_value_obj) ||
+        !json_is_string(log_obj)) {
 
-        fprintf(stderr, "Invalid config file format\n");
+        log_trace("config_read: Invalid config file format");
         exit(-1);
     }
 
@@ -47,6 +53,7 @@ void config_read(const char *config_file, config_t *config) {
     config->timeout = json_integer_value(timeout_obj);
     config->num_files = json_integer_value(num_files_obj);
     config->pipe_name = strdup(json_string_value(pipe_name_obj));
+    config->log = strdup(json_string_value(log_obj));
     config->min_value = json_integer_value(min_value_obj);
 
     config->num_gateways = json_array_size(gateways_array);
@@ -56,7 +63,7 @@ void config_read(const char *config_file, config_t *config) {
         json_t *gateway_obj = json_array_get(gateways_array, i);
 
         if (!json_is_string(gateway_obj)) {
-            fprintf(stderr, "Invalid gateway format\n");
+            log_trace("config_read: Invalid gateway format");
             exit(-1);
         }
 

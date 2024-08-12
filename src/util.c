@@ -1,4 +1,5 @@
 #include "util.h"
+#include "log.h"
 #include <apr_lib.h>
 #include <apr_random.h>
 #include <stdbool.h>
@@ -53,7 +54,7 @@ char *util_get_file_path(char *output, char *filename) {
     int path_length = strlen(output) + strlen(filename) + 1;
     char *path = (char *)malloc(path_length + 1);
     if (!path) {
-        fprintf(stderr, "Memory allocation failed\n");
+        log_trace("util_get_file_path: Memory allocation failed");
         exit(-1);
     }
     snprintf(path, path_length + 1, "%s/%s", output, filename);
@@ -84,14 +85,14 @@ char *util_get_extension(const char *text) {
         NULL);                 // Compile context
 
     if (!re) {
-        fprintf(stderr, "PCRE2 compilation failed\n");
+        log_trace("util_get_extension: PCRE2 compilation failed");
         exit(-1);
     }
 
     // Create a match data block
     match_data = pcre2_match_data_create_from_pattern(re, NULL);
     if (!match_data) {
-        fprintf(stderr, "Failed to create match data\n");
+        log_trace("util_get_extension: Failed to create match data");
         exit(-1);
     }
 
@@ -106,7 +107,7 @@ char *util_get_extension(const char *text) {
     );
 
     if (rc < 0) {
-        fprintf(stderr, "No match\n");
+        log_trace("util_get_extension: No match");
         exit(-1);
     }
 
@@ -118,7 +119,7 @@ char *util_get_extension(const char *text) {
         ext_len = ovector[5] - ovector[4];
         ext = (char *)malloc(ext_len + 1);
         if (!ext) {
-            fprintf(stderr, "Memory allocation failed\n");
+            log_trace("util_get_extension: Memory allocation failed");
             exit(-1);
         }
         memcpy(ext, text + ovector[4], ext_len);
@@ -139,7 +140,7 @@ char *util_get_filename_with_extension(char *text) {
     int filename_len = fn_len + 1 + strlen(ext);
     char *filename = (char *)malloc(filename_len + 1);
     if (!filename) {
-        fprintf(stderr, "Memory allocation failed\n");
+        log_trace("util_get_filename_with_extension: Memory allocation failed");
         exit(-1);
     }
     snprintf(filename, filename_len + 1, "%s.%s", fn, ext);
@@ -150,14 +151,14 @@ char *util_get_filename_with_extension(char *text) {
 
 int *util_random_ints(int num_samples, int min_value, int max_value) {
     if (num_samples > (max_value - min_value + 1)) {
-        fprintf(stderr,
-                "Number of samples exceeds the range of unique values\n");
+        log_trace(
+            "util_random_ints: Number of samples exceeds the range of unique values");
         return NULL;
     }
 
     int *unique_random_ints = malloc(num_samples * sizeof(int));
     if (unique_random_ints == NULL) {
-        perror("Failed to allocate memory");
+        log_trace("util_random_ints: Memory allocation failed");
         exit(-1);
     }
 
@@ -191,7 +192,7 @@ char *util_random_string(int length) {
 
     char *result = malloc((length + 1) * sizeof(char));
     if (result == NULL) {
-        perror("Failed to allocate memory");
+        log_trace("util_random_string: Memory allocation failed");
         exit(-1);
     }
 

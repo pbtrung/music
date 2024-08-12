@@ -1,4 +1,5 @@
 #include "dir.h"
+#include "log.h"
 #include <stdlib.h>
 
 int dir_delete(apr_pool_t *pool, const char *path) {
@@ -10,14 +11,14 @@ int dir_delete(apr_pool_t *pool, const char *path) {
     // Check if path exists and is a directory
     rv = apr_stat(&finfo, path, APR_FINFO_TYPE, pool);
     if (rv != APR_SUCCESS || finfo.filetype != APR_DIR) {
-        fprintf(stderr, "Invalid path or not a directory: %s\n", path);
+        log_trace("dir_delete: Invalid path or not a directory: %s", path);
         exit(-1);
     }
 
     // Open the directory
     rv = apr_dir_open(&dir, path, pool);
     if (rv != APR_SUCCESS) {
-        fprintf(stderr, "Error opening directory: %s\n", path);
+        log_trace("dir_delete: Failed to open directory: %s", path);
         exit(-1);
     }
 
@@ -33,7 +34,8 @@ int dir_delete(apr_pool_t *pool, const char *path) {
         if (finfo.filetype == APR_DIR) {
             // Recursively delete subdirectory
             if (dir_delete(pool, filepath) != 0) {
-                fprintf(stderr, "Error deleting subdirectory: %s\n", filepath);
+                log_trace("dir_delete: Failed to delete subdirectory: %s",
+                          filepath);
                 apr_dir_close(dir);
                 exit(-1);
             }
@@ -41,7 +43,7 @@ int dir_delete(apr_pool_t *pool, const char *path) {
             // Delete file
             rv = apr_file_remove(filepath, pool);
             if (rv != APR_SUCCESS) {
-                fprintf(stderr, "Error deleting file: %s\n", filepath);
+                log_trace("dir_delete: Failed to delete file: %s", filepath);
                 apr_dir_close(dir);
                 exit(-1);
             }
@@ -53,7 +55,7 @@ int dir_delete(apr_pool_t *pool, const char *path) {
     // Delete the directory itself
     rv = apr_dir_remove(path, pool);
     if (rv != APR_SUCCESS) {
-        fprintf(stderr, "Error removing directory: %s\n", path);
+        log_trace("dir_delete: Failed to remove directory: %s", path);
         exit(-1);
     }
 
@@ -65,7 +67,7 @@ void dir_create(apr_pool_t *pool, const char *path) {
 
     rv = apr_dir_make(path, APR_UREAD | APR_UWRITE | APR_UEXECUTE, pool);
     if (rv != APR_SUCCESS) {
-        fprintf(stderr, "Error creating directory: %s\n", path);
+        log_trace("dir_create: Failed to create directory: %s", path);
         exit(-1);
     }
 }

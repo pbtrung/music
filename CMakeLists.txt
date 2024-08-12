@@ -31,6 +31,7 @@ add_executable(music
     src/download.c
     src/dir.c
     src/decode.c
+    src/log.c
 )
 
 target_include_directories(music PRIVATE

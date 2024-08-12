@@ -1,5 +1,6 @@
 #include "download.h"
 #include "const.h"
+#include "log.h"
 #include <apr_strings.h>
 #include <apr_thread_pool.h>
 #include <apr_time.h>
@@ -8,6 +9,7 @@
 #include <string.h>
 
 apr_status_t download_cleanup(void *data) {
+    log_trace("download_cleanup: start");
     file_infos_t *file_infos_cleaner = (file_infos_t *)data;
     file_info_t *file_infos = file_infos_cleaner->file_infos;
     for (int i = 0; i < file_infos_cleaner->num_files; i++) {
@@ -19,6 +21,7 @@ apr_status_t download_cleanup(void *data) {
         free(info->cids);
         free(info->cid_download_status);
     }
+    log_trace("download_cleanup: finish");
     return APR_SUCCESS;
 }
 
@@ -42,6 +45,7 @@ file_downloaded_t *downloaded_files(apr_pool_t *pool, file_info_t *infos,
 }
 
 void download_init(file_info_t *infos, config_t *config, sqlite3 *db) {
+    log_trace("download_init: start");
     int *random_index = util_random_ints(config->num_files, config->min_value,
                                          config->num_tracks);
 
@@ -60,7 +64,7 @@ void download_init(file_info_t *infos, config_t *config, sqlite3 *db) {
         infos[i].cid_download_status = (enum download_status *)malloc(
             num_cids * sizeof(enum download_status));
         if (!infos[i].cid_download_status) {
-            fprintf(stderr, "Memory allocation failed\n");
+            log_trace("download_init: Memory allocation failed");
             exit(-1);
         }
         for (int j = 0; j < infos[i].num_cids; ++j) {
@@ -69,6 +73,7 @@ void download_init(file_info_t *infos, config_t *config, sqlite3 *db) {
     }
 
     free(random_index);
+    log_trace("download_init: finish");
 }
 
 typedef struct {
@@ -85,13 +90,14 @@ static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
     download_info_t *download_info = (download_info_t *)data;
 
     fprintf(stdout, "Downloading %s\n", download_info->cid);
+    log_trace("download_cid: start downloading %s", download_info->cid);
     fflush(stdout);
 
     int retries = 0;
     CURLcode res;
     CURL *curl = curl_easy_init();
     if (!curl) {
-        fprintf(stderr, "Error initializing curl handle\n");
+        log_trace("download_cid: Failed to create curl handle");
         exit(-1);
     }
     char *file_path =
@@ -99,7 +105,7 @@ static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
 
     FILE *fp = fopen(file_path, "wb");
     if (!fp) {
-        fprintf(stderr, "Failed to open file %s\n", file_path);
+        log_trace("download_cid: Failed to open file %s", file_path);
         exit(-1);
     }
 
@@ -126,22 +132,27 @@ static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
                              download_info->config->timeout);
         }
         curl_easy_setopt(curl, CURLOPT_URL, url);
+        log_trace("download_cid: downloading from %s", url);
 
         res = curl_easy_perform(curl);
         if (res == CURLE_OK) {
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
             if (response_code == 200) {
                 *(download_info->cid_download_status) = DOWNLOAD_SUCCEEDED;
+                log_trace("download_cid: finish downloading %s",
+                          download_info->cid);
                 break;
             }
         }
+        log_trace("download_cid: Retry to download %s (attempt %d)",
+                  download_info->cid, retries + 1);
         retries++;
         rewind(fp);
     } while (retries < download_info->config->max_retries);
 
     if (res != CURLE_OK || response_code != 200) {
-        fprintf(stderr, "Download of cid %s failed after %d tries\n",
-                download_info->cid, retries + 1);
+        log_trace("download_cid: Download of cid %s failed after %d tries",
+                  download_info->cid, retries + 1);
         *(download_info->cid_download_status) = DOWNLOAD_FAILED;
     }
 
@@ -152,6 +163,7 @@ static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
 }
 
 void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
+    log_trace("download_files: start");
     apr_thread_pool_t *thread_pool;
     apr_status_t status;
     apr_pool_t *subpool;
@@ -159,7 +171,7 @@ void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
 
     status = apr_thread_pool_create(&thread_pool, 10, 20, subpool);
     if (status != APR_SUCCESS) {
-        fprintf(stderr, "Error creating thread pool\n");
+        log_trace("download_files: Failed to create thread pool");
         exit(-1);
     }
 
@@ -175,9 +187,9 @@ void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
             status = apr_thread_pool_push(thread_pool, download_cid,
                                           download_info, 0, NULL);
             if (status != APR_SUCCESS) {
-                fprintf(stderr,
-                        "Failed to push task to thread pool for cid %s\n",
-                        infos[i].cids[j]);
+                log_trace(
+                    "download_files: Failed to push task to thread pool for cid %s",
+                    infos[i].cids[j]);
                 exit(-1);
             }
         }
@@ -191,6 +203,7 @@ void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
             (double)(end - start) / APR_USEC_PER_SEC);
 
     apr_pool_destroy(subpool);
+    log_trace("download_files: finish");
 }
 
 static void assemble(file_info_t *info, config_t *config) {
@@ -198,14 +211,14 @@ static void assemble(file_info_t *info, config_t *config) {
 
     FILE *outfile = fopen(file_path, "wb");
     if (!outfile) {
-        fprintf(stderr, "Failed to open file %s\n", file_path);
+        log_trace("assemble: Failed to open file %s", file_path);
         exit(-1);
     }
 
     size_t buffer_size = 4096;
     char *buffer = (char *)malloc(buffer_size);
     if (!buffer) {
-        fprintf(stderr, "Memory allocation failed\n");
+        log_trace("assemble: Memory allocation failed");
         exit(-1);
     }
     size_t bytes_read;
@@ -214,7 +227,7 @@ static void assemble(file_info_t *info, config_t *config) {
 
         FILE *infile = fopen(cid_path, "rb");
         if (!infile) {
-            fprintf(stderr, "Failed to open file %s\n", cid_path);
+            log_trace("assemble: Failed to open file %s", cid_path);
             exit(-1);
         }
 
@@ -224,7 +237,7 @@ static void assemble(file_info_t *info, config_t *config) {
         fclose(infile);
 
         if (remove(cid_path) != 0) {
-            fprintf(stderr, "Failed to delete file %s\n", cid_path);
+            log_trace("assemble: Failed to delete file %s", cid_path);
             exit(-1);
         }
         free(cid_path);
@@ -247,6 +260,7 @@ void assemble_files(file_info_t *infos, config_t *config) {
     fprintf(stdout, "\n");
     for (int i = 0; i < config->num_files; ++i) {
         if (infos[i].file_download_status == DOWNLOAD_SUCCEEDED) {
+            log_trace("assemble_files: start assembling %s", infos[i].filename);
             fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "Assemble",
                     infos[i].filename);
             fprintf(stdout, "  %-*s: %s\n", WIDTH, "path", infos[i].album_path);
@@ -255,6 +269,8 @@ void assemble_files(file_info_t *infos, config_t *config) {
             fprintf(stdout, "\n");
             fflush(stdout);
             assemble(&infos[i], config);
+            log_trace("assemble_files: finish assembling %s",
+                      infos[i].filename);
         }
     }
 }

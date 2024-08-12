@@ -1,5 +1,6 @@
 #include "decode.h"
 #include "const.h"
+#include "log.h"
 #include "util.h"
 #include <apr_time.h>
 #include <libavcodec/avcodec.h>
@@ -57,7 +58,7 @@ static AVCodecContext *decode_open_codec(AVFormatContext *fmt_ctx,
     const AVCodec *codec = avcodec_find_decoder(
         fmt_ctx->streams[stream_index]->codecpar->codec_id);
     if (!codec) {
-        fprintf(stderr, "Failed to find codec\n");
+        log_trace("decode_open_codec: Failed to find codec");
         return NULL;
     }
 
@@ -69,14 +70,15 @@ static AVCodecContext *decode_open_codec(AVFormatContext *fmt_ctx,
 
     if (avcodec_parameters_to_context(
             codec_ctx, fmt_ctx->streams[stream_index]->codecpar) < 0) {
-        fprintf(stderr, "Failed to copy codec parameters to decoder context\n");
+        log_trace(
+            "decode_open_codec: Failed to copy codec parameters to decoder context");
         avcodec_free_context(&codec_ctx);
         return NULL;
     }
 
     codec_ctx->pkt_timebase = fmt_ctx->streams[stream_index]->time_base;
     if (avcodec_open2(codec_ctx, codec, NULL) < 0) {
-        fprintf(stderr, "Failed to open codec\n");
+        log_trace("decode_open_codec: Failed to open codec");
         avcodec_free_context(&codec_ctx);
         return NULL;
     }
@@ -90,7 +92,8 @@ static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx,
                                                int out_samplerate) {
     SwrContext *swr_ctx = swr_alloc();
     if (!swr_ctx) {
-        fprintf(stderr, "Could not allocate SwrContext\n");
+        log_trace(
+            "decode_initialize_resampler: Failed to allocate the resampling context");
         return NULL;
     }
 
@@ -107,7 +110,8 @@ static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx,
     av_opt_set_int(swr_ctx, "precision", 20, 0);
 
     if (swr_init(swr_ctx) < 0) {
-        fprintf(stderr, "Failed to initialize the resampling context\n");
+        log_trace(
+            "decode_initialize_resampler: Failed to initialize the resampling context");
         swr_free(&swr_ctx);
         return NULL;
     }
@@ -119,7 +123,8 @@ static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx,
 static FILE *decode_open_output_pipe(config_t *config) {
     FILE *output_fp = fopen(config->pipe_name, "wb");
     if (!output_fp) {
-        fprintf(stderr, "Could not open output pipe %s\n", config->pipe_name);
+        log_trace("decode_open_output_pipe: Failed to open output pipe: %s",
+                  config->pipe_name);
     }
     return output_fp;
 }
@@ -163,8 +168,9 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
     int ret;
     ret = avcodec_send_packet(codec_ctx, pkt);
     if (ret < 0) {
-        fprintf(stderr, "Error submitting the packet to the decoder: %s\n",
-                av_err2str(ret));
+        log_trace(
+            "decode_process_frame: Failed to submit the packet to the decoder: %s",
+            av_err2str(ret));
         return ret;
     }
 
@@ -173,7 +179,8 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         } else if (ret < 0) {
-            fprintf(stderr, "Error during decoding: %s\n", av_err2str(ret));
+            log_trace("decode_process_frame: Error during decoding: %s",
+                      av_err2str(ret));
             return ret;
         }
 
@@ -185,7 +192,7 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
             av_samples_alloc(&output_buffer, NULL, out_channels,
                              max_dst_nb_samples, AV_SAMPLE_FMT_S16, 0);
         if (output_buffer_size < 0) {
-            fprintf(stderr, "Could not allocate output buffer\n");
+            log_trace("decode_process_frame: Failed to allocate output buffer");
             return -1;
         }
 
@@ -193,7 +200,7 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
             swr_convert(swr_ctx, &output_buffer, max_dst_nb_samples,
                         (const uint8_t **)frame->data, frame->nb_samples);
         if (nb_samples < 0) {
-            fprintf(stderr, "Error while converting\n");
+            log_trace("decode_process_frame: Error while converting");
             av_freep(&output_buffer);
             return -1;
         }
@@ -216,8 +223,16 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
     return 0;
 }
 
+static void ffmpeg_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
+    if (level <= av_log_get_level()) {
+        log_trace("decode_audio: ffmpeg log");
+        log_trace(fmt, vl);
+    }
+}
+
 // Main function to decode audio
 void decode_audio(config_t *config, char *input_filename) {
+    log_trace("decode_audio: start decoding %s", input_filename);
     apr_time_t start = apr_time_now();
 
     AVFormatContext *fmt_ctx = NULL;
@@ -232,16 +247,17 @@ void decode_audio(config_t *config, char *input_filename) {
     const int out_samplerate = 48000;
 
     av_log_set_level(AV_LOG_ERROR);
+    av_log_set_callback(ffmpeg_log_cb);
 
     if ((ret = avformat_open_input(&fmt_ctx, input_filename, NULL, NULL)) < 0) {
-        fprintf(stderr, "Could not open source file %s: %s\n", input_filename,
-                av_err2str(ret));
+        log_trace("decode_audio: Failed to open source file '%s': %s",
+                  input_filename, av_err2str(ret));
         goto cleanup;
     }
 
     if ((ret = avformat_find_stream_info(fmt_ctx, NULL)) < 0) {
-        fprintf(stderr, "Could not find stream information: %s\n",
-                av_err2str(ret));
+        log_trace("decode_audio: Failed to find stream information: %s",
+                  av_err2str(ret));
         goto cleanup;
     }
 
@@ -249,7 +265,7 @@ void decode_audio(config_t *config, char *input_filename) {
 
     stream_index = decode_find_audio_stream(fmt_ctx);
     if (stream_index == -1) {
-        fprintf(stderr, "Could not find audio stream\n");
+        log_trace("decode_audio: Failed to find audio stream");
         goto cleanup;
     }
 
@@ -277,13 +293,13 @@ void decode_audio(config_t *config, char *input_filename) {
 
     pkt = av_packet_alloc();
     if (!pkt) {
-        fprintf(stderr, "Could not allocate AVPacket\n");
+        log_trace("decode_audio: Failed to allocate packet");
         goto cleanup;
     }
 
     frame = av_frame_alloc();
     if (!frame) {
-        fprintf(stderr, "Could not allocate AVFrame\n");
+        log_trace("decode_audio: Failed to allocate frame");
         goto cleanup;
     }
 
@@ -291,6 +307,7 @@ void decode_audio(config_t *config, char *input_filename) {
     fprintf(stdout, "  %-*s: %.3f ms\n", WIDTH, "took",
             (double)(end - start) / 1000);
 
+    log_trace("decode_audio: start while");
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
         if (pkt->stream_index == stream_index) {
             ret = decode_process_frame(fmt_ctx, codec_ctx, swr_ctx, frame, pkt,
@@ -302,6 +319,7 @@ void decode_audio(config_t *config, char *input_filename) {
         }
         av_packet_unref(pkt);
     }
+    log_trace("decode_audio: finish while");
 
     fprintf(stdout, "\n\n");
 
@@ -318,4 +336,5 @@ cleanup:
         avformat_close_input(&fmt_ctx);
     if (swr_ctx)
         swr_free(&swr_ctx);
+    log_trace("decode_audio: finish decoding %s", input_filename);
 }

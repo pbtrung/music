@@ -4,6 +4,7 @@
 #include "decode.h"
 #include "dir.h"
 #include "download.h"
+#include "log.h"
 #include <apr_pools.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -27,7 +28,17 @@ int main(int argc, const char *argv[]) {
     config_read(argv[1], config);
     apr_pool_cleanup_register(pool, config, config_free, apr_pool_cleanup_null);
 
+    FILE *fp = fopen(config->log, "w");
+    if (!fp) {
+        fprintf(stderr, "Failed to open file %s\n", config->log);
+        exit(-1);
+    }
+    log_add_fp(fp, LOG_TRACE);
+    log_set_quiet(true);
+
+    log_trace("start main");
     while (true) {
+        log_trace("start while");
         apr_pool_t *subp1;
         apr_pool_create(&subp1, pool);
 
@@ -63,6 +74,7 @@ int main(int argc, const char *argv[]) {
             if (file_downloaded[i].file_download_status == DOWNLOAD_SUCCEEDED) {
                 char *file_path = util_get_file_path(
                     config->output, file_downloaded[i].filename);
+                log_trace("main: start playing %s", file_path);
 
                 fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "PLAYING",
                         file_downloaded[i].filename);
@@ -72,13 +84,17 @@ int main(int argc, const char *argv[]) {
                         file_downloaded[i].track_name);
 
                 decode_audio(config, file_path);
+                log_trace("main: finish playing %s", file_path);
                 free(file_path);
             }
         }
 
         apr_pool_destroy(subp2);
+        log_trace("finish while");
     }
+    log_trace("finish main");
 
+    fclose(fp);
     apr_pool_destroy(pool);
     apr_terminate();
     return 0;
