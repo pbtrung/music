@@ -119,8 +119,6 @@ void decode_audio(config_t *config, char *input_filename) {
         goto cleanup;
     }
 
-    codec_ctx->sample_fmt = AV_SAMPLE_FMT_S16;
-
     av_opt_set_chlayout(swr_ctx, "in_chlayout", &codec_ctx->ch_layout, 0);
     av_opt_set_int(swr_ctx, "in_sample_rate", codec_ctx->sample_rate, 0);
     av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", codec_ctx->sample_fmt, 0);
@@ -132,8 +130,8 @@ void decode_audio(config_t *config, char *input_filename) {
     av_opt_set_chlayout(swr_ctx, "out_chlayout", &out_chlayout, 0);
     av_opt_set_int(swr_ctx, "out_sample_rate", out_samplerate, 0);
     av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
-    // av_opt_set(swr_ctx, "resampler", "soxr", 0);
-    // av_opt_set_int(swr_ctx, "precision", 20, 0);
+    av_opt_set(swr_ctx, "resampler", "soxr", 0);
+    av_opt_set_int(swr_ctx, "precision", 20, 0);
 
     if ((ret = swr_init(swr_ctx)) < 0) {
         fprintf(stderr, "Failed to initialize the resampling context: %s\n",
@@ -197,43 +195,32 @@ void decode_audio(config_t *config, char *input_filename) {
                     goto cleanup;
                 }
 
-                if (codec_ctx->sample_rate != out_samplerate ||
-                    codec_ctx->ch_layout.nb_channels != out_channels) {
-                    uint8_t *output_buffer = NULL;
-                    int max_dst_nb_samples =
-                        av_rescale_rnd(frame->nb_samples, out_samplerate,
-                                       codec_ctx->sample_rate, AV_ROUND_UP);
-                    int output_buffer_size = av_samples_alloc(
-                        &output_buffer, NULL, out_channels, max_dst_nb_samples,
-                        AV_SAMPLE_FMT_S16, 0);
-                    if (output_buffer_size < 0) {
-                        fprintf(stderr, "Could not allocate output buffer\n");
-                        goto cleanup;
-                    }
-
-                    int nb_samples = swr_convert(
-                        swr_ctx, &output_buffer, max_dst_nb_samples,
-                        (const uint8_t **)frame->data, frame->nb_samples);
-                    if (nb_samples < 0) {
-                        fprintf(stderr, "Error while converting\n");
-                        av_freep(&output_buffer);
-                        goto cleanup;
-                    }
-
-                    fwrite(output_buffer, 1,
-                           max_dst_nb_samples * out_channels *
-                               av_get_bytes_per_sample(AV_SAMPLE_FMT_S16),
-                           output_fp);
-                    av_freep(&output_buffer);
-                } else {
-                    // If no resampling is needed, write the original frame data
-                    // directly
-                    fwrite(frame->data[0], 1,
-                           frame->nb_samples *
-                               av_get_bytes_per_sample(codec_ctx->sample_fmt) *
-                               codec_ctx->ch_layout.nb_channels,
-                           output_fp);
+                uint8_t *output_buffer = NULL;
+                int max_dst_nb_samples =
+                    av_rescale_rnd(frame->nb_samples, out_samplerate,
+                                   codec_ctx->sample_rate, AV_ROUND_UP);
+                int output_buffer_size =
+                    av_samples_alloc(&output_buffer, NULL, out_channels,
+                                     max_dst_nb_samples, AV_SAMPLE_FMT_S16, 0);
+                if (output_buffer_size < 0) {
+                    fprintf(stderr, "Could not allocate output buffer\n");
+                    goto cleanup;
                 }
+
+                int nb_samples = swr_convert(
+                    swr_ctx, &output_buffer, max_dst_nb_samples,
+                    (const uint8_t **)frame->data, frame->nb_samples);
+                if (nb_samples < 0) {
+                    fprintf(stderr, "Error while converting\n");
+                    av_freep(&output_buffer);
+                    goto cleanup;
+                }
+
+                fwrite(output_buffer, 1,
+                       max_dst_nb_samples * out_channels *
+                           av_get_bytes_per_sample(AV_SAMPLE_FMT_S16),
+                       output_fp);
+                av_freep(&output_buffer);
 
                 int64_t current_pts =
                     frame->pts *
