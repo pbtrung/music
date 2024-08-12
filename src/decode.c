@@ -132,8 +132,8 @@ void decode_audio(config_t *config, char *input_filename) {
     av_opt_set_chlayout(swr_ctx, "out_chlayout", &out_chlayout, 0);
     av_opt_set_int(swr_ctx, "out_sample_rate", out_samplerate, 0);
     av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
-    av_opt_set(swr_ctx, "resampler", "soxr", 0);
-    av_opt_set_int(swr_ctx, "precision", 20, 0);
+    // av_opt_set(swr_ctx, "resampler", "soxr", 0);
+    // av_opt_set_int(swr_ctx, "precision", 20, 0);
 
     if ((ret = swr_init(swr_ctx)) < 0) {
         fprintf(stderr, "Failed to initialize the resampling context: %s\n",
