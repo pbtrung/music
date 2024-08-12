@@ -1,6 +1,7 @@
 #include "decode.h"
 #include "const.h"
 #include "util.h"
+#include <apr_time.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
@@ -217,6 +218,8 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
 
 // Main function to decode audio
 void decode_audio(config_t *config, char *input_filename) {
+    apr_time_t start = apr_time_now();
+
     AVFormatContext *fmt_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
     AVPacket *pkt = NULL;
@@ -283,6 +286,10 @@ void decode_audio(config_t *config, char *input_filename) {
         fprintf(stderr, "Could not allocate AVFrame\n");
         goto cleanup;
     }
+
+    apr_time_t end = apr_time_now();
+    fprintf(stdout, "  %-*s: %.3f ms\n", WIDTH, "took",
+            (double)(end - start) / 1000);
 
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
         if (pkt->stream_index == stream_index) {
