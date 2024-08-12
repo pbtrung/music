@@ -28,48 +28,55 @@ int main(int argc, const char *argv[]) {
     apr_pool_cleanup_register(pool, config, config_free, apr_pool_cleanup_null);
 
     while (true) {
-        apr_pool_t *subpool;
-        apr_pool_create(&subpool, pool);
+        apr_pool_t *subp1;
+        apr_pool_create(&subp1, pool);
 
         sqlite3 *db;
         database_open_readonly(config->db, &db);
+        apr_pool_cleanup_register(subp1, db, database_close,
+                                  apr_pool_cleanup_null);
         config->num_tracks = database_count_tracks(db);
 
-        dir_delete(subpool, config->output);
-        dir_create(subpool, config->output);
+        dir_delete(subp1, config->output);
+        dir_create(subp1, config->output);
 
         file_info_t *file_infos =
-            apr_palloc(subpool, config->num_files * sizeof(file_info_t));
+            apr_palloc(subp1, config->num_files * sizeof(file_info_t));
         file_infos_t *file_infos_cleaner =
-            apr_palloc(subpool, sizeof(file_infos_t));
+            apr_palloc(subp1, sizeof(file_infos_t));
         file_infos_cleaner->file_infos = file_infos;
         file_infos_cleaner->num_files = config->num_files;
-        apr_pool_cleanup_register(subpool, file_infos_cleaner, download_cleanup,
+        apr_pool_cleanup_register(subp1, file_infos_cleaner, download_cleanup,
                                   apr_pool_cleanup_null);
         download_init(file_infos, config, db);
-        download_files(subpool, file_infos, config);
+        download_files(subp1, file_infos, config);
         assemble_files(file_infos, config);
 
-        sqlite3_close(db);
+        apr_pool_t *subp2;
+        apr_pool_create(&subp2, pool);
+        file_downloaded_t *file_downloaded =
+            downloaded_files(subp2, file_infos, config);
+
+        apr_pool_destroy(subp1);
 
         for (int i = 0; i < config->num_files; ++i) {
-            if (file_infos[i].file_download_status == DOWNLOAD_SUCCEEDED) {
-                char *file_path =
-                    util_get_file_path(config->output, file_infos[i].filename);
+            if (file_downloaded[i].file_download_status == DOWNLOAD_SUCCEEDED) {
+                char *file_path = util_get_file_path(
+                    config->output, file_downloaded[i].filename);
 
                 fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "PLAYING",
-                        file_infos[i].filename);
+                        file_downloaded[i].filename);
                 fprintf(stdout, "  %-*s: %s\n", WIDTH, "path",
-                        file_infos[i].album_path);
+                        file_downloaded[i].album_path);
                 fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename",
-                        file_infos[i].track_name);
+                        file_downloaded[i].track_name);
 
                 decode_audio(config, file_path);
                 free(file_path);
             }
         }
 
-        apr_pool_destroy(subpool);
+        apr_pool_destroy(subp2);
     }
 
     apr_pool_destroy(pool);

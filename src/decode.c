@@ -119,9 +119,11 @@ void decode_audio(config_t *config, char *input_filename) {
         goto cleanup;
     }
 
+    codec_ctx->sample_fmt = AV_SAMPLE_FMT_S16;
+
     av_opt_set_chlayout(swr_ctx, "in_chlayout", &codec_ctx->ch_layout, 0);
     av_opt_set_int(swr_ctx, "in_sample_rate", codec_ctx->sample_rate, 0);
-    av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+    av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", codec_ctx->sample_fmt, 0);
 
     const int out_channels = 2;
     const int out_samplerate = 48000;
@@ -170,6 +172,10 @@ void decode_audio(config_t *config, char *input_filename) {
         fprintf(stdout, "  %-*s: %d -> %d\n", WIDTH, "resample",
                 codec_ctx->sample_rate, out_samplerate);
     }
+    if (codec_ctx->ch_layout.nb_channels != out_channels) {
+        fprintf(stdout, "  %-*s: %d -> %d channels\n", WIDTH, "resample",
+                codec_ctx->ch_layout.nb_channels, out_channels);
+    }
 
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
         if (pkt->stream_index == stream_index) {
@@ -191,7 +197,8 @@ void decode_audio(config_t *config, char *input_filename) {
                     goto cleanup;
                 }
 
-                if (codec_ctx->sample_rate != out_samplerate) {
+                if (codec_ctx->sample_rate != out_samplerate ||
+                    codec_ctx->ch_layout.nb_channels != out_channels) {
                     uint8_t *output_buffer = NULL;
                     int max_dst_nb_samples =
                         av_rescale_rnd(frame->nb_samples, out_samplerate,

@@ -1,5 +1,6 @@
 #include "download.h"
 #include "const.h"
+#include <apr_strings.h>
 #include <apr_thread_pool.h>
 #include <curl/curl.h>
 #include <stdlib.h>
@@ -18,6 +19,25 @@ apr_status_t download_cleanup(void *data) {
         free(info->cid_download_status);
     }
     return APR_SUCCESS;
+}
+
+file_downloaded_t *downloaded_files(apr_pool_t *pool, file_info_t *infos,
+                                    config_t *config) {
+    file_downloaded_t *file_downloaded =
+        apr_palloc(pool, config->num_files * sizeof(file_downloaded_t));
+    for (int i = 0; i < config->num_files; ++i) {
+        file_downloaded[i].file_download_status = infos[i].file_download_status;
+        if (infos[i].file_download_status == DOWNLOAD_SUCCEEDED) {
+            file_downloaded[i].filename = apr_pstrdup(pool, infos[i].filename);
+            file_downloaded[i].album_path =
+                apr_pstrdup(pool, infos[i].album_path);
+            file_downloaded[i].track_name =
+                apr_pstrdup(pool, infos[i].track_name);
+            file_downloaded[i].extension =
+                apr_pstrdup(pool, infos[i].extension);
+        }
+    }
+    return file_downloaded;
 }
 
 void download_init(file_info_t *infos, config_t *config, sqlite3 *db) {
