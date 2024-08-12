@@ -6,6 +6,7 @@
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 
+// Function to print format-level and stream-level metadata
 static void decode_print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
 
@@ -15,6 +16,7 @@ static void decode_print_metadata(AVFormatContext *fmt_ctx) {
         util_tolower(tag->key);
         fprintf(stdout, "  %-*s: %s\n", WIDTH, tag->key, tag->value);
     }
+
     // Print stream-level metadata
     for (int i = 0; i < fmt_ctx->nb_streams; i++) {
         AVStream *stream = fmt_ctx->streams[i];
@@ -26,6 +28,7 @@ static void decode_print_metadata(AVFormatContext *fmt_ctx) {
     }
 }
 
+// Function to get the duration of the audio stream
 static int64_t decode_duration(AVFormatContext *fmt_ctx, int stream_index) {
     int64_t duration = -1;
     if (fmt_ctx->streams[stream_index]->duration != AV_NOPTS_VALUE) {
@@ -37,16 +40,193 @@ static int64_t decode_duration(AVFormatContext *fmt_ctx, int stream_index) {
     return duration;
 }
 
+// Function to find the audio stream index
+static int decode_find_audio_stream(AVFormatContext *fmt_ctx) {
+    for (int i = 0; i < fmt_ctx->nb_streams; i++) {
+        if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Function to open the codec and get the codec context
+static AVCodecContext *decode_open_codec(AVFormatContext *fmt_ctx,
+                                         int stream_index) {
+    const AVCodec *codec = avcodec_find_decoder(
+        fmt_ctx->streams[stream_index]->codecpar->codec_id);
+    if (!codec) {
+        fprintf(stderr, "Failed to find codec\n");
+        return NULL;
+    }
+
+    AVCodecContext *codec_ctx = avcodec_alloc_context3(codec);
+    if (!codec_ctx) {
+        fprintf(stderr, "Failed to allocate codec context\n");
+        return NULL;
+    }
+
+    if (avcodec_parameters_to_context(
+            codec_ctx, fmt_ctx->streams[stream_index]->codecpar) < 0) {
+        fprintf(stderr, "Failed to copy codec parameters to decoder context\n");
+        avcodec_free_context(&codec_ctx);
+        return NULL;
+    }
+
+    codec_ctx->pkt_timebase = fmt_ctx->streams[stream_index]->time_base;
+    if (avcodec_open2(codec_ctx, codec, NULL) < 0) {
+        fprintf(stderr, "Failed to open codec\n");
+        avcodec_free_context(&codec_ctx);
+        return NULL;
+    }
+
+    return codec_ctx;
+}
+
+// Function to initialize the resampling context
+static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx,
+                                               int out_channels,
+                                               int out_samplerate) {
+    SwrContext *swr_ctx = swr_alloc();
+    if (!swr_ctx) {
+        fprintf(stderr, "Could not allocate SwrContext\n");
+        return NULL;
+    }
+
+    av_opt_set_chlayout(swr_ctx, "in_chlayout", &codec_ctx->ch_layout, 0);
+    av_opt_set_int(swr_ctx, "in_sample_rate", codec_ctx->sample_rate, 0);
+    av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", codec_ctx->sample_fmt, 0);
+
+    AVChannelLayout out_chlayout;
+    av_channel_layout_default(&out_chlayout, out_channels);
+    av_opt_set_chlayout(swr_ctx, "out_chlayout", &out_chlayout, 0);
+    av_opt_set_int(swr_ctx, "out_sample_rate", out_samplerate, 0);
+    av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+    av_opt_set(swr_ctx, "resampler", "soxr", 0);
+    av_opt_set_int(swr_ctx, "precision", 20, 0);
+
+    if (swr_init(swr_ctx) < 0) {
+        fprintf(stderr, "Failed to initialize the resampling context\n");
+        swr_free(&swr_ctx);
+        return NULL;
+    }
+
+    return swr_ctx;
+}
+
+// Function to open the output pipe
+static FILE *decode_open_output_pipe(config_t *config) {
+    FILE *output_fp = fopen(config->pipe_name, "wb");
+    if (!output_fp) {
+        fprintf(stderr, "Could not open output pipe %s\n", config->pipe_name);
+    }
+    return output_fp;
+}
+
+// Function to print audio stream details
+static void decode_print_audio_info(AVCodecContext *codec_ctx, int out_channels,
+                                    int out_samplerate) {
+    fprintf(stdout, "  %-*s: %s\n", WIDTH, "codec",
+            codec_ctx->codec->long_name);
+    if (codec_ctx->bit_rate != 0) {
+        fprintf(stdout, "  %-*s: %ld kbps\n", WIDTH, "bit-rate",
+                (long)codec_ctx->bit_rate / 1000);
+    }
+    fprintf(stdout, "  %-*s: %d\n", WIDTH, "sample-rate",
+            codec_ctx->sample_rate);
+
+    char sample_fmt[16];
+    av_get_sample_fmt_string(sample_fmt, sizeof(sample_fmt),
+                             codec_ctx->sample_fmt);
+    util_remove_spaces(sample_fmt);
+    fprintf(stdout, "  %-*s: %s\n", WIDTH, "sample-fmt", sample_fmt);
+    fprintf(stdout, "  %-*s: %d\n", WIDTH, "channels",
+            codec_ctx->ch_layout.nb_channels);
+
+    if (codec_ctx->sample_rate != out_samplerate) {
+        fprintf(stdout, "  %-*s: %d -> %d\n", WIDTH, "resample",
+                codec_ctx->sample_rate, out_samplerate);
+    }
+    if (codec_ctx->ch_layout.nb_channels != out_channels) {
+        fprintf(stdout, "  %-*s: %d -> %d channels\n", WIDTH, "resample",
+                codec_ctx->ch_layout.nb_channels, out_channels);
+    }
+}
+
+// Function to process and resample each frame
+static int decode_process_frame(AVFormatContext *fmt_ctx,
+                                AVCodecContext *codec_ctx, SwrContext *swr_ctx,
+                                AVFrame *frame, AVPacket *pkt, FILE *output_fp,
+                                int out_channels, int out_samplerate,
+                                const char *dur_str, int stream_index) {
+    int ret;
+    ret = avcodec_send_packet(codec_ctx, pkt);
+    if (ret < 0) {
+        fprintf(stderr, "Error submitting the packet to the decoder: %s\n",
+                av_err2str(ret));
+        return ret;
+    }
+
+    while (ret >= 0) {
+        ret = avcodec_receive_frame(codec_ctx, frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            break;
+        } else if (ret < 0) {
+            fprintf(stderr, "Error during decoding: %s\n", av_err2str(ret));
+            return ret;
+        }
+
+        uint8_t *output_buffer = NULL;
+        int max_dst_nb_samples =
+            av_rescale_rnd(frame->nb_samples, out_samplerate,
+                           codec_ctx->sample_rate, AV_ROUND_UP);
+        int output_buffer_size =
+            av_samples_alloc(&output_buffer, NULL, out_channels,
+                             max_dst_nb_samples, AV_SAMPLE_FMT_S16, 0);
+        if (output_buffer_size < 0) {
+            fprintf(stderr, "Could not allocate output buffer\n");
+            return -1;
+        }
+
+        int nb_samples =
+            swr_convert(swr_ctx, &output_buffer, max_dst_nb_samples,
+                        (const uint8_t **)frame->data, frame->nb_samples);
+        if (nb_samples < 0) {
+            fprintf(stderr, "Error while converting\n");
+            av_freep(&output_buffer);
+            return -1;
+        }
+
+        fwrite(output_buffer, 1,
+               max_dst_nb_samples * out_channels *
+                   av_get_bytes_per_sample(AV_SAMPLE_FMT_S16),
+               output_fp);
+        av_freep(&output_buffer);
+
+        int64_t current_pts =
+            frame->pts * av_q2d(fmt_ctx->streams[stream_index]->time_base);
+        char time_str[9];
+        util_seconds_to_time((int)current_pts, time_str, sizeof(time_str));
+        fprintf(stdout, "  %-*s: %s / %s\r", WIDTH, "position", time_str,
+                dur_str);
+        fflush(stdout);
+    }
+
+    return 0;
+}
+
+// Main function to decode audio
 void decode_audio(config_t *config, char *input_filename) {
     AVFormatContext *fmt_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
-    const AVCodec *codec = NULL;
     AVPacket *pkt = NULL;
     AVFrame *frame = NULL;
     SwrContext *swr_ctx = NULL;
     FILE *output_fp = NULL;
     int stream_index = -1;
     int ret;
+    const int out_channels = 2;
+    const int out_samplerate = 48000;
 
     av_log_set_level(AV_LOG_ERROR);
 
@@ -64,42 +244,33 @@ void decode_audio(config_t *config, char *input_filename) {
 
     decode_print_metadata(fmt_ctx);
 
-    for (int i = 0; i < fmt_ctx->nb_streams; i++) {
-        if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            stream_index = i;
-            break;
-        }
-    }
-
+    stream_index = decode_find_audio_stream(fmt_ctx);
     if (stream_index == -1) {
         fprintf(stderr, "Could not find audio stream\n");
         goto cleanup;
     }
 
-    codec = avcodec_find_decoder(
-        fmt_ctx->streams[stream_index]->codecpar->codec_id);
-    if (!codec) {
-        fprintf(stderr, "Failed to find codec\n");
-        goto cleanup;
-    }
-
-    codec_ctx = avcodec_alloc_context3(codec);
+    codec_ctx = decode_open_codec(fmt_ctx, stream_index);
     if (!codec_ctx) {
-        fprintf(stderr, "Failed to allocate codec\n");
         goto cleanup;
     }
 
-    if ((ret = avcodec_parameters_to_context(
-             codec_ctx, fmt_ctx->streams[stream_index]->codecpar)) < 0) {
-        fprintf(stderr, "Failed to copy codec parameters to decoder context\n");
+    swr_ctx =
+        decode_initialize_resampler(codec_ctx, out_channels, out_samplerate);
+    if (!swr_ctx) {
         goto cleanup;
     }
 
-    codec_ctx->pkt_timebase = fmt_ctx->streams[stream_index]->time_base;
-    if ((ret = avcodec_open2(codec_ctx, codec, NULL)) < 0) {
-        fprintf(stderr, "Failed to open codec\n");
+    output_fp = decode_open_output_pipe(config);
+    if (!output_fp) {
         goto cleanup;
     }
+
+    int64_t duration = decode_duration(fmt_ctx, stream_index);
+    char dur_str[9];
+    util_seconds_to_time((int)duration, dur_str, sizeof(dur_str));
+
+    decode_print_audio_info(codec_ctx, out_channels, out_samplerate);
 
     pkt = av_packet_alloc();
     if (!pkt) {
@@ -113,124 +284,13 @@ void decode_audio(config_t *config, char *input_filename) {
         goto cleanup;
     }
 
-    swr_ctx = swr_alloc();
-    if (!swr_ctx) {
-        fprintf(stderr, "Could not allocate SwrContext\n");
-        goto cleanup;
-    }
-
-    av_opt_set_chlayout(swr_ctx, "in_chlayout", &codec_ctx->ch_layout, 0);
-    av_opt_set_int(swr_ctx, "in_sample_rate", codec_ctx->sample_rate, 0);
-    av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", codec_ctx->sample_fmt, 0);
-
-    const int out_channels = 2;
-    const int out_samplerate = 48000;
-    AVChannelLayout out_chlayout;
-    av_channel_layout_default(&out_chlayout, out_channels);
-    av_opt_set_chlayout(swr_ctx, "out_chlayout", &out_chlayout, 0);
-    av_opt_set_int(swr_ctx, "out_sample_rate", out_samplerate, 0);
-    av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
-    av_opt_set(swr_ctx, "resampler", "soxr", 0);
-    av_opt_set_int(swr_ctx, "precision", 20, 0);
-
-    if ((ret = swr_init(swr_ctx)) < 0) {
-        fprintf(stderr, "Failed to initialize the resampling context: %s\n",
-                av_err2str(ret));
-        goto cleanup;
-    }
-
-    // config->pipe_name
-    output_fp = fopen(config->pipe_name, "wb");
-    if (!output_fp) {
-        fprintf(stderr, "Could not open output pipe %s\n", config->pipe_name);
-        goto cleanup;
-    }
-
-    int64_t duration = decode_duration(fmt_ctx, stream_index);
-    char dur_str[9];
-    util_seconds_to_time((int)duration, dur_str, sizeof(dur_str));
-
-    fprintf(stdout, "  %-*s: %s\n", WIDTH, "codec",
-            codec_ctx->codec->long_name);
-    if (codec_ctx->bit_rate != 0) {
-        fprintf(stdout, "  %-*s: %lld kbps\n", WIDTH, "bit-rate",
-                codec_ctx->bit_rate / 1000);
-    }
-    fprintf(stdout, "  %-*s: %d\n", WIDTH, "sample-rate",
-            codec_ctx->sample_rate);
-    char sample_fmt[16];
-    av_get_sample_fmt_string(sample_fmt, sizeof(sample_fmt),
-                             codec_ctx->sample_fmt);
-    util_remove_spaces(sample_fmt);
-    fprintf(stdout, "  %-*s: %s\n", WIDTH, "sample-fmt", sample_fmt);
-    fprintf(stdout, "  %-*s: %d\n", WIDTH, "channels",
-            codec_ctx->ch_layout.nb_channels);
-
-    if (codec_ctx->sample_rate != out_samplerate) {
-        fprintf(stdout, "  %-*s: %d -> %d\n", WIDTH, "resample",
-                codec_ctx->sample_rate, out_samplerate);
-    }
-    if (codec_ctx->ch_layout.nb_channels != out_channels) {
-        fprintf(stdout, "  %-*s: %d -> %d channels\n", WIDTH, "resample",
-                codec_ctx->ch_layout.nb_channels, out_channels);
-    }
-
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
         if (pkt->stream_index == stream_index) {
-            ret = avcodec_send_packet(codec_ctx, pkt);
+            ret = decode_process_frame(fmt_ctx, codec_ctx, swr_ctx, frame, pkt,
+                                       output_fp, out_channels, out_samplerate,
+                                       dur_str, stream_index);
             if (ret < 0) {
-                fprintf(stderr,
-                        "Error submitting the packet to the decoder: %s\n",
-                        av_err2str(ret));
                 break;
-            }
-
-            while (ret >= 0) {
-                ret = avcodec_receive_frame(codec_ctx, frame);
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                    break;
-                } else if (ret < 0) {
-                    fprintf(stderr, "Error during decoding: %s\n",
-                            av_err2str(ret));
-                    goto cleanup;
-                }
-
-                uint8_t *output_buffer = NULL;
-                int max_dst_nb_samples =
-                    av_rescale_rnd(frame->nb_samples, out_samplerate,
-                                   codec_ctx->sample_rate, AV_ROUND_UP);
-                int output_buffer_size =
-                    av_samples_alloc(&output_buffer, NULL, out_channels,
-                                     max_dst_nb_samples, AV_SAMPLE_FMT_S16, 0);
-                if (output_buffer_size < 0) {
-                    fprintf(stderr, "Could not allocate output buffer\n");
-                    goto cleanup;
-                }
-
-                int nb_samples = swr_convert(
-                    swr_ctx, &output_buffer, max_dst_nb_samples,
-                    (const uint8_t **)frame->data, frame->nb_samples);
-                if (nb_samples < 0) {
-                    fprintf(stderr, "Error while converting\n");
-                    av_freep(&output_buffer);
-                    goto cleanup;
-                }
-
-                fwrite(output_buffer, 1,
-                       max_dst_nb_samples * out_channels *
-                           av_get_bytes_per_sample(AV_SAMPLE_FMT_S16),
-                       output_fp);
-                av_freep(&output_buffer);
-
-                int64_t current_pts =
-                    frame->pts *
-                    av_q2d(fmt_ctx->streams[stream_index]->time_base);
-                char time_str[9];
-                util_seconds_to_time((int)current_pts, time_str,
-                                     sizeof(time_str));
-                fprintf(stdout, "  %-*s: %s / %s\r", WIDTH, "position",
-                        time_str, dur_str);
-                fflush(stdout);
             }
         }
         av_packet_unref(pkt);
