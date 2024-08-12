@@ -2,6 +2,7 @@
 #include "const.h"
 #include <apr_strings.h>
 #include <apr_thread_pool.h>
+#include <apr_time.h>
 #include <curl/curl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -162,6 +163,7 @@ void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
         exit(-1);
     }
 
+    apr_time_t start = apr_time_now();
     for (int i = 0; i < config->num_files; ++i) {
         for (int j = 0; j < infos[i].num_cids; ++j) {
             download_info_t *download_info =
@@ -180,12 +182,14 @@ void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
             }
         }
     }
-
     while (apr_thread_pool_tasks_count(thread_pool) > 0) {
         apr_sleep(apr_time_from_sec(1));
     }
-
     apr_thread_pool_destroy(thread_pool);
+    apr_time_t end = apr_time_now();
+    fprintf(stdout, "%s %.3f second(s)\n", "Download took",
+            (double)(end - start) / APR_USEC_PER_SEC);
+
     apr_pool_destroy(subpool);
 }
 
