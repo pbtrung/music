@@ -1,89 +1,79 @@
-#include <pthread.h>
-#include <stdbool.h>
+#include <mpg123.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 
-#define MAX_TRACKS 10
-
-typedef struct {
-    bool stopped;
-    bool playing;
-    bool paused;
-    int currentTrack;
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
-} AudioControl;
-
-void *audioThread(void *arg) {
-    AudioControl *control = (AudioControl *)arg;
-
-    for (int i = 0; i < 5; ++i) {
-
-        if (control->stopped == true) {
-            break;
-        }
-
-        while (control->stopped == false && control->paused == true) {
-            pthread_cond_wait(&control->cond, &control->mutex);
-        }
-
-        printf("Playing track %d\n", control->currentTrack);
-        sleep(2);
-
-        if (control->playing == true && control->paused == false) {
-            control->currentTrack = (control->currentTrack + 1) % MAX_TRACKS;
-        }
-    }
-
-    return NULL;
+void print_id3v1(mpg123_id3v1 *v1) {
+    printf("ID3v1 Tag:\n");
+    printf("  Title: %.30s\n", v1->title);
+    printf("  Artist: %.30s\n", v1->artist);
+    printf("  Album: %.30s\n", v1->album);
+    printf("  Year: %.4s\n", v1->year);
+    printf("  Comment: %.30s\n", v1->comment);
+    printf("  Genre: %d\n", v1->genre);
 }
 
-int main() {
-    AudioControl control = {0};
-    pthread_t audioThreadId;
-    char command;
+void print_id3v2(mpg123_id3v2 *v2) {
+    printf("ID3v2 Tag:\n");
+    printf("  Title: %s\n", v2->title ? v2->title->p : "N/A");
+    printf("  Artist: %s\n", v2->artist ? v2->artist->p : "N/A");
+    printf("  Album: %s\n", v2->album ? v2->album->p : "N/A");
+    printf("  Year: %s\n", v2->year ? v2->year->p : "N/A");
+    printf("  Comment: %s\n", v2->comment ? v2->comment->p : "N/A");
+    printf("  Genre: %s\n", v2->genre ? v2->genre->p : "N/A");
 
-    pthread_mutex_init(&control.mutex, NULL);
-    pthread_cond_init(&control.cond, NULL);
+    printf("  Additional Frames:\n");
+    for (int i = 0; i < v2->texts; i++) {
+        printf("    %s: %s\n", v2->text[i].lang, v2->text[i].text.p);
+    }
+    for (int i = 0; i < v2->comments; i++) {
+        printf("    Comment[%d]: %s: %s\n", i, v2->comment_list[i].lang, v2->comment_list[i].text.p);
+    }
+    for (int i = 0; i < v2->pictures; i++) {
+        printf("    Picture[%d]: %s, %zu bytes\n", i, v2->picture[i].description.p, v2->picture[i].size);
+    }
+}
 
-    pthread_create(&audioThreadId, NULL, audioThread, &control);
+int main(int argc, char **argv) {
+    if(argc < 2) {
+        fprintf(stderr, "Usage: %s <mp3_file>\n", argv[0]);
+        return 1;
+    }
 
-    do {
-        printf(
-            "\nEnter command (p: play, s: stop, P: pause, n: next, r: prev): ");
-        scanf(" %c", &command);
+    mpg123_handle *mh;
+    int err;
 
-        switch (command) {
-        case 'p':
-            control.playing = true;
-            control.paused = false;
-            control.stopped = false;
-            pthread_create(&audioThreadId, NULL, audioThread, &control);
-            break;
-        case 's':
-            control.playing = false;
-            control.stopped = true;
-            break;
-        case 'P':
-            control.paused = !control.paused;
-            control.stopped = false;
-            break;
-        case 'n':
-            control.stopped = true;
-            pthread_join(audioThreadId, NULL);
-            control.currentTrack = (control.currentTrack + 1) % MAX_TRACKS;
-            control.playing = true;
-            control.paused = false;
-            control.stopped = false;
-            break;
-        case 'r':
-            control.currentTrack =
-                (control.currentTrack - 1 + MAX_TRACKS) % MAX_TRACKS;
-            control.playing = true;
-            control.paused = false;
-            control.stopped = false;
-            break;
+    // Initialize the mpg123 library
+    if(mpg123_init() != MPG123_OK || (mh = mpg123_new(NULL, &err)) == NULL) {
+        fprintf(stderr, "Unable to initialize mpg123: %s\n", mpg123_plain_strerror(err));
+        return 1;
+    }
+
+    // Open the MP3 file
+    if(mpg123_open(mh, argv[1]) != MPG123_OK) {
+        fprintf(stderr, "Unable to open file: %s\n", mpg123_strerror(mh));
+        mpg123_delete(mh);
+        mpg123_exit();
+        return 1;
+    }
+
+    // Check for and print metadata
+    if(mpg123_meta_check(mh) & MPG123_ID3) {
+        mpg123_id3v1 *v1;
+        mpg123_id3v2 *v2;
+        if(mpg123_id3(mh, &v1, &v2) == MPG123_OK) {
+            if(v1) print_id3v1(v1);
+            if(v2) print_id3v2(v2);
+        } else {
+            fprintf(stderr, "Error reading ID3 tags.\n");
         }
-    } while (1);
+    } else {
+        printf("No ID3 metadata found.\n");
+    }
+
+    // Cleanup
+    mpg123_close(mh);
+    mpg123_delete(mh);
+    mpg123_exit();
+
+    return 0;
 }
