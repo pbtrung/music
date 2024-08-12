@@ -225,7 +225,6 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
 
 static void ffmpeg_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
     if (level <= av_log_get_level()) {
-        log_trace("decode_audio: ffmpeg log");
         log_trace(fmt, vl);
     }
 }
