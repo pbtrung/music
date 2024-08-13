@@ -151,7 +151,7 @@ void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
     std::vector<opus_int16> pcmBuffer(bufferSize * inChannels);
     int samplesRead;
 
-    logd("start decode opus while");
+    logd("start decode opus loop");
     fmtlog::poll(true);
     while ((samplesRead = op_read_stereo(of, pcmBuffer.data(), bufferSize)) >
            0) {
@@ -166,7 +166,7 @@ void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
             std::chrono::duration<double>(op_pcm_tell(of) / opusSampleRate));
         printDecodingProgress(currentPosition, durStr);
     }
-    logd("finish decode opus while");
+    logd("finish decode opus loop");
 
     if (samplesRead < 0) {
         fmt::print(stdout, "\n  {:<{}}: {}", "error", WIDTH,
@@ -341,7 +341,7 @@ void Decoder::readResampleAndWriteMp3Data(
     int err;
     std::string durStr = Utils::formatTime(totalDuration);
 
-    logd("start decode mp3 while");
+    logd("start decode mp3 loop");
     fmtlog::poll(true);
     while ((err = mpg123_read(mh, audioBuffer.data(),
                               bufferSize * inChannels * sizeof(int16_t),
@@ -366,7 +366,7 @@ void Decoder::readResampleAndWriteMp3Data(
             std::chrono::duration<double>(mpg123_tell(mh) / inSampleRate));
         printDecodingProgress(currentPosition, durStr);
     }
-    logd("finish decode mp3 while");
+    logd("finish decode mp3 loop");
 
     if (err != MPG123_DONE) {
         loge("Failed to decode MP3 file: {}", mpg123_strerror(mh));
