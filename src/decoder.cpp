@@ -1,5 +1,6 @@
 #include "decoder.hpp"
 #include "const.hpp"
+#include "fmtlog-inl.hpp"
 #include "utils.hpp"
 #include <chrono>
 #include <fmt/core.h>
@@ -18,21 +19,26 @@ Decoder::Decoder(const std::filesystem::path &filePath,
     : filePath(filePath), extension(extension), pipeName(pipeName) {}
 
 void Decoder::decode() {
+    logd("start decode");
     if (extension == "mp3") {
         decodeMp3();
     } else if (extension == "opus") {
         decodeOpus();
     } else {
-        fmt::print("  {:<{}}: {}", "error", WIDTH, "Unsupported format");
+        loge("Unsupported format: {}", filePath.string());
+        fmt::print("  {:<{}}: {}: {}", "error", WIDTH, "Unsupported format",
+                   filePath.string());
     }
     fmt::print("\n\n");
+    logd("finish decode");
 }
 
 void Decoder::printMetadata() {
     TagLib::FileRef f(filePath.string().data());
     if (f.isNull()) {
-        fmt::print("  {:<{}}: {}\n", "error", WIDTH,
-                   "Invalid or unsupported file");
+        loge("Invalid or unsupported file: {}", filePath.string());
+        fmt::print(stdout, "  {:<{}}: {}: {}\n", "error", WIDTH,
+                   "Invalid or unsupported file", filePath.string());
         return;
     }
 
@@ -63,7 +69,7 @@ void Decoder::printMetadata() {
                        properties->bitrate());
         }
         if (properties->sampleRate() != 0) {
-            fmt::print("  {:<{}}: {} Hz\n", "sample-rate", WIDTH,
+            fmt::print("  {:<{}}: {}\n", "sample-rate", WIDTH,
                        properties->sampleRate());
         }
         if (properties->channels() != 0) {
@@ -100,6 +106,7 @@ void Decoder::printMetadata() {
 }
 
 void Decoder::decodeOpus() {
+    logd("start decode opus");
     int error;
     constexpr double opusSampleRate = 48000;
 
@@ -108,8 +115,9 @@ void Decoder::decodeOpus() {
                                                         op_free);
 
     if (!of) {
+        loge("Failed to open Opus file: {}", filePath.string());
         throw std::runtime_error(
-            std::format("Error opening Opus file: {}", filePath.string()));
+            fmt::format("Failed to open Opus file: {}", filePath.string()));
     }
 
     opus_int64 totalSamples = op_pcm_total(of.get(), -1);
@@ -118,12 +126,14 @@ void Decoder::decodeOpus() {
 
     std::ofstream pipe = openPipe();
     if (!pipe) {
+        loge("Failed to open pipe: {}", pipeName);
         throw std::runtime_error(
-            std::format("Error opening pipe: {}", pipeName));
+            fmt::format("Failed to open pipe: {}", pipeName));
     }
 
     std::string durStr = Utils::formatTime(totalDuration);
     readAndWriteOpusData(of.get(), pipe, totalSamples, opusSampleRate, durStr);
+    logd("finish decode opus");
 }
 
 OggOpusFile *Decoder::openOpusFile(int &error) {
@@ -140,22 +150,25 @@ void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
     std::vector<opus_int16> pcmBuffer(bufferSize * inChannels);
     int samplesRead;
 
+    logd("start decode opus while");
     while ((samplesRead = op_read_stereo(of, pcmBuffer.data(), bufferSize)) >
            0) {
         pipe.write(reinterpret_cast<const char *>(pcmBuffer.data()),
                    samplesRead * inChannels * sizeof(opus_int16));
         if (pipe.fail()) {
-            throw std::runtime_error("Error writing to pipe");
+            loge("Failed to write to pipe");
+            throw std::runtime_error("Failed to write to pipe");
         }
 
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::duration<double>(op_pcm_tell(of) / opusSampleRate));
         printDecodingProgress(currentPosition, durStr);
     }
+    logd("finish decode opus while");
 
     if (samplesRead < 0) {
         fmt::print(stdout, "\n  {:<{}}: {}", "error", WIDTH,
-                   "error decoding Opus file");
+                   "failed to decode Opus file");
     }
 }
 
@@ -167,6 +180,7 @@ SoxrHandle::SoxrHandle(double inputRate, double outputRate, int outChannels,
     handle = soxr_create(inputRate, outputRate, outChannels, &error, &iospec,
                          &q_spec, nullptr);
     if (!handle) {
+        loge("Failed to create SoXR handle: {}", soxr_strerror(error));
         throw std::runtime_error(fmt::format("Failed to create SoXR handle: {}",
                                              soxr_strerror(error)));
     }
@@ -188,19 +202,22 @@ void SoxrHandle::process(const std::vector<int16_t> &audioBuffer,
         reinterpret_cast<soxr_out_t *>(resampledBuffer.data()), outBufferSize,
         resampledSize);
     if (error) {
+        loge("Failed to process sample: {}", soxr_strerror(error));
         throw std::runtime_error(
             fmt::format("Failed to process sample: {}", soxr_strerror(error)));
     }
 }
 
 void Decoder::decodeMp3() {
+    logd("start decode mp3");
     initializeMpg123();
 
     int err;
     mpg123_handle *mh = createMpg123Handle(err);
     if (!mh) {
-        throw std::runtime_error(fmt::format("Error creating mpg123 handle: {}",
-                                             mpg123_strerror(mh)));
+        loge("Failed to create mpg123 handle: {}", mpg123_strerror(mh));
+        throw std::runtime_error(fmt::format(
+            "Failed to create mpg123 handle: {}", mpg123_strerror(mh)));
     }
 
     // Use a unique_ptr with a custom deleter to manage mpg123 handle
@@ -229,8 +246,9 @@ void Decoder::decodeMp3() {
 
     std::ofstream pipe = openPipe();
     if (!pipe) {
+        loge("Failed to open pipe: {}", pipeName);
         throw std::runtime_error(
-            fmt::format("Error opening pipe: {}", pipeName));
+            fmt::format("Failed to open pipe: {}", pipeName));
     }
 
     std::chrono::seconds totalDuration =
@@ -239,11 +257,13 @@ void Decoder::decodeMp3() {
 
     readResampleAndWriteMp3Data(mhPtr.get(), pipe, inSampleRate, inChannels,
                                 totalDuration, soxrHandle);
+    logd("finish decode mp3");
 }
 
 void Decoder::initializeMpg123() {
     if (mpg123_init() != MPG123_OK) {
-        throw std::runtime_error("Unable to initialize mpg123 library");
+        loge("Failed to initialize mpg123 library");
+        throw std::runtime_error("Failed to initialize mpg123 library");
     }
 }
 
@@ -253,8 +273,9 @@ mpg123_handle *Decoder::createMpg123Handle(int &err) {
 
 void Decoder::openMp3File(mpg123_handle *mh) {
     if (mpg123_open(mh, filePath.string().data()) != MPG123_OK) {
+        loge("Failed to open MP3 file: {}", filePath.string());
         throw std::runtime_error(
-            fmt::format("Error opening MP3 file: {}", filePath.string()));
+            fmt::format("Failed to open MP3 file: {}", filePath.string()));
     }
 }
 
@@ -262,8 +283,9 @@ void Decoder::getMp3Format(mpg123_handle *mh, long &inSampleRate,
                            int &inChannels, int &encoding) {
     if (mpg123_getformat(mh, &inSampleRate, &inChannels, &encoding) !=
         MPG123_OK) {
+        loge("Failed to get MP3 format: {}", mpg123_strerror(mh));
         throw std::runtime_error(
-            fmt::format("Error getting MP3 format: {}", mpg123_strerror(mh)));
+            fmt::format("Failed to get MP3 format: {}", mpg123_strerror(mh)));
     }
 }
 
@@ -271,8 +293,9 @@ void Decoder::setMp3Format(mpg123_handle *mh, int outChannels,
                            long outSampleRate, int encoding) {
     if (mpg123_format_none(mh) != MPG123_OK ||
         mpg123_format(mh, outSampleRate, outChannels, encoding) != MPG123_OK) {
+        loge("Failed to set MP3 format: {}", mpg123_strerror(mh));
         throw std::runtime_error(
-            fmt::format("Error setting MP3 format: {}", mpg123_strerror(mh)));
+            fmt::format("Failed to set MP3 format: {}", mpg123_strerror(mh)));
     }
 }
 
@@ -280,8 +303,9 @@ std::chrono::seconds Decoder::getMp3TotalDuration(mpg123_handle *mh,
                                                   long inSampleRate) {
     off_t totalFrames = mpg123_length(mh);
     if (totalFrames == MPG123_ERR) {
+        loge("Failed to get total length of MP3 file: {}", mpg123_strerror(mh));
         throw std::runtime_error(fmt::format(
-            "Error getting total length of MP3 file: {}", mpg123_strerror(mh)));
+            "Failed to get total length of MP3 file: {}", mpg123_strerror(mh)));
     }
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::duration<double>(totalFrames / inSampleRate));
@@ -300,10 +324,10 @@ void Decoder::readResampleAndWriteMp3Data(
     constexpr int outChannels = 2;
     constexpr long outSampleRate = 48000;
 
-    fmt::print("  {:<{}}: {} Hz\n", "i-samplerate", WIDTH, inSampleRate);
-    fmt::print("  {:<{}}: {} Hz\n", "o-samplerate", WIDTH, outSampleRate);
+    fmt::print("  {:<{}}: {}\n", "i-samplerate", WIDTH, inSampleRate);
+    fmt::print("  {:<{}}: {}\n", "o-samplerate", WIDTH, outSampleRate);
     if (outSampleRate != inSampleRate) {
-        fmt::print("  {:<{}}: {} to {} Hz\n", "resample", WIDTH, inSampleRate,
+        fmt::print("  {:<{}}: {} -> {}\n", "resample", WIDTH, inSampleRate,
                    outSampleRate);
         double freqRatio = outSampleRate / static_cast<double>(inSampleRate);
         outBufferSize = static_cast<size_t>(bufferSize * freqRatio + 1.0);
@@ -313,6 +337,7 @@ void Decoder::readResampleAndWriteMp3Data(
     int err;
     std::string durStr = Utils::formatTime(totalDuration);
 
+    logd("start decode mp3 while");
     while ((err = mpg123_read(mh, audioBuffer.data(),
                               bufferSize * inChannels * sizeof(int16_t),
                               &bytesRead)) == MPG123_OK) {
@@ -328,17 +353,20 @@ void Decoder::readResampleAndWriteMp3Data(
                        bytesRead);
         }
         if (pipe.fail()) {
-            throw std::runtime_error("Error writing to pipe");
+            loge("Failed to write to pipe");
+            throw std::runtime_error("Failed to write to pipe");
         }
 
         auto currentPosition = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::duration<double>(mpg123_tell(mh) / inSampleRate));
         printDecodingProgress(currentPosition, durStr);
     }
+    logd("finish decode mp3 while");
 
     if (err != MPG123_DONE) {
+        loge("Failed to decode MP3 file: {}", mpg123_strerror(mh));
         fmt::print(stdout, "\n  {:<{}}: {}: {}", "error", WIDTH,
-                   "error decoding MP3 file", mpg123_strerror(mh));
+                   "failed to decode MP3 file", mpg123_strerror(mh));
     }
 }
 

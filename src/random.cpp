@@ -1,6 +1,7 @@
 #include "random.hpp"
-
+#include "fmtlog-inl.hpp"
 #include <algorithm>
+#include <fmt/core.h>
 #include <random>
 #include <stdexcept>
 #include <unordered_set>
@@ -8,8 +9,9 @@
 std::vector<int> Random::uniqueInts(int numSamples, int minValue,
                                     int maxValue) {
     if (numSamples > (maxValue - minValue + 1)) {
+        loge("Number of samples exceeds the range of unique values");
         throw std::invalid_argument(
-            "number of samples exceeds the range of unique values");
+            "Number of samples exceeds the range of unique values");
     }
 
     std::unordered_set<int> uniqueSet;

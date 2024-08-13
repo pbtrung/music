@@ -1,7 +1,7 @@
 #include "utils.hpp"
+#include "fmtlog-inl.hpp"
 #include <algorithm>
-
-// Utils Implementation
+#include <fmt/core.h>
 
 void Utils::toLowercase(std::string &str) {
     std::ranges::transform(str, str.begin(),
@@ -22,8 +22,11 @@ std::string Utils::getExtension(std::string_view text) {
         std::string result(ext);
         toLowercase(result);
         return result;
+    } else {
+        loge("Failed to find extension from '{}'", text);
+        throw std::runtime_error(
+            fmt::format("Failed to find extension from '{}'", text));
     }
-    return "";
 }
 
 std::string Utils::formatTime(std::chrono::seconds seconds) {
@@ -41,8 +44,6 @@ std::string Utils::formatTime(std::chrono::seconds seconds) {
     }
 }
 
-// Pcre2Pattern Implementation
-
 Pcre2Pattern::Pcre2Pattern(std::string_view pattern) {
     int errcode;
     PCRE2_SIZE erroffset;
@@ -50,6 +51,7 @@ Pcre2Pattern::Pcre2Pattern(std::string_view pattern) {
                        PCRE2_ZERO_TERMINATED, PCRE2_CASELESS, &errcode,
                        &erroffset, nullptr);
     if (!re) {
+        loge("PCRE2 compilation failed");
         throw std::runtime_error("PCRE2 compilation failed");
     }
 }
@@ -62,11 +64,10 @@ pcre2_code *Pcre2Pattern::get() const {
     return re;
 }
 
-// Pcre2MatchData Implementation
-
 Pcre2MatchData::Pcre2MatchData(const Pcre2Pattern &pattern) {
     match_data = pcre2_match_data_create_from_pattern(pattern.get(), nullptr);
     if (!match_data) {
+        loge("Failed to create match data");
         throw std::runtime_error("Failed to create match data");
     }
 }
