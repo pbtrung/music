@@ -11,7 +11,6 @@
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <cstdio>
 
 #include "json.hpp"
 using json = nlohmann::json;
@@ -22,7 +21,7 @@ namespace fs = std::filesystem;
 json readConfig(std::string_view configFilename) {
     std::ifstream file(configFilename.data());
     if (!file) {
-        fmt::print(stderr, "Could not open: {}\n", configFilename);
+        fmt::print(stdout, "Failed to open file: {}\n", configFilename);
         std::exit(EXIT_FAILURE);
     }
 
@@ -33,7 +32,7 @@ json readConfig(std::string_view configFilename) {
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        fmt::print(stderr, "Usage: {} {}\n", argv[0], "<config_file>");
+        fmt::print(stdout, "Usage: {} {}\n", argv[0], "<config_file>");
         return EXIT_FAILURE;
     }
 
@@ -45,13 +44,8 @@ int main(int argc, char *argv[]) {
     std::string dbPath = config["db"];
     std::string logPath = config["log"];
 
-    FILE *log_file = fopen(logPath.data(), "w");
-    if (!log_file) {
-        fmt::print(stdout, "Failed to open log file: {}\n", logPath.data());
-        return EXIT_FAILURE;
-    }
-    fmtlog::setLogFile(log_file, false);
-    fmtlog::setHeaderPattern("{YmdHMSe} {l} {s:<16}: ");
+    fmtlog::setLogFile(logPath.data(), true);
+    fmtlog::setHeaderPattern("{YmdHMSe} {l} {s}: ");
     fmtlog::setLogLevel(fmtlog::DBG);
 
     std::chrono::high_resolution_clock::time_point start, end;
@@ -76,6 +70,7 @@ int main(int argc, char *argv[]) {
             double seconds = static_cast<double>(duration.count()) / 1000;
             logd("Downloads took {:.3f} second(s)", seconds);
             fmt::print(stdout, "Downloads took {:.3f} second(s)\n", seconds);
+            fmtlog::poll();
 
             downloader.assembleFiles();
             fileInfos = downloader.getFileInfo();
@@ -110,6 +105,7 @@ int main(int argc, char *argv[]) {
                         end - start);
                 fmt::print(stdout, "  {:<{}}: {:.3f} ms\n", "took", WIDTH,
                            static_cast<double>(duration.count()) / 1000);
+                fmtlog::poll();
 
                 decoder.decode();
             } catch (const std::exception &e) {
@@ -122,10 +118,10 @@ int main(int argc, char *argv[]) {
         }
         logd("end-5z2ok9v4iik5tdykgms90qrc6");
         fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
-        fflush(log_file);
+        fmtlog::poll();
     }
     logd("finish while");
-    fclose(log_file);
+    fmtlog::closeLogFile();
 
     return EXIT_SUCCESS;
 }

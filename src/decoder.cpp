@@ -132,6 +132,7 @@ void Decoder::decodeOpus() {
     }
 
     std::string durStr = Utils::formatTime(totalDuration);
+    fmtlog::poll();
     readAndWriteOpusData(of.get(), pipe, totalSamples, opusSampleRate, durStr);
     logd("finish decode opus");
 }
@@ -151,6 +152,7 @@ void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
     int samplesRead;
 
     logd("start decode opus while");
+    fmtlog::poll();
     while ((samplesRead = op_read_stereo(of, pcmBuffer.data(), bufferSize)) >
            0) {
         pipe.write(reinterpret_cast<const char *>(pcmBuffer.data()),
@@ -170,6 +172,7 @@ void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
         fmt::print(stdout, "\n  {:<{}}: {}", "error", WIDTH,
                    "failed to decode Opus file");
     }
+    fmtlog::poll();
 }
 
 SoxrHandle::SoxrHandle(double inputRate, double outputRate, int outChannels,
@@ -255,6 +258,7 @@ void Decoder::decodeMp3() {
         getMp3TotalDuration(mhPtr.get(), inSampleRate);
     std::string durStr = Utils::formatTime(totalDuration);
 
+    fmtlog::poll();
     readResampleAndWriteMp3Data(mhPtr.get(), pipe, inSampleRate, inChannels,
                                 totalDuration, soxrHandle);
     logd("finish decode mp3");
@@ -338,6 +342,7 @@ void Decoder::readResampleAndWriteMp3Data(
     std::string durStr = Utils::formatTime(totalDuration);
 
     logd("start decode mp3 while");
+    fmtlog::poll();
     while ((err = mpg123_read(mh, audioBuffer.data(),
                               bufferSize * inChannels * sizeof(int16_t),
                               &bytesRead)) == MPG123_OK) {
@@ -368,6 +373,7 @@ void Decoder::readResampleAndWriteMp3Data(
         fmt::print(stdout, "\n  {:<{}}: {}: {}", "error", WIDTH,
                    "failed to decode MP3 file", mpg123_strerror(mh));
     }
+    fmtlog::poll();
 }
 
 std::ofstream Decoder::openPipe() {
