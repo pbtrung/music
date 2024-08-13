@@ -30,16 +30,15 @@ FileDownloader::FileDownloader(const std::string &filename,
     fileDownloadStatus = DownloadStatus::Pending;
 }
 
-void FileDownloader::downloadCid(const DownloadInfo &downloadInfo) {
-    fmt::print(stdout, "Downloading {}\n", downloadInfo.cid);
+void FileDownloader::downloadCid(int cid_index) {
+    fmt::print(stdout, "Downloading {}\n", cids[cid_index]);
     std::cout.flush();
 
-    fs::path filePath =
-        fs::path(downloadInfo.config["output"]) / downloadInfo.cid;
+    fs::path filePath = fs::path(config["output"]) / cids[cid_index];
     std::ofstream outfile(filePath, std::ios::binary);
     if (!outfile.is_open()) {
         fmt::print(stderr, "Failed to open file {}\n", filePath.string());
-        *(downloadInfo.cidDownloadStatus) = DownloadStatus::Failed;
+        cidDownloadStatus[cid_index] = DownloadStatus::Failed;
         return;
     }
 
@@ -52,21 +51,20 @@ void FileDownloader::downloadCid(const DownloadInfo &downloadInfo) {
 
         long responseCode = 0;
         std::string url;
-        const std::vector<std::string> &gateways =
-            downloadInfo.config["gateways"];
-        const int timeout = downloadInfo.config["timeout"];
-        const int maxRetries = downloadInfo.config["max_retries"];
+        const std::vector<std::string> &gateways = config["gateways"];
+        const int timeout = config["timeout"];
+        const int maxRetries = config["max_retries"];
 
         for (int retries = 0; retries < maxRetries; ++retries) {
-            if (downloadInfo.cid.size() == 59) {
+            if (cids[cid_index].size() == 59) {
                 url = fmt::format("https://{}.ipfs.nftstorage.link",
-                                  downloadInfo.cid);
+                                  cids[cid_index]);
                 curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, 2 * timeout);
             } else {
                 auto randomIndex =
                     Random::uniqueInts(1, 0, gateways.size() - 1)[0];
                 url = fmt::format("https://{}/{}", gateways[randomIndex],
-                                  downloadInfo.cid);
+                                  cids[cid_index]);
                 curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, timeout);
             }
             curl_easy_setopt(curl.get(), CURLOPT_URL, url.data());
@@ -75,8 +73,7 @@ void FileDownloader::downloadCid(const DownloadInfo &downloadInfo) {
                 curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
                                   &responseCode);
                 if (responseCode == 200) {
-                    *(downloadInfo.cidDownloadStatus) =
-                        DownloadStatus::Succeeded;
+                    cidDownloadStatus[cid_index] = DownloadStatus::Succeeded;
                     break;
                 }
             }
@@ -85,12 +82,12 @@ void FileDownloader::downloadCid(const DownloadInfo &downloadInfo) {
         }
 
         if (responseCode != 200) {
-            fmt::print(stderr, "Download of cid {} failed\n", downloadInfo.cid);
-            *(downloadInfo.cidDownloadStatus) = DownloadStatus::Failed;
+            fmt::print(stderr, "Download of cid {} failed\n", cids[cid_index]);
+            cidDownloadStatus[cid_index] = DownloadStatus::Failed;
         }
     } catch (const std::exception &e) {
         fmt::print(stderr, "Error: {}\n", e.what());
-        *(downloadInfo.cidDownloadStatus) = DownloadStatus::Failed;
+        cidDownloadStatus[cid_index] = DownloadStatus::Failed;
     }
 }
 
@@ -127,6 +124,7 @@ void FileDownloader::assemble() {
             if (!infile.is_open()) {
                 fmt::print("  {:<{}} : {}: {}\n", "error", WIDTH,
                            "Failed to open input file", cidPath.string());
+                fileDownloadStatus = DownloadStatus::Failed;
                 return;
             }
 
@@ -165,10 +163,9 @@ std::string FileDownloader::getTrackName() const {
     return trackName;
 }
 
-std::vector<std::string> FileDownloader::getCIDs() const {
-    return cids;
+int FileDownloader::getNumCIDs() {
+    return cids.size();
 }
-
 
 Downloader::Downloader(const json &config, const Database &db)
     : config(config), db(db) {
@@ -198,14 +195,11 @@ Downloader::Downloader(const json &config, const Database &db)
 
 void Downloader::performDownloads() {
     fmt::print(stdout, "\n");
-    dp::thread_pool threadPool(10);
+    dp::thread_pool threadPool(20);
     for (auto &fileDownloader : fileDownloaders) {
-        auto cids = fileDownloader->getCIDs();
-        for (size_t i = 0; i < cids.size(); ++i) {
-            auto downloadTask = [this, &fileDownloader, cids, i]() {
-                DownloadInfo downloadInfo{cids[i], &(fileDownloader->cidDownloadStatus[i]),
-                                          config};
-                fileDownloader->downloadCid(downloadInfo);
+        for (size_t i = 0; i < fileDownloader->getNumCIDs(); ++i) {
+            auto downloadTask = [&fileDownloader, i]() {
+                fileDownloader->downloadCid(i);
             };
             threadPool.enqueue_detach(downloadTask);
         }
@@ -223,7 +217,6 @@ void Downloader::assembleFiles() {
 std::vector<FileInfo> Downloader::getFileInfo() const {
     std::vector<FileInfo> fileInfo;
     fileInfo.reserve(fileDownloaders.size());
-
     for (const auto &fileDownloader : fileDownloaders) {
         if (fileDownloader->getFileDownloadStatus() ==
             DownloadStatus::Succeeded) {

@@ -19,12 +19,6 @@ struct FileInfo {
     std::string trackName;
 };
 
-struct DownloadInfo {
-    std::string cid;
-    DownloadStatus *cidDownloadStatus;
-    json config;
-};
-
 class CurlHandle {
   public:
     CurlHandle() : handle(curl_easy_init()) {
@@ -59,16 +53,16 @@ class FileDownloader {
     DownloadStatus getFileDownloadStatus() const;
     std::string getAlbumPath() const;
     std::string getTrackName() const;
-    std::vector<std::string> getCIDs() const;
-    void downloadCid(const DownloadInfo &downloadInfo);
+    int getNumCIDs();
+    void downloadCid(int cid_index);
 
-    std::vector<DownloadStatus> cidDownloadStatus;
   private:
     std::string filename;
     std::string albumPath;
     std::string trackName;
     std::string extension;
     std::vector<std::string> cids;
+    std::vector<DownloadStatus> cidDownloadStatus;
     json config;
     DownloadStatus fileDownloadStatus;
 };
