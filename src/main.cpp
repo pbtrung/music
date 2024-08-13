@@ -84,6 +84,7 @@ int main(int argc, char *argv[]) {
             fmt::print(stdout, "Error: {}\n\n", e.what());
             return EXIT_FAILURE;
         }
+        fmtlog::poll();
 
         for (const auto &fileInfo : fileInfos) {
             try {
@@ -115,6 +116,7 @@ int main(int argc, char *argv[]) {
                 fmt::print(stdout, "Error: {}\n\n", e.what());
                 continue;
             }
+            fmtlog::poll();
         }
         logd("end-5z2ok9v4iik5tdykgms90qrc6");
         fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
