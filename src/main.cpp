@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
             auto duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end -
                                                                       start);
-            double seconds = (double)duration.count() / 1000;
+            double seconds = static_cast<double>(duration.count()) / 1000;
             logd("Downloads took {:.3f} second(s)", seconds);
             fmt::print(stdout, "Downloads took {:.3f} second(s)\n", seconds);
 
@@ -88,10 +88,19 @@ int main(int argc, char *argv[]) {
                 std::cout.flush();
 
                 fs::path filePath = fs::path(outputDir) / fileInfo.filename;
+
+                auto start = std::chrono::high_resolution_clock::now();
                 // pipeName = "test.pcm";
                 Decoder decoder(filePath.string(), fileInfo.extension,
                                 pipeName);
                 decoder.printMetadata();
+                auto end = std::chrono::high_resolution_clock::now();
+                auto duration =
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        end - start);
+                fmt::print(stdout, "  {:<{}}: {:.3f} ms\n", "took", WIDTH,
+                           static_cast<double>(duration.count()) / 1000);
+
                 decoder.decode();
             } catch (const std::exception &e) {
                 loge("{}", e.what());
@@ -99,6 +108,7 @@ int main(int argc, char *argv[]) {
                 continue;
             }
         }
+        logd("end-5z2ok9v4iik5tdykgms90qrc6");
         fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
     }
     logd("finish while");
