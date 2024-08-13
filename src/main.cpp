@@ -70,17 +70,17 @@ int main(int argc, char *argv[]) {
             double seconds = static_cast<double>(duration.count()) / 1000;
             logd("Downloads took {:.3f} second(s)", seconds);
             fmt::print(stdout, "Downloads took {:.3f} second(s)\n", seconds);
-            fmtlog::poll();
+            fmtlog::poll(true);
 
             downloader.assembleFiles();
             fileInfos = downloader.getFileInfo();
         } catch (const std::exception &e) {
             loge("{}", e.what());
             fmt::print(stdout, "Error: {}\n\n", e.what());
-            fmtlog::poll();
+            fmtlog::poll(true);
             return EXIT_FAILURE;
         }
-        fmtlog::poll();
+        fmtlog::poll(true);
 
         for (const auto &fileInfo : fileInfos) {
             try {
@@ -105,20 +105,20 @@ int main(int argc, char *argv[]) {
                         end - start);
                 fmt::print(stdout, "  {:<{}}: {:.3f} ms\n", "took", WIDTH,
                            static_cast<double>(duration.count()) / 1000);
-                fmtlog::poll();
+                fmtlog::poll(true);
 
                 decoder.decode();
             } catch (const std::exception &e) {
                 loge("{}", e.what());
                 fmt::print(stdout, "Error: {}\n\n", e.what());
-                fmtlog::poll();
+                fmtlog::poll(true);
                 continue;
             }
-            fmtlog::poll();
+            fmtlog::poll(true);
         }
         logd("end-5z2ok9v4iik5tdykgms90qrc6");
         fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
-        fmtlog::poll();
+        fmtlog::poll(true);
     }
     logd("finish while");
     fmtlog::closeLogFile();
