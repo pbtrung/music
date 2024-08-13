@@ -118,6 +118,7 @@ int main(int argc, char *argv[]) {
         }
         logd("end-5z2ok9v4iik5tdykgms90qrc6");
         fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
+        fflush(log_file);
     }
     logd("finish while");
     fclose(log_file);
