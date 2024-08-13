@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
     std::string logPath = config["log"];
 
     FILE *log_file = fopen(logPath.data(), "w");
-    if (log_file) {
+    if (!log_file) {
         fmt::print(stdout, "Failed to open log file: {}\n", logPath.data());
         return EXIT_FAILURE;
     }
