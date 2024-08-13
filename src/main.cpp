@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <cstdio>
 
 #include "json.hpp"
 using json = nlohmann::json;
@@ -44,7 +45,12 @@ int main(int argc, char *argv[]) {
     std::string dbPath = config["db"];
     std::string logPath = config["log"];
 
-    fmtlog::setLogFile(logPath.data(), false);
+    FILE *log_file = fopen(logPath.data(), "w");
+    if (log_file) {
+        fmt::print(stdout, "Failed to open log file: {}\n", logPath.data());
+        return EXIT_FAILURE;
+    }
+    fmtlog::setLogFile(log_file, false);
     fmtlog::setHeaderPattern("{YmdHMSe} {l} {s:<16}: ");
     fmtlog::setLogLevel(fmtlog::DBG);
 
@@ -114,7 +120,7 @@ int main(int argc, char *argv[]) {
         fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
     }
     logd("finish while");
-    fmtlog::closeLogFile();
+    fclose(log_file);
 
     return EXIT_SUCCESS;
 }
