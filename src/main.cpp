@@ -44,9 +44,11 @@ int main(int argc, char *argv[]) {
     std::string dbPath = config["db"];
     std::string logPath = config["log"];
 
-    fmtlog::setLogFile(logPath.data(), true);
+    fmtlog::setLogFile(logPath.data(), false);
     fmtlog::setHeaderPattern("{YmdHMSe} {l} {s:<16}: ");
     fmtlog::setLogLevel(fmtlog::DBG);
+
+    std::chrono::high_resolution_clock::time_point start, end;
 
     logd("start while");
     while (true) {
@@ -59,9 +61,9 @@ int main(int argc, char *argv[]) {
 
             Downloader downloader(config, db);
 
-            auto start = std::chrono::high_resolution_clock::now();
+            start = std::chrono::high_resolution_clock::now();
             downloader.performDownloads();
-            auto end = std::chrono::high_resolution_clock::now();
+            end = std::chrono::high_resolution_clock::now();
             auto duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end -
                                                                       start);
@@ -89,12 +91,12 @@ int main(int argc, char *argv[]) {
 
                 fs::path filePath = fs::path(outputDir) / fileInfo.filename;
 
-                auto start = std::chrono::high_resolution_clock::now();
+                start = std::chrono::high_resolution_clock::now();
                 // pipeName = "test.pcm";
                 Decoder decoder(filePath.string(), fileInfo.extension,
                                 pipeName);
                 decoder.printMetadata();
-                auto end = std::chrono::high_resolution_clock::now();
+                end = std::chrono::high_resolution_clock::now();
                 auto duration =
                     std::chrono::duration_cast<std::chrono::microseconds>(
                         end - start);
@@ -112,6 +114,7 @@ int main(int argc, char *argv[]) {
         fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
     }
     logd("finish while");
+    fmtlog::closeLogFile();
 
     return EXIT_SUCCESS;
 }
