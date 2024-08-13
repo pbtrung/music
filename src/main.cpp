@@ -82,6 +82,7 @@ int main(int argc, char *argv[]) {
         } catch (const std::exception &e) {
             loge("{}", e.what());
             fmt::print(stdout, "Error: {}\n\n", e.what());
+            fmtlog::poll();
             return EXIT_FAILURE;
         }
         fmtlog::poll();
@@ -114,6 +115,7 @@ int main(int argc, char *argv[]) {
             } catch (const std::exception &e) {
                 loge("{}", e.what());
                 fmt::print(stdout, "Error: {}\n\n", e.what());
+                fmtlog::poll();
                 continue;
             }
             fmtlog::poll();
