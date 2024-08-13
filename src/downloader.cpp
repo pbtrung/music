@@ -103,43 +103,62 @@ void FileDownloader::assemble() {
     if (fileDownloadStatus == DownloadStatus::Succeeded) {
         fmt::print(stdout, "\n");
         fmt::print(stdout, "{:<{}}: {}\n", "Assemble", WIDTH + 2, filename);
-        fmt::print(stdout, "  {:<{}}: {}\n", "Path", WIDTH, albumPath);
-        fmt::print(stdout, "  {:<{}}: {}\n", "Filename", WIDTH, trackName);
+        fmt::print(stdout, "  {:<{}}: {}\n", "path", WIDTH, albumPath);
+        fmt::print(stdout, "  {:<{}}: {}\n", "filename", WIDTH, trackName);
         std::cout.flush();
 
         std::string output = config["output"].get<std::string>();
         fs::path filePath = fs::path(output) / fs::path(filename);
-        std::ofstream outfile(filePath, std::ios::binary);
-        if (!outfile.is_open()) {
-            fmt::print("  {:<{}} : {}: {}\n", "error", WIDTH,
-                       "Failed to open output file", filePath.string());
-            return;
-        }
 
-        std::vector<char> buffer(4096);
-        for (const auto &cid : cids) {
-            fs::path cidPath = fs::path(output) / fs::path(cid);
+        if (cids.size() == 1) {
+            // Move the single CID file to the output path
+            fs::path cidPath = fs::path(output) / fs::path(cids.front());
 
-            std::ifstream infile(cidPath, std::ios::binary);
-            if (!infile.is_open()) {
-                fmt::print("  {:<{}} : {}: {}\n", "error", WIDTH,
-                           "Failed to open input file", cidPath.string());
+            try {
+                fs::rename(cidPath, filePath);
+                fmt::print("  {:<{}}: {} -> {}\n", "info", WIDTH, cids.front(),
+                           filename);
+            } catch (const fs::filesystem_error &e) {
+                fmt::print("  {:<{}}: {}: {}\n", "error", WIDTH,
+                           "Failed to move file", e.what());
+                fileDownloadStatus = DownloadStatus::Failed;
+                return;
+            }
+        } else {
+            // Handle the case where there are multiple CID files
+            std::ofstream outfile(filePath, std::ios::binary);
+            if (!outfile.is_open()) {
+                fmt::print("  {:<{}}: {}: {}\n", "error", WIDTH,
+                           "Failed to open output file", filePath.string());
                 fileDownloadStatus = DownloadStatus::Failed;
                 return;
             }
 
-            while (infile) {
-                infile.read(buffer.data(), buffer.size());
-                outfile.write(buffer.data(), infile.gcount());
-            }
-            infile.close();
+            std::vector<char> buffer(4096);
+            for (const auto &cid : cids) {
+                fs::path cidPath = fs::path(output) / fs::path(cid);
 
-            if (!fs::remove(cidPath)) {
-                fmt::print("  {:<{}} : {}: {}\n", "error", WIDTH,
-                           "Failed to delete file", cidPath.string());
+                std::ifstream infile(cidPath, std::ios::binary);
+                if (!infile.is_open()) {
+                    fmt::print("  {:<{}}: {}: {}\n", "error", WIDTH,
+                               "Failed to open input file", cidPath.string());
+                    fileDownloadStatus = DownloadStatus::Failed;
+                    return;
+                }
+
+                while (infile) {
+                    infile.read(buffer.data(), buffer.size());
+                    outfile.write(buffer.data(), infile.gcount());
+                }
+                infile.close();
+
+                if (!fs::remove(cidPath)) {
+                    fmt::print("  {:<{}}: {}: {}\n", "error", WIDTH,
+                               "Failed to delete file", cidPath.string());
+                }
             }
+            outfile.close();
         }
-        outfile.close();
     }
 }
 
@@ -172,6 +191,7 @@ Downloader::Downloader(const json &config, const Database &db)
     const int maxValue = db.countTracks();
     const int numFiles = config["num_files"];
     const int minValue = config["min_value"];
+    fileDownloaders.reserve(numFiles);
 
     if (numFiles <= 0 || minValue < 0 || minValue >= maxValue) {
         throw std::invalid_argument(

@@ -3,7 +3,7 @@
 
 #include "database.hpp"
 #include "json.hpp"
-#include "thread_pool.hpp" // Include your thread pool header
+#include "thread_pool.hpp"
 #include <curl/curl.h>
 #include <string>
 #include <vector>

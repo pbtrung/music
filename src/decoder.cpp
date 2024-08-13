@@ -23,7 +23,7 @@ void Decoder::decode() {
     } else if (extension == "opus") {
         decodeOpus();
     } else {
-        fmt::print("  {:<{}} : {}", "error", WIDTH, "Unsupported format");
+        fmt::print("  {:<{}}: {}", "error", WIDTH, "Unsupported format");
     }
     fmt::print("\n\n");
 }
@@ -31,14 +31,14 @@ void Decoder::decode() {
 void Decoder::printMetadata() {
     TagLib::FileRef f(filePath.string().data());
     if (f.isNull()) {
-        fmt::print("  {:<{}} : {}\n", "error", WIDTH,
+        fmt::print("  {:<{}}: {}\n", "error", WIDTH,
                    "Invalid or unsupported file");
         return;
     }
 
     auto printTag = [](std::string_view name, const TagLib::String &value) {
         if (!value.isEmpty()) {
-            fmt::print("  {:<{}} : {}\n", name, WIDTH,
+            fmt::print("  {:<{}}: {}\n", name, WIDTH,
                        value.stripWhiteSpace().to8Bit(true));
         }
     };
@@ -48,33 +48,33 @@ void Decoder::printMetadata() {
         printTag("artist", tag->artist());
         printTag("album", tag->album());
         if (tag->year() != 0) {
-            fmt::print("  {:<{}} : {}\n", "year", WIDTH, tag->year());
+            fmt::print("  {:<{}}: {}\n", "year", WIDTH, tag->year());
         }
         printTag("comment", tag->comment());
         if (tag->track() != 0) {
-            fmt::print("  {:<{}} : {}\n", "track", WIDTH, tag->track());
+            fmt::print("  {:<{}}: {}\n", "track", WIDTH, tag->track());
         }
         printTag("genre", tag->genre());
     }
 
     if (auto *properties = f.audioProperties()) {
         if (properties->bitrate() != 0) {
-            fmt::print("  {:<{}} : {} kbps\n", "bitrate", WIDTH,
+            fmt::print("  {:<{}}: {} kbps\n", "bitrate", WIDTH,
                        properties->bitrate());
         }
         if (properties->sampleRate() != 0) {
-            fmt::print("  {:<{}} : {} Hz\n", "sample-rate", WIDTH,
+            fmt::print("  {:<{}}: {} Hz\n", "sample-rate", WIDTH,
                        properties->sampleRate());
         }
         if (properties->channels() != 0) {
-            fmt::print("  {:<{}} : {}\n", "channels", WIDTH,
+            fmt::print("  {:<{}}: {}\n", "channels", WIDTH,
                        properties->channels());
         }
         if (properties->lengthInMilliseconds() != 0) {
             auto length =
                 std::chrono::milliseconds(properties->lengthInMilliseconds());
             fmt::print(
-                "  {:<{}} : {}\n", "length", WIDTH,
+                "  {:<{}}: {}\n", "length", WIDTH,
                 Utils::formatTime(
                     std::chrono::duration_cast<std::chrono::seconds>(length)));
         }
@@ -86,7 +86,7 @@ void Decoder::printMetadata() {
         if (!key.isEmpty() && !values.isEmpty()) {
             std::string keyStr = key.stripWhiteSpace().to8Bit(true);
             Utils::toLowercase(keyStr);
-            fmt::print("  {:<{}} : ", keyStr, WIDTH);
+            fmt::print("  {:<{}}: ", keyStr, WIDTH);
             for (const auto &value : values) {
                 if (!value.isEmpty()) {
                     fmt::print("{}", value.stripWhiteSpace().to8Bit(true));
@@ -154,7 +154,7 @@ void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
     }
 
     if (samplesRead < 0) {
-        fmt::print(stdout, "\n  {:<{}} : {}", "error", WIDTH,
+        fmt::print(stdout, "\n  {:<{}}: {}", "error", WIDTH,
                    "error decoding Opus file");
     }
 }
@@ -300,10 +300,10 @@ void Decoder::readResampleAndWriteMp3Data(
     constexpr int outChannels = 2;
     constexpr long outSampleRate = 48000;
 
-    fmt::print("  {:<{}} : {} Hz\n", "i-samplerate", WIDTH, inSampleRate);
-    fmt::print("  {:<{}} : {} Hz\n", "o-samplerate", WIDTH, outSampleRate);
+    fmt::print("  {:<{}}: {} Hz\n", "i-samplerate", WIDTH, inSampleRate);
+    fmt::print("  {:<{}}: {} Hz\n", "o-samplerate", WIDTH, outSampleRate);
     if (outSampleRate != inSampleRate) {
-        fmt::print("  {:<{}} : {} to {} Hz\n", "resample", WIDTH, inSampleRate,
+        fmt::print("  {:<{}}: {} to {} Hz\n", "resample", WIDTH, inSampleRate,
                    outSampleRate);
         double freqRatio = outSampleRate / static_cast<double>(inSampleRate);
         outBufferSize = static_cast<size_t>(bufferSize * freqRatio + 1.0);
@@ -337,7 +337,7 @@ void Decoder::readResampleAndWriteMp3Data(
     }
 
     if (err != MPG123_DONE) {
-        fmt::print(stdout, "\n  {:<{}} : {}: {}", "error", WIDTH,
+        fmt::print(stdout, "\n  {:<{}}: {}: {}", "error", WIDTH,
                    "error decoding MP3 file", mpg123_strerror(mh));
     }
 }
@@ -348,7 +348,7 @@ std::ofstream Decoder::openPipe() {
 
 void Decoder::printDecodingProgress(const std::chrono::seconds currentPosition,
                                     const std::string &durStr) {
-    fmt::print("  {:<{}} : {} / {}\r", "position", WIDTH,
+    fmt::print("  {:<{}}: {} / {}\r", "position", WIDTH,
                Utils::formatTime(currentPosition), durStr);
     std::cout.flush();
 }
