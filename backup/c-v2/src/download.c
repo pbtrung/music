@@ -18,6 +18,9 @@ apr_status_t download_cleanup(void *data) {
         free(info->album_path);
         free(info->filename);
         free(info->extension);
+        for (int j = 0; j < info->num_cids; ++j) {
+            free(info->cids[j]);
+        }
         free(info->cids);
         free(info->cid_download_status);
     }
