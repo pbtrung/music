@@ -18,9 +18,10 @@ class SoxrResampler {
                   int quality);
     ~SoxrResampler();
 
-    void process(std::vector<int16_t> audioBuffer, size_t inputLength,
-                 std::vector<int16_t> resampledBuffer, size_t outBufferSize,
-                 size_t *resampledSize);
+    void process(const std::vector<int16_t> &audioBuffer,
+                 const size_t inputLength,
+                 std::vector<int16_t> &resampledBuffer,
+                 const size_t outBufferSize, size_t *resampledSize);
 
   private:
     soxr_t handle;

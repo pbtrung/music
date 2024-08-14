@@ -192,10 +192,10 @@ SoxrResampler::~SoxrResampler() {
     soxr_delete(handle);
 }
 
-void SoxrResampler::process(std::vector<int16_t> audioBuffer,
-                            size_t inputLength,
-                            std::vector<int16_t> resampledBuffer,
-                            size_t outBufferSize, size_t *resampledSize) {
+void SoxrResampler::process(const std::vector<int16_t> &audioBuffer,
+                            const size_t inputLength,
+                            std::vector<int16_t> &resampledBuffer,
+                            const size_t outBufferSize, size_t *resampledSize) {
     soxr_error_t error = soxr_process(
         handle, reinterpret_cast<const soxr_in_t *>(audioBuffer.data()),
         inputLength, nullptr,
