@@ -64,9 +64,9 @@ std::string Utils::formatTime(std::chrono::seconds seconds) {
     auto secs = seconds - hrs - mins;
 
     if (hrs.count() > 0) {
-        return std::format("{:02d}:{:02d}:{:02d}", hrs.count(), mins.count(),
+        return fmt::format("{:02d}:{:02d}:{:02d}", hrs.count(), mins.count(),
                            secs.count());
     } else {
-        return std::format("{:02d}:{:02d}", mins.count(), secs.count());
+        return fmt::format("{:02d}:{:02d}", mins.count(), secs.count());
     }
 }
