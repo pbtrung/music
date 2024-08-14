@@ -2,9 +2,7 @@
 #define UTILS_HPP
 
 #include <chrono>
-#include <format>
-#include <span>
-#include <stdexcept>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -21,26 +19,15 @@ class Utils {
 
     // Formats time in seconds to HH:MM:SS or MM:SS
     static std::string formatTime(std::chrono::seconds seconds);
-};
-
-class Pcre2Pattern {
-  public:
-    explicit Pcre2Pattern(std::string_view pattern);
-    ~Pcre2Pattern();
-    pcre2_code *get() const;
 
   private:
-    pcre2_code *re = nullptr;
-};
+    using Pcre2CodePtr =
+        std::unique_ptr<pcre2_code, decltype(&pcre2_code_free)>;
+    using Pcre2MatchDataPtr =
+        std::unique_ptr<pcre2_match_data, decltype(&pcre2_match_data_free)>;
 
-class Pcre2MatchData {
-  public:
-    explicit Pcre2MatchData(const Pcre2Pattern &pattern);
-    ~Pcre2MatchData();
-    pcre2_match_data *get() const;
-
-  private:
-    pcre2_match_data *match_data = nullptr;
+    static Pcre2CodePtr compilePattern(std::string_view pattern);
+    static Pcre2MatchDataPtr createMatchData(const pcre2_code *pattern);
 };
 
 #endif // UTILS_HPP
