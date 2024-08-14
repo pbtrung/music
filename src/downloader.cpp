@@ -4,6 +4,7 @@
 #include "random.hpp"
 #include "thread_pool.hpp"
 #include "utils.hpp"
+#include <curl/curl.h>
 #include <filesystem>
 #include <fmt/core.h>
 #include <fstream>
@@ -12,12 +13,14 @@
 
 namespace fs = std::filesystem;
 
-CurlHandle::CurlHandle() {
-    handle = curl_easy_init();
-    if (!handle) {
+static std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> createCurlHandle() {
+    auto curl = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(
+        curl_easy_init(), curl_easy_cleanup);
+    if (!curl) {
         loge("Failed to initialize CURL handle");
         throw std::runtime_error("Failed to initialize CURL handle");
     }
+    return curl;
 }
 
 static size_t writeCallback(void *ptr, size_t size, size_t nmemb,
@@ -53,7 +56,7 @@ void FileDownloader::downloadCid(int cid_index) {
     }
 
     try {
-        CurlHandle curl;
+        auto curl = createCurlHandle();
 
         curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, writeCallback);
         curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &outfile);

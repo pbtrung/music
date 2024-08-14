@@ -3,7 +3,6 @@
 
 #include "database.hpp"
 #include "json.hpp"
-#include <curl/curl.h>
 #include <string>
 #include <vector>
 
@@ -16,24 +15,6 @@ struct FileInfo {
     const std::string extension;
     const std::string albumPath;
     const std::string trackName;
-};
-
-class CurlHandle {
-  public:
-    CurlHandle();
-
-    ~CurlHandle() {
-        if (handle) {
-            curl_easy_cleanup(handle);
-        }
-    }
-
-    CURL *get() const {
-        return handle;
-    }
-
-  private:
-    CURL *handle;
 };
 
 class FileDownloader {
