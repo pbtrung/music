@@ -6,7 +6,6 @@
 #include <fmt/core.h>
 #include <fstream>
 #include <iostream>
-#include <memory>
 #include <stdexcept>
 #include <taglib/fileref.h>
 #include <taglib/tag.h>
@@ -15,7 +14,8 @@
 namespace fs = std::filesystem;
 
 Decoder::Decoder(const std::filesystem::path &filePath,
-                 std::string_view extension, std::string_view pipeName)
+                 const std::string_view &extension,
+                 const std::string_view &pipeName)
     : filePath(filePath), extension(extension), pipeName(pipeName) {}
 
 void Decoder::decode() {
@@ -107,18 +107,9 @@ void Decoder::printMetadata() {
 
 void Decoder::decodeOpus() {
     logd("start decode opus");
-    int error;
     constexpr double opusSampleRate = 48000;
 
-    // Use std::unique_ptr to manage the Opus file handle
-    std::unique_ptr<OggOpusFile, decltype(&op_free)> of(openOpusFile(error),
-                                                        op_free);
-
-    if (!of) {
-        loge("Failed to open Opus file: {}", filePath.string());
-        throw std::runtime_error(
-            fmt::format("Failed to open Opus file: {}", filePath.string()));
-    }
+    auto of = openOpusFile();
 
     opus_int64 totalSamples = op_pcm_total(of.get(), -1);
     auto totalDuration = std::chrono::duration_cast<std::chrono::seconds>(
@@ -137,8 +128,15 @@ void Decoder::decodeOpus() {
     logd("finish decode opus");
 }
 
-OggOpusFile *Decoder::openOpusFile(int &error) {
-    return op_open_file(filePath.string().data(), &error);
+std::unique_ptr<OggOpusFile, decltype(&op_free)> Decoder::openOpusFile() {
+    int error;
+    OggOpusFile *of = op_open_file(filePath.string().data(), &error);
+    if (!of) {
+        loge("Failed to open Opus file: {}", filePath.string());
+        throw std::runtime_error(
+            fmt::format("Failed to open Opus file: {}", filePath.string()));
+    }
+    return std::unique_ptr<OggOpusFile, decltype(&op_free)>(of, op_free);
 }
 
 void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
@@ -175,11 +173,12 @@ void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
     fmtlog::poll(true);
 }
 
-SoxrHandle::SoxrHandle(double inputRate, double outputRate, int outChannels,
-                       const soxr_datatype_t &in_type,
-                       const soxr_datatype_t &out_type, const int quality) {
-    iospec = soxr_io_spec(in_type, out_type);
-    q_spec = soxr_quality_spec(quality, 0);
+SoxrResampler::SoxrResampler(double inputRate, double outputRate,
+                             int outChannels, soxr_datatype_t in_type,
+                             soxr_datatype_t out_type, int quality) {
+    soxr_io_spec_t iospec = soxr_io_spec(in_type, out_type);
+    soxr_quality_spec_t q_spec = soxr_quality_spec(quality, 0);
+    soxr_error_t error;
     handle = soxr_create(inputRate, outputRate, outChannels, &error, &iospec,
                          &q_spec, nullptr);
     if (!handle) {
@@ -189,21 +188,20 @@ SoxrHandle::SoxrHandle(double inputRate, double outputRate, int outChannels,
     }
 }
 
-SoxrHandle::~SoxrHandle() {
-    if (handle) {
-        soxr_delete(handle);
-    }
+SoxrResampler::~SoxrResampler() {
+    soxr_delete(handle);
 }
 
-void SoxrHandle::process(const std::vector<int16_t> &audioBuffer,
-                         const size_t inputLength,
-                         std::vector<int16_t> &resampledBuffer,
-                         const size_t outBufferSize, size_t *resampledSize) {
-    error = soxr_process(
+void SoxrResampler::process(const std::vector<int16_t> &audioBuffer,
+                            size_t inputLength,
+                            std::vector<int16_t> resampledBuffer,
+                            size_t outBufferSize, size_t *resampledSize) {
+    soxr_error_t error = soxr_process(
         handle, reinterpret_cast<const soxr_in_t *>(audioBuffer.data()),
         inputLength, nullptr,
         reinterpret_cast<soxr_out_t *>(resampledBuffer.data()), outBufferSize,
         resampledSize);
+
     if (error) {
         loge("Failed to process sample: {}", soxr_strerror(error));
         throw std::runtime_error(
@@ -215,37 +213,21 @@ void Decoder::decodeMp3() {
     logd("start decode mp3");
     initializeMpg123();
 
-    int err;
-    mpg123_handle *mh = createMpg123Handle(err);
-    if (!mh) {
-        loge("Failed to create mpg123 handle: {}", mpg123_strerror(mh));
-        throw std::runtime_error(fmt::format(
-            "Failed to create mpg123 handle: {}", mpg123_strerror(mh)));
-    }
-
-    // Use a unique_ptr with a custom deleter to manage mpg123 handle
-    auto cleanupMpg123 = [](mpg123_handle *handle) {
-        mpg123_close(handle);
-        mpg123_delete(handle);
-        mpg123_exit();
-    };
-    std::unique_ptr<mpg123_handle, decltype(cleanupMpg123)> mhPtr(
-        mh, cleanupMpg123);
+    auto mhPtr = createMpg123Handle();
 
     openMp3File(mhPtr.get());
 
     long inSampleRate;
     int inChannels, encoding;
-    getMp3Format(mhPtr.get(), inSampleRate, inChannels, encoding);
+    getMp3Format(mhPtr.get(), &inSampleRate, &inChannels, &encoding);
 
     constexpr int outChannels = 2;
     constexpr long outSampleRate = 48000;
     encoding = MPG123_ENC_SIGNED_16;
     setMp3Format(mhPtr.get(), outChannels, outSampleRate, encoding);
 
-    // Configure the resampler
-    SoxrHandle soxrHandle(inSampleRate, outSampleRate, outChannels,
-                          SOXR_INT16_I, SOXR_INT16_I, SOXR_HQ);
+    SoxrResampler soxrResampler(inSampleRate, outSampleRate, outChannels,
+                                SOXR_INT16_I, SOXR_INT16_I, SOXR_HQ);
 
     std::ofstream pipe = openPipe();
     if (!pipe) {
@@ -260,8 +242,28 @@ void Decoder::decodeMp3() {
 
     fmtlog::poll(true);
     readResampleAndWriteMp3Data(mhPtr.get(), pipe, inSampleRate, inChannels,
-                                totalDuration, soxrHandle);
+                                totalDuration, soxrResampler);
     logd("finish decode mp3");
+}
+
+std::unique_ptr<mpg123_handle, std::function<void(mpg123_handle *)>>
+Decoder::createMpg123Handle() {
+    int err;
+    mpg123_handle *mh = mpg123_new(nullptr, &err);
+    if (!mh) {
+        loge("Failed to create mpg123 handle: {}", mpg123_strerror(mh));
+        throw std::runtime_error(fmt::format(
+            "Failed to create mpg123 handle: {}", mpg123_strerror(mh)));
+    }
+    auto cleanupMpg123 = [](mpg123_handle *handle) {
+        if (handle) {
+            mpg123_close(handle);
+            mpg123_delete(handle);
+            mpg123_exit();
+        }
+    };
+    return std::unique_ptr<mpg123_handle, std::function<void(mpg123_handle *)>>(
+        mh, cleanupMpg123);
 }
 
 void Decoder::initializeMpg123() {
@@ -269,10 +271,6 @@ void Decoder::initializeMpg123() {
         loge("Failed to initialize mpg123 library");
         throw std::runtime_error("Failed to initialize mpg123 library");
     }
-}
-
-mpg123_handle *Decoder::createMpg123Handle(int &err) {
-    return mpg123_new(nullptr, &err);
 }
 
 void Decoder::openMp3File(mpg123_handle *mh) {
@@ -283,10 +281,9 @@ void Decoder::openMp3File(mpg123_handle *mh) {
     }
 }
 
-void Decoder::getMp3Format(mpg123_handle *mh, long &inSampleRate,
-                           int &inChannels, int &encoding) {
-    if (mpg123_getformat(mh, &inSampleRate, &inChannels, &encoding) !=
-        MPG123_OK) {
+void Decoder::getMp3Format(mpg123_handle *mh, long *inSampleRate,
+                           int *inChannels, int *encoding) {
+    if (mpg123_getformat(mh, inSampleRate, inChannels, encoding) != MPG123_OK) {
         loge("Failed to get MP3 format: {}", mpg123_strerror(mh));
         throw std::runtime_error(
             fmt::format("Failed to get MP3 format: {}", mpg123_strerror(mh)));
@@ -317,7 +314,7 @@ std::chrono::seconds Decoder::getMp3TotalDuration(mpg123_handle *mh,
 
 void Decoder::readResampleAndWriteMp3Data(
     mpg123_handle *mh, std::ofstream &pipe, long inSampleRate, int inChannels,
-    const std::chrono::seconds totalDuration, SoxrHandle &soxrHandle) {
+    const std::chrono::seconds totalDuration, SoxrResampler &soxrResampler) {
 
     constexpr size_t bufferSize = 4096;
     std::vector<int16_t> audioBuffer(bufferSize * inChannels);
@@ -349,8 +346,8 @@ void Decoder::readResampleAndWriteMp3Data(
         if (outSampleRate != inSampleRate) {
             size_t resampledSize;
             size_t inputLength = (bytesRead / sizeof(int16_t)) / inChannels;
-            soxrHandle.process(audioBuffer, inputLength, resampledBuffer,
-                               outBufferSize, &resampledSize);
+            soxrResampler.process(audioBuffer, inputLength, resampledBuffer,
+                                  outBufferSize, &resampledSize);
             pipe.write(reinterpret_cast<const char *>(resampledBuffer.data()),
                        resampledSize * outChannels * sizeof(int16_t));
         } else {

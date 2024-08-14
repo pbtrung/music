@@ -177,23 +177,23 @@ void FileDownloader::assemble() {
     }
 }
 
-std::string FileDownloader::getFilename() const {
+const std::string FileDownloader::getFilename() const {
     return filename;
 }
 
-std::string FileDownloader::getExtension() const {
+const std::string FileDownloader::getExtension() const {
     return extension;
 }
 
-DownloadStatus FileDownloader::getFileDownloadStatus() const {
+const DownloadStatus FileDownloader::getFileDownloadStatus() const {
     return fileDownloadStatus;
 }
 
-std::string FileDownloader::getAlbumPath() const {
+const std::string FileDownloader::getAlbumPath() const {
     return albumPath;
 }
 
-std::string FileDownloader::getTrackName() const {
+const std::string FileDownloader::getTrackName() const {
     return trackName;
 }
 
