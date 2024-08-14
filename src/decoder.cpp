@@ -136,7 +136,7 @@ std::unique_ptr<OggOpusFile, decltype(&op_free)> Decoder::openOpusFile() {
         throw std::runtime_error(
             fmt::format("Failed to open Opus file: {}", filePath.string()));
     }
-    return std::unique_ptr<OggOpusFile, decltype(&op_free)>(of, op_free);
+    return {of, op_free};
 }
 
 void Decoder::readAndWriteOpusData(OggOpusFile *of, std::ofstream &pipe,
@@ -262,8 +262,7 @@ Decoder::createMpg123Handle() {
             mpg123_exit();
         }
     };
-    return std::unique_ptr<mpg123_handle, std::function<void(mpg123_handle *)>>(
-        mh, cleanupMpg123);
+    return {mh, cleanupMpg123};
 }
 
 void Decoder::initializeMpg123() {
