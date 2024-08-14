@@ -11,6 +11,8 @@
 #include <string_view>
 #include <vector>
 
+namespace fs = std::filesystem;
+
 class SoxrResampler {
   public:
     SoxrResampler(double inputRate, double outputRate, int channels,
@@ -18,10 +20,9 @@ class SoxrResampler {
                   int quality);
     ~SoxrResampler();
 
-    void process(const std::vector<int16_t> &audioBuffer,
-                 const size_t inputLength,
-                 std::vector<int16_t> &resampledBuffer,
-                 const size_t outBufferSize, size_t *resampledSize);
+    void process(const std::vector<int16_t> &audioBuffer, size_t inputLength,
+                 std::vector<int16_t> &resampledBuffer, size_t outBufferSize,
+                 size_t &resampledSize);
 
   private:
     soxr_t handle;
@@ -29,15 +30,14 @@ class SoxrResampler {
 
 class Decoder {
   public:
-    Decoder(const std::filesystem::path &filePath,
-            const std::string_view &extension,
+    Decoder(const fs::path &filePath, const std::string_view &extension,
             const std::string_view &pipeName);
 
     void printMetadata();
     void decode();
 
   private:
-    const std::filesystem::path filePath;
+    const fs::path filePath;
     const std::string extension;
     const std::string pipeName;
 
@@ -56,8 +56,8 @@ class Decoder {
     std::unique_ptr<mpg123_handle, std::function<void(mpg123_handle *)>>
     createMpg123Handle();
     void openMp3File(mpg123_handle *mh);
-    void getMp3Format(mpg123_handle *mh, long *inSampleRate, int *inChannels,
-                      int *encoding);
+    void getMp3Format(mpg123_handle *mh, long &inSampleRate, int &inChannels,
+                      int &encoding);
     void setMp3Format(mpg123_handle *mh, int outChannels, long outSampleRate,
                       int encoding);
     std::chrono::seconds getMp3TotalDuration(mpg123_handle *mh,

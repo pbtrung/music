@@ -3,7 +3,6 @@
 
 #include "database.hpp"
 #include "json.hpp"
-#include "thread_pool.hpp"
 #include <curl/curl.h>
 #include <string>
 #include <vector>
@@ -21,11 +20,7 @@ struct FileInfo {
 
 class CurlHandle {
   public:
-    CurlHandle() : handle(curl_easy_init()) {
-        if (!handle) {
-            throw std::runtime_error("Failed to initialize CURL handle");
-        }
-    }
+    CurlHandle();
 
     ~CurlHandle() {
         if (handle) {
@@ -48,12 +43,12 @@ class FileDownloader {
                    const std::vector<std::string> &cids, const json &config);
 
     void assemble();
-    const std::string getFilename() const;
-    const std::string getExtension() const;
-    const DownloadStatus getFileDownloadStatus() const;
-    const std::string getAlbumPath() const;
-    const std::string getTrackName() const;
-    int getNumCIDs();
+    std::string getFilename() const;
+    std::string getExtension() const;
+    DownloadStatus getFileDownloadStatus() const;
+    std::string getAlbumPath() const;
+    std::string getTrackName() const;
+    size_t getNumCIDs() const;
     void downloadCid(int cid_index);
 
   private:

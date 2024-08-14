@@ -2,8 +2,8 @@
 #include "const.hpp"
 #include "fmtlog-inl.hpp"
 #include "random.hpp"
+#include "thread_pool.hpp"
 #include "utils.hpp"
-#include <algorithm>
 #include <filesystem>
 #include <fmt/core.h>
 #include <fstream>
@@ -11,6 +11,14 @@
 #include <stdexcept>
 
 namespace fs = std::filesystem;
+
+CurlHandle::CurlHandle() {
+    handle = curl_easy_init();
+    if (!handle) {
+        loge("Failed to initialize CURL handle");
+        throw std::runtime_error("Failed to initialize CURL handle");
+    }
+}
 
 static size_t writeCallback(void *ptr, size_t size, size_t nmemb,
                             void *userdata) {
@@ -180,27 +188,27 @@ void FileDownloader::assemble() {
     }
 }
 
-const std::string FileDownloader::getFilename() const {
+std::string FileDownloader::getFilename() const {
     return filename;
 }
 
-const std::string FileDownloader::getExtension() const {
+std::string FileDownloader::getExtension() const {
     return extension;
 }
 
-const DownloadStatus FileDownloader::getFileDownloadStatus() const {
+DownloadStatus FileDownloader::getFileDownloadStatus() const {
     return fileDownloadStatus;
 }
 
-const std::string FileDownloader::getAlbumPath() const {
+std::string FileDownloader::getAlbumPath() const {
     return albumPath;
 }
 
-const std::string FileDownloader::getTrackName() const {
+std::string FileDownloader::getTrackName() const {
     return trackName;
 }
 
-int FileDownloader::getNumCIDs() {
+size_t FileDownloader::getNumCIDs() const {
     return cids.size();
 }
 

@@ -11,11 +11,9 @@
 #include <taglib/tag.h>
 #include <taglib/tpropertymap.h>
 
-namespace fs = std::filesystem;
-
-Decoder::Decoder(const std::filesystem::path &filePath,
-                 const std::string_view &extension,
-                 const std::string_view &pipeName)
+Decoder::Decoder::Decoder(const fs::path &filePath,
+                          const std::string_view &extension,
+                          const std::string_view &pipeName)
     : filePath(filePath), extension(extension), pipeName(pipeName) {}
 
 void Decoder::decode() {
@@ -195,12 +193,12 @@ SoxrResampler::~SoxrResampler() {
 void SoxrResampler::process(const std::vector<int16_t> &audioBuffer,
                             const size_t inputLength,
                             std::vector<int16_t> &resampledBuffer,
-                            const size_t outBufferSize, size_t *resampledSize) {
+                            const size_t outBufferSize, size_t &resampledSize) {
     soxr_error_t error = soxr_process(
         handle, reinterpret_cast<const soxr_in_t *>(audioBuffer.data()),
         inputLength, nullptr,
         reinterpret_cast<soxr_out_t *>(resampledBuffer.data()), outBufferSize,
-        resampledSize);
+        &resampledSize);
 
     if (error) {
         loge("Failed to process sample: {}", soxr_strerror(error));
@@ -219,7 +217,7 @@ void Decoder::decodeMp3() {
 
     long inSampleRate;
     int inChannels, encoding;
-    getMp3Format(mhPtr.get(), &inSampleRate, &inChannels, &encoding);
+    getMp3Format(mhPtr.get(), inSampleRate, inChannels, encoding);
 
     constexpr int outChannels = 2;
     constexpr long outSampleRate = 48000;
@@ -280,9 +278,10 @@ void Decoder::openMp3File(mpg123_handle *mh) {
     }
 }
 
-void Decoder::getMp3Format(mpg123_handle *mh, long *inSampleRate,
-                           int *inChannels, int *encoding) {
-    if (mpg123_getformat(mh, inSampleRate, inChannels, encoding) != MPG123_OK) {
+void Decoder::getMp3Format(mpg123_handle *mh, long &inSampleRate,
+                           int &inChannels, int &encoding) {
+    if (mpg123_getformat(mh, &inSampleRate, &inChannels, &encoding) !=
+        MPG123_OK) {
         loge("Failed to get MP3 format: {}", mpg123_strerror(mh));
         throw std::runtime_error(
             fmt::format("Failed to get MP3 format: {}", mpg123_strerror(mh)));
@@ -346,7 +345,7 @@ void Decoder::readResampleAndWriteMp3Data(
             size_t resampledSize;
             size_t inputLength = (bytesRead / sizeof(int16_t)) / inChannels;
             soxrResampler.process(audioBuffer, inputLength, resampledBuffer,
-                                  outBufferSize, &resampledSize);
+                                  outBufferSize, resampledSize);
             pipe.write(reinterpret_cast<const char *>(resampledBuffer.data()),
                        resampledSize * outChannels * sizeof(int16_t));
         } else {
