@@ -62,17 +62,18 @@ int main(int argc, char *argv[]) {
             start = std::chrono::high_resolution_clock::now();
             Downloader downloader(config, db);
             end = std::chrono::high_resolution_clock::now();
-            auto duration =
+            auto dur_usec =
                 std::chrono::duration_cast<std::chrono::microseconds>(end -
                                                                       start);
-            double mseconds = static_cast<double>(duration.count()) / 1000;
+            double mseconds = static_cast<double>(dur_usec.count()) / 1000;
 
             start = std::chrono::high_resolution_clock::now();
             downloader.performDownloads();
             end = std::chrono::high_resolution_clock::now();
-            duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                end - start);
-            double seconds = static_cast<double>(duration.count()) / 1000;
+            auto dur_msec =
+                std::chrono::duration_cast<std::chrono::milliseconds>(end -
+                                                                      start);
+            double seconds = static_cast<double>(dur_msec.count()) / 1000;
 
             logd("Initialization took {:.3f} ms", mseconds);
             fmt::print(stdout, "Initialization took {:.3f} ms\n", mseconds);
