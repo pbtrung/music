@@ -123,7 +123,7 @@ void FileDownloader::assemble() {
 
             try {
                 fs::rename(cidPath, filePath);
-                logd("Rename {} to {}", cids.front(), filename);
+                logd("Rename {} -> {}", cids.front(), filename);
                 fmt::print(stdout, "  {:<{}}: {} -> {}\n", "info", WIDTH,
                            cids.front(), filename);
             } catch (const fs::filesystem_error &e) {
@@ -164,7 +164,7 @@ void FileDownloader::assemble() {
                     outfile.write(buffer.data(), infile.gcount());
                 }
                 infile.close();
-                logd("Cat {} to {}", cid, filename);
+                logd("{} -> {}", cid, filename);
 
                 if (!fs::remove(cidPath)) {
                     loge("Failed to delete file: {}", cidPath.string());
@@ -173,6 +173,9 @@ void FileDownloader::assemble() {
                 }
             }
             outfile.close();
+            logd("{} CIDs -> {}", cids.size(), filename);
+            fmt::print(stdout, "  {:<{}}: {} CIDs -> {}\n", "info", WIDTH,
+                       cids.size(), filename);
         }
     }
 }
