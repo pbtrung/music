@@ -59,15 +59,23 @@ int main(int argc, char *argv[]) {
             Dir::deleteDirectory(outputDir);
             Dir::createDirectory(outputDir);
 
+            start = std::chrono::high_resolution_clock::now();
             Downloader downloader(config, db);
+            end = std::chrono::high_resolution_clock::now();
+            auto duration =
+                std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                      start);
+            double mseconds = static_cast<double>(duration.count()) / 1000;
 
             start = std::chrono::high_resolution_clock::now();
             downloader.performDownloads();
             end = std::chrono::high_resolution_clock::now();
-            auto duration =
-                std::chrono::duration_cast<std::chrono::milliseconds>(end -
-                                                                      start);
+            duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                end - start);
             double seconds = static_cast<double>(duration.count()) / 1000;
+
+            logd("Initialization took {:.3f} ms", mseconds);
+            fmt::print(stdout, "Initialization took {:.3f} ms\n", mseconds);
             logd("Downloads took {:.3f} second(s)", seconds);
             fmt::print(stdout, "Downloads took {:.3f} second(s)\n", seconds);
             fmtlog::poll(true);
