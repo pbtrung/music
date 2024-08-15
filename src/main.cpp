@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
 
     std::chrono::high_resolution_clock::time_point start, end;
 
-    logd("start while");
+    logd("start main loop");
     while (true) {
         std::vector<FileInfo> fileInfos;
         auto start = std::chrono::high_resolution_clock::now();
@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
         fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
         fmtlog::poll(true);
     }
-    logd("finish while");
+    logd("finish main loop");
     fmtlog::closeLogFile();
 
     return EXIT_SUCCESS;

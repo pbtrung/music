@@ -297,7 +297,6 @@ void Mp3Decoder::processWriteData(bool resample, SoxrResampler &soxrResampler,
 Decoder::Decoder(const fs::path &filePath, const std::string_view &extension,
                  const std::string_view &pipeName)
     : filePath(filePath), extension(extension), pipeName(pipeName) {
-    logd("start decode");
     if (extension == "opus") {
         decoder = std::make_unique<OpusDecoder>(filePath, pipeName);
     } else if (extension == "mp3") {
@@ -307,8 +306,6 @@ Decoder::Decoder(const fs::path &filePath, const std::string_view &extension,
         throw std::runtime_error(
             fmt::format("Unsupported format: {}", filePath.string()));
     }
-    fmt::print("\n\n");
-    logd("finish decode");
 }
 
 void Decoder::printMetadata() {
@@ -389,10 +386,13 @@ void Decoder::printFileProperties(const TagLib::PropertyMap &fileProperties) {
 }
 
 void Decoder::decode() {
+    logd("start decode");
     if (decoder) {
         decoder->decode();
     } else {
         loge("Decoder not initialized");
         throw std::runtime_error("Decoder not initialized");
     }
+    fmt::print("\n\n");
+    logd("finish decode");
 }
