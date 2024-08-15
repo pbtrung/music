@@ -52,6 +52,8 @@ class Downloader {
     std::vector<FileInfo> getFileInfo() const;
 
   private:
+    size_t getNumThreads() const;
+
     const json &config;
     const Database &db;
     std::vector<std::unique_ptr<FileDownloader>> fileDownloaders;

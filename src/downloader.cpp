@@ -244,9 +244,22 @@ Downloader::Downloader(const json &config, const Database &db)
     }
 }
 
+size_t Downloader::getNumThreads() const {
+    size_t numThreads = 0;
+    for (auto &fileDownloader : fileDownloaders) {
+        numThreads += fileDownloader->getNumCIDs();
+    }
+    if (numThreads <= config["num_files"]) {
+        numThreads = config["num_files"];
+    } else {
+        numThreads = 4 * std::thread::hardware_concurrency();
+    }
+    return numThreads;
+}
+
 void Downloader::performDownloads() {
     fmt::print(stdout, "\n");
-    dp::thread_pool threadPool(20);
+    dp::thread_pool threadPool(getNumThreads());
     for (auto &fileDownloader : fileDownloaders) {
         for (size_t i = 0; i < fileDownloader->getNumCIDs(); ++i) {
             auto downloadTask = [&fileDownloader, i]() {
