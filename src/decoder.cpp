@@ -240,7 +240,8 @@ void Mp3Decoder::readResampleAndWriteMp3Data(
 
     SoxrResampler soxrResampler(inSampleRate, outSampleRate, outChannels,
                                 SOXR_INT16_I, SOXR_INT16_I, SOXR_HQ);
-    bool resample = (outSampleRate != inSampleRate);
+    bool resample =
+        (outSampleRate != inSampleRate || inChannels != outChannels);
     if (resample) {
         fmt::print("  {:<{}}: {} -> {}\n", "resample", WIDTH, inSampleRate,
                    outSampleRate);
