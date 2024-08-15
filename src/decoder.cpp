@@ -243,8 +243,8 @@ void Mp3Decoder::readResampleAndWriteMp3Data(
     bool resample =
         (outSampleRate != inSampleRate || inChannels != outChannels);
     if (resample) {
-        fmt::print("  {:<{}}: {} -> {}\n", "resample", WIDTH, inSampleRate,
-                   outSampleRate);
+        fmt::print("  {:<{}}: {} -> {}, {} -> {}\n", "resample", WIDTH,
+                   inSampleRate, outSampleRate, inChannels, outChannels);
         double freqRatio = outSampleRate / static_cast<double>(inSampleRate);
         outBufferSize = static_cast<size_t>(bufferSize * freqRatio + 1.0);
         resampledBuffer.resize(outBufferSize * outChannels);
