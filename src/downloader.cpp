@@ -237,7 +237,8 @@ Downloader::Downloader(const json &config, const Database &db)
         std::string trackName = db.getTrackName(index);
         std::string albumPath = db.getAlbumPath(index);
         std::string extension = Utils::getExtension(trackName);
-        std::string filename = Random::alphanumericString(20) + "." + extension;
+        std::string filename =
+            fmt::format("{}.{}", Random::alphanumericString(20), extension);
 
         fileDownloaders.emplace_back(std::make_unique<FileDownloader>(
             filename, albumPath, trackName, extension, cids, config));
