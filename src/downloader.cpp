@@ -27,6 +27,7 @@ static size_t writeCallback(void *ptr, size_t size, size_t nmemb,
                             void *userdata) {
     auto *outfile = static_cast<std::ofstream *>(userdata);
     outfile->write(static_cast<const char *>(ptr), size * nmemb);
+    outfile->flush();
     return size * nmemb;
 }
 
