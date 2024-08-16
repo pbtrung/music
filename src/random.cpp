@@ -1,17 +1,18 @@
 #include "random.hpp"
-#include "fmtlog-inl.hpp"
 #include <algorithm>
 #include <fmt/core.h>
 #include <random>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <unordered_set>
 
 std::vector<int> Random::uniqueInts(int numSamples, int minValue,
                                     int maxValue) {
+    std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
     if (numSamples > (maxValue - minValue + 1)) {
-        loge("Number of samples exceeds the range of unique values");
-        throw std::invalid_argument(
-            "Number of samples exceeds the range of unique values");
+        SPDLOG_LOGGER_ERROR(
+            logger, "Number of samples exceeds the range of unique values");
+        throw std::invalid_argument("");
     }
 
     std::unordered_set<int> uniqueSet;

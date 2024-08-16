@@ -3,6 +3,7 @@
 
 #include "database.hpp"
 #include "json.hpp"
+#include <spdlog/spdlog.h>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,8 @@ class FileDownloader {
     const json &config;
     std::vector<DownloadStatus> cidDownloadStatus;
     DownloadStatus fileDownloadStatus;
+    std::shared_ptr<spdlog::logger> logger;
+    std::shared_ptr<spdlog::logger> file_logger;
 };
 
 class Downloader {
@@ -56,6 +59,8 @@ class Downloader {
 
     const json &config;
     const Database &db;
+    std::shared_ptr<spdlog::logger> logger;
+    std::shared_ptr<spdlog::logger> file_logger;
     std::vector<std::unique_ptr<FileDownloader>> fileDownloaders;
 };
 

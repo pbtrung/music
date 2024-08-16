@@ -11,13 +11,8 @@
 
 class Utils {
   public:
-    // Converts the string to lowercase
     static void toLowercase(std::string &str);
-
-    // Returns the file extension in lowercase, or an empty string if not found
     static std::string getExtension(std::string_view text);
-
-    // Formats time in seconds to HH:MM:SS or MM:SS
     static std::string formatTime(std::chrono::seconds seconds);
 
   private:

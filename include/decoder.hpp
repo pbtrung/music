@@ -7,6 +7,7 @@
 #include <mpg123.h>
 #include <opusfile.h>
 #include <soxr.h>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
 #include <taglib/fileref.h>
@@ -28,6 +29,7 @@ class SoxrResampler {
 
   private:
     soxr_t handle;
+    std::shared_ptr<spdlog::logger> logger;
 };
 
 class BaseDecoder {
@@ -44,6 +46,8 @@ class BaseDecoder {
     const fs::path filePath;
     const std::string pipeName;
     std::ofstream pipe;
+    std::shared_ptr<spdlog::logger> logger;
+    std::shared_ptr<spdlog::logger> file_logger;
 };
 
 class OpusDecoder : public BaseDecoder {
@@ -88,13 +92,13 @@ class Mp3Decoder : public BaseDecoder {
                           size_t bytesRead);
 };
 
-class Decoder {
+class Decoder : public BaseDecoder {
   public:
     Decoder(const fs::path &filePath, const std::string_view &extension,
             const std::string_view &pipeName);
 
     void printMetadata();
-    void decode();
+    void decode() override;
 
   private:
     const fs::path filePath;

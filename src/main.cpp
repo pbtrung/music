@@ -3,7 +3,6 @@
 #include "decoder.hpp"
 #include "dir.hpp"
 #include "downloader.hpp"
-#include "fmtlog-inl.hpp"
 #include "random.hpp"
 #include <chrono>
 #include <fmt/core.h>
@@ -11,6 +10,11 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/spdlog.h>
 
 #include "json.hpp"
 using json = nlohmann::json;
@@ -44,13 +48,27 @@ int main(int argc, char *argv[]) {
     std::string dbPath = config["db"];
     std::string logPath = config["log"];
 
-    fmtlog::setLogFile(logPath.data(), true);
-    fmtlog::setHeaderPattern("{YmdHMSe} {l} {s}: ");
-    fmtlog::setLogLevel(fmtlog::DBG);
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    console_sink->set_level(spdlog::level::info);
+    console_sink->set_pattern("%v");
+
+    auto file_sink =
+        std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath, true);
+    file_sink->set_level(spdlog::level::info);
+    file_sink->set_pattern("%d/%m/%Y %T.%e %l %s:%#: %v");
+    auto file_logger =
+        std::make_shared<spdlog::logger>("file_logger", file_sink);
+
+    spdlog::sinks_init_list sink_list = {console_sink, file_sink};
+    auto logger = std::make_shared<spdlog::logger>("logger", begin(sink_list),
+                                                   end(sink_list));
+    logger->flush_on(spdlog::level::err);
+    spdlog::register_logger(file_logger);
+    spdlog::register_logger(logger);
 
     std::chrono::high_resolution_clock::time_point start, end;
 
-    logd("start main loop");
+    SPDLOG_LOGGER_INFO(file_logger, "start main loop");
     while (true) {
         std::vector<FileInfo> fileInfos;
         auto start = std::chrono::high_resolution_clock::now();
@@ -74,32 +92,29 @@ int main(int argc, char *argv[]) {
                 std::chrono::duration_cast<std::chrono::milliseconds>(end -
                                                                       start);
             double seconds = static_cast<double>(dur_msec.count()) / 1000;
-
-            logd("Initialization took {:.3f} ms", mseconds);
-            fmt::print(stdout, "Initialization took {:.3f} ms\n", mseconds);
-            logd("Downloads took {:.3f} second(s)", seconds);
-            fmt::print(stdout, "Downloads took {:.3f} second(s)\n", seconds);
-            fmtlog::poll(true);
+            SPDLOG_LOGGER_INFO(logger, "Initialization took {:.3f} ms",
+                               mseconds);
+            SPDLOG_LOGGER_INFO(logger, "Downloads took {:.3f} second(s)",
+                               seconds);
+            logger->flush();
 
             downloader.assembleFiles();
             fileInfos = downloader.getFileInfo();
         } catch (const std::exception &e) {
-            loge("{}", e.what());
-            fmt::print(stdout, "Error: {}\n\n", e.what());
-            fmtlog::poll(true);
+            fmt::print(stdout, "\n");
             return EXIT_FAILURE;
         }
-        fmtlog::poll(true);
+        logger->flush();
 
         for (const auto &fileInfo : fileInfos) {
             try {
-                fmt::print(stdout, "{:<{}}: {}\n", "PLAYING", WIDTH + 2,
-                           fileInfo.filename);
-                fmt::print(stdout, "  {:<{}}: {}\n", "path", WIDTH,
-                           fileInfo.albumPath);
-                fmt::print(stdout, "  {:<{}}: {}\n", "filename", WIDTH,
-                           fileInfo.trackName);
-                std::cout.flush();
+                SPDLOG_LOGGER_INFO(logger, "{:<{}}: {}", "PLAYING", WIDTH + 2,
+                                   fileInfo.filename);
+                SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {}", "path", WIDTH,
+                                   fileInfo.albumPath);
+                SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {}", "filename", WIDTH,
+                                   fileInfo.trackName);
+                logger->flush();
 
                 fs::path filePath = fs::path(outputDir) / fileInfo.filename;
 
@@ -112,25 +127,23 @@ int main(int argc, char *argv[]) {
                 auto duration =
                     std::chrono::duration_cast<std::chrono::microseconds>(
                         end - start);
-                fmt::print(stdout, "  {:<{}}: {:.3f} ms\n", "took", WIDTH,
-                           static_cast<double>(duration.count()) / 1000);
-                fmtlog::poll(true);
+                SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {:.3f} ms", "took", WIDTH,
+                                   static_cast<double>(duration.count()) /
+                                       1000);
+                logger->flush();
 
                 decoder.decode();
             } catch (const std::exception &e) {
-                loge("{}", e.what());
-                fmt::print(stdout, "Error: {}\n\n", e.what());
-                fmtlog::poll(true);
+                fmt::print(stdout, "\n");
                 continue;
             }
-            fmtlog::poll(true);
+            logger->flush();
         }
-        logd("end-5z2ok9v4iik5tdykgms90qrc6");
-        fmt::print(stdout, "end-5z2ok9v4iik5tdykgms90qrc6\n");
-        fmtlog::poll(true);
+        SPDLOG_LOGGER_INFO(logger, "end-5z2ok9v4iik5tdykgms90qrc6");
+        fmt::print(stdout, "\n");
+        logger->flush();
     }
-    logd("finish main loop");
-    fmtlog::closeLogFile();
+    SPDLOG_LOGGER_INFO(file_logger, "finish main loop");
 
     return EXIT_SUCCESS;
 }

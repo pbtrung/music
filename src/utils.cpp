@@ -1,11 +1,12 @@
 #include "utils.hpp"
-#include "fmtlog-inl.hpp"
 #include <algorithm>
 #include <chrono>
 #include <fmt/core.h>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 
 Utils::Pcre2CodePtr Utils::compilePattern(std::string_view pattern) {
+    std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
     int errcode;
     PCRE2_SIZE erroffset;
     pcre2_code *re = pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern.data()),
@@ -13,19 +14,20 @@ Utils::Pcre2CodePtr Utils::compilePattern(std::string_view pattern) {
                                    &errcode, &erroffset, nullptr);
 
     if (!re) {
-        loge("PCRE2 compilation failed at offset {}", erroffset);
-        throw std::runtime_error(
-            fmt::format("PCRE2 compilation failed at offset {}", erroffset));
+        SPDLOG_LOGGER_ERROR(logger, "PCRE2 compilation failed at offset {}",
+                            erroffset);
+        throw std::runtime_error("");
     }
     return Pcre2CodePtr(re, pcre2_code_free);
 }
 
 Utils::Pcre2MatchDataPtr Utils::createMatchData(const pcre2_code *pattern) {
+    std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
     pcre2_match_data *match_data =
         pcre2_match_data_create_from_pattern(pattern, nullptr);
     if (!match_data) {
-        loge("Failed to create match data");
-        throw std::runtime_error("Failed to create match data");
+        SPDLOG_LOGGER_ERROR(logger, "Failed to create match data");
+        throw std::runtime_error("");
     }
     return Pcre2MatchDataPtr(match_data, pcre2_match_data_free);
 }
@@ -36,6 +38,7 @@ void Utils::toLowercase(std::string &str) {
 }
 
 std::string Utils::getExtension(std::string_view text) {
+    std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
     auto pattern = compilePattern("(.*)\\.(opus|mp3|m4a)$");
     auto matchData = createMatchData(pattern.get());
 
@@ -50,9 +53,8 @@ std::string Utils::getExtension(std::string_view text) {
         toLowercase(result);
         return result;
     } else {
-        loge("Failed to find extension from {}", text);
-        throw std::runtime_error(
-            fmt::format("Failed to find extension from {}", text));
+        SPDLOG_LOGGER_ERROR(logger, "Failed to find extension from {}", text);
+        throw std::runtime_error("");
     }
 }
 

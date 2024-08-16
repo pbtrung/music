@@ -1,9 +1,8 @@
 #ifndef DATABASE_HPP
 #define DATABASE_HPP
 
-#include <fmt/core.h>
+#include <spdlog/spdlog.h>
 #include <sqlite3.h>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,6 +29,7 @@ class Database {
     };
 
     sqlite3 *db = nullptr;
+    std::shared_ptr<spdlog::logger> logger;
 };
 
 #endif // DATABASE_HPP

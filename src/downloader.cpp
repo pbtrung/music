@@ -1,6 +1,5 @@
 #include "downloader.hpp"
 #include "const.hpp"
-#include "fmtlog-inl.hpp"
 #include "random.hpp"
 #include "thread_pool.hpp"
 #include "utils.hpp"
@@ -14,11 +13,12 @@
 namespace fs = std::filesystem;
 
 static std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> createCurlHandle() {
+    std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
     auto curl = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(
         curl_easy_init(), curl_easy_cleanup);
     if (!curl) {
-        loge("Failed to initialize CURL handle");
-        throw std::runtime_error("Failed to initialize CURL handle");
+        SPDLOG_LOGGER_ERROR(logger, "Error: Failed to initialize CURL handle");
+        throw std::runtime_error("");
     }
     return curl;
 }
@@ -40,17 +40,19 @@ FileDownloader::FileDownloader(const std::string &filename,
       extension(extension), cids(std::move(cids)), config(config) {
     cidDownloadStatus.resize(cids.size(), DownloadStatus::Pending);
     fileDownloadStatus = DownloadStatus::Pending;
+    logger = spdlog::get("logger");
+    file_logger = spdlog::get("file_logger");
 }
 
 void FileDownloader::downloadCid(int cid_index) {
-    fmt::print(stdout, "Downloading {}\n", cids[cid_index]);
-    std::cout.flush();
+    SPDLOG_LOGGER_INFO(logger, "Downloading {}", cids[cid_index]);
+    logger->flush();
 
     fs::path filePath = fs::path(config["output"]) / cids[cid_index];
     std::ofstream outfile(filePath, std::ios::binary);
     if (!outfile.is_open()) {
-        loge("Failed to open file {}", filePath.string());
-        fmt::print(stdout, "Failed to open file {}\n", filePath.string());
+        SPDLOG_LOGGER_ERROR(logger, "Error: Failed to open file: {}",
+                            filePath.string());
         cidDownloadStatus[cid_index] = DownloadStatus::Failed;
         return;
     }
@@ -81,7 +83,8 @@ void FileDownloader::downloadCid(int cid_index) {
                 curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, timeout);
             }
             curl_easy_setopt(curl.get(), CURLOPT_URL, url.data());
-            logd("Downloading {} from {}", cids[cid_index], url.data());
+            SPDLOG_LOGGER_INFO(logger, "Downloading {} from {}",
+                               cids[cid_index], url.data());
 
             if (curl_easy_perform(curl.get()) == CURLE_OK) {
                 curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
@@ -93,18 +96,17 @@ void FileDownloader::downloadCid(int cid_index) {
             }
             outfile.clear();
             outfile.seekp(0, std::ios::beg);
-            logd("Retry to download {} (attempt {})", cids[cid_index],
-                 retries + 1);
+            SPDLOG_LOGGER_INFO(logger, "Retry to download {} (attempt {})",
+                               cids[cid_index], retries + 1);
         }
 
         if (responseCode != 200) {
-            loge("Download of cid {} failed", cids[cid_index]);
-            fmt::print(stdout, "Download of cid {} failed\n", cids[cid_index]);
+            SPDLOG_LOGGER_ERROR(logger, "Error: Download of cid {} failed",
+                                cids[cid_index]);
             cidDownloadStatus[cid_index] = DownloadStatus::Failed;
         }
     } catch (const std::exception &e) {
-        loge("{}", e.what());
-        fmt::print(stdout, "Error: {}\n", e.what());
+        SPDLOG_LOGGER_ERROR(logger, "Error: {}", e.what());
         cidDownloadStatus[cid_index] = DownloadStatus::Failed;
     }
 }
@@ -120,10 +122,12 @@ void FileDownloader::assemble() {
 
     if (fileDownloadStatus == DownloadStatus::Succeeded) {
         fmt::print(stdout, "\n");
-        fmt::print(stdout, "{:<{}}: {}\n", "Assemble", WIDTH + 2, filename);
-        fmt::print(stdout, "  {:<{}}: {}\n", "path", WIDTH, albumPath);
-        fmt::print(stdout, "  {:<{}}: {}\n", "filename", WIDTH, trackName);
-        std::cout.flush();
+        SPDLOG_LOGGER_INFO(logger, "{:<{}}: {}", "Assemble", WIDTH + 2,
+                           filename);
+        SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {}", "path", WIDTH, albumPath);
+        SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {}", "filename", WIDTH,
+                           trackName);
+        logger->flush();
 
         std::string output = config["output"].get<std::string>();
         fs::path filePath = fs::path(output) / fs::path(filename);
@@ -134,15 +138,12 @@ void FileDownloader::assemble() {
 
             try {
                 fs::rename(cidPath, filePath);
-                logd("Rename {} -> {}", cids.front(), filename);
-                fmt::print(stdout, "  {:<{}}: {} -> {}\n", "info", WIDTH,
-                           cids.front(), filename);
+                SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {} -> {}", "info", WIDTH,
+                                   cids.front(), filename);
             } catch (const fs::filesystem_error &e) {
-                loge("Failed to move file from {} to {}: {}", cids.front(),
-                     filename, e.what());
-                fmt::print(stdout,
-                           "  {:<{}}: Failed to move file from {} to {}: {}\n",
-                           "error", WIDTH, cids.front(), filename, e.what());
+                SPDLOG_LOGGER_ERROR(
+                    logger, "Error: Failed to move file from {} to {}: {}",
+                    cids.front(), filename, e.what());
                 fileDownloadStatus = DownloadStatus::Failed;
                 return;
             }
@@ -150,9 +151,9 @@ void FileDownloader::assemble() {
             // Handle the case where there are multiple CID files
             std::ofstream outfile(filePath, std::ios::binary);
             if (!outfile.is_open()) {
-                loge("Failed to open output file: {}", filePath.string());
-                fmt::print(stdout, "  {:<{}}: {}: {}\n", "error", WIDTH,
-                           "Failed to open output file", filePath.string());
+                SPDLOG_LOGGER_ERROR(logger,
+                                    "Error: Failed to open output file: {}",
+                                    filePath.string());
                 fileDownloadStatus = DownloadStatus::Failed;
                 return;
             }
@@ -163,9 +164,9 @@ void FileDownloader::assemble() {
 
                 std::ifstream infile(cidPath, std::ios::binary);
                 if (!infile.is_open()) {
-                    loge("Failed to open input file: {}", cidPath.string());
-                    fmt::print("  {:<{}}: {}: {}\n", "error", WIDTH,
-                               "Failed to open input file", cidPath.string());
+                    SPDLOG_LOGGER_ERROR(logger,
+                                        "Error: Failed to open input file: {}",
+                                        cidPath.string());
                     fileDownloadStatus = DownloadStatus::Failed;
                     return;
                 }
@@ -175,18 +176,17 @@ void FileDownloader::assemble() {
                     outfile.write(buffer.data(), infile.gcount());
                 }
                 infile.close();
-                logd("{} -> {}", cid, filename);
+                SPDLOG_LOGGER_INFO(file_logger, "{} -> {}", cid, filename);
 
                 if (!fs::remove(cidPath)) {
-                    loge("Failed to delete file: {}", cidPath.string());
-                    fmt::print(stdout, "  {:<{}}: {}: {}\n", "error", WIDTH,
-                               "Failed to delete file", cidPath.string());
+                    SPDLOG_LOGGER_ERROR(logger,
+                                        "Error: Failed to delete file: {}",
+                                        cidPath.string());
                 }
             }
             outfile.close();
-            logd("{} CIDs -> {}", cids.size(), filename);
-            fmt::print(stdout, "  {:<{}}: {} CIDs -> {}\n", "info", WIDTH,
-                       cids.size(), filename);
+            SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {} CIDs -> {}", "info", WIDTH,
+                               cids.size(), filename);
         }
     }
 }
@@ -217,16 +217,19 @@ size_t FileDownloader::getNumCIDs() const {
 
 Downloader::Downloader(const json &config, const Database &db)
     : config(config), db(db) {
-    logd("start downloader");
+    logger = spdlog::get("logger");
+    file_logger = spdlog::get("file_logger");
+    SPDLOG_LOGGER_INFO(file_logger, "start downloader");
     const int maxValue = db.countTracks();
     const int numFiles = config["num_files"];
     const int minValue = config["min_value"];
     fileDownloaders.reserve(numFiles);
 
     if (numFiles <= 0 || minValue < 0 || minValue >= maxValue) {
-        loge("Invalid parameters for file download configuration");
-        throw std::invalid_argument(
-            "Invalid parameters for file download configuration");
+        SPDLOG_LOGGER_ERROR(
+            logger,
+            "Error: Invalid parameters for file download configuration");
+        throw std::invalid_argument("");
     }
 
     std::vector<int> randomIndices =
@@ -270,16 +273,16 @@ void Downloader::performDownloads() {
         }
     }
     threadPool.wait_for_tasks();
-    logd("finish downloader");
+    SPDLOG_LOGGER_INFO(file_logger, "finish downloader");
 }
 
 void Downloader::assembleFiles() {
-    logd("start assemble");
+    SPDLOG_LOGGER_INFO(file_logger, "start assemble");
     for (auto &fileDownloader : fileDownloaders) {
         fileDownloader->assemble();
     }
     fmt::print(stdout, "\n");
-    logd("finish assemble");
+    SPDLOG_LOGGER_INFO(file_logger, "finish assemble");
 }
 
 std::vector<FileInfo> Downloader::getFileInfo() const {

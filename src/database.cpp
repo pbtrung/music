@@ -1,13 +1,15 @@
 #include "database.hpp"
-#include "fmtlog-inl.hpp"
+#include <fmt/core.h>
+#include <stdexcept>
 
 Database::Database(std::string_view filename) {
+    logger = spdlog::get("logger");
     int rc =
         sqlite3_open_v2(filename.data(), &db, SQLITE_OPEN_READONLY, nullptr);
     if (rc != SQLITE_OK) {
-        loge("Failed to open database: {}", sqlite3_errmsg(db));
-        throw std::runtime_error(
-            fmt::format("Failed to open database: {}", sqlite3_errmsg(db)));
+        SPDLOG_LOGGER_ERROR(logger, "Error: Failed to open database: {}",
+                            sqlite3_errmsg(db));
+        throw std::runtime_error("");
     }
 }
 
@@ -19,10 +21,10 @@ Database::~Database() {
 
 Database::SqliteStatement::SqliteStatement(sqlite3 *db,
                                            std::string_view query) {
+    std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
     if (sqlite3_prepare_v2(db, query.data(), -1, &stmt, nullptr) != SQLITE_OK) {
-        loge("SQL error: {}", sqlite3_errmsg(db));
-        throw std::runtime_error(
-            fmt::format("SQL error: {}", sqlite3_errmsg(db)));
+        SPDLOG_LOGGER_ERROR(logger, "Error: SQL error: {}", sqlite3_errmsg(db));
+        throw std::runtime_error("");
     }
 }
 
@@ -45,12 +47,12 @@ int Database::countTracks() const {
     if (num_tracks == 0) {
         const char *errmsg = sqlite3_errmsg(db);
         if (errmsg) {
-            loge("num_tracks == 0: {}", errmsg);
-            throw std::runtime_error(
-                fmt::format("num_tracks == 0: {}", errmsg));
+            SPDLOG_LOGGER_ERROR(logger, "Error: num_tracks == 0: {}", errmsg);
+            throw std::runtime_error("");
         } else {
-            loge("num_tracks == 0: <no error message>");
-            throw std::runtime_error("num_tracks == 0: <no error message>");
+            SPDLOG_LOGGER_ERROR(logger,
+                                "Error: num_tracks == 0: <no error message>");
+            throw std::runtime_error("");
         }
     }
 
@@ -71,13 +73,16 @@ std::vector<std::string> Database::getTrackCIDs(int trackId) const {
     if (cids.size() == 0) {
         const char *errmsg = sqlite3_errmsg(db);
         if (errmsg) {
-            loge("cids.size() == 0: trackId: {} {}", trackId, errmsg);
-            throw std::runtime_error(fmt::format(
-                "cids.size() == 0: trackId: {} {}", trackId, errmsg));
+            SPDLOG_LOGGER_ERROR(logger,
+                                "Error: cids.size() == 0: trackId: {} {}",
+                                trackId, errmsg);
+            throw std::runtime_error("");
         } else {
-            loge("cids.size() == 0: trackId: {} <no error message>", trackId);
-            throw std::runtime_error(fmt::format(
-                "cids.size() == 0: trackId: {} <no error message>", trackId));
+            SPDLOG_LOGGER_ERROR(
+                logger,
+                "Error: cids.size() == 0: trackId: {} <no error message>",
+                trackId);
+            throw std::runtime_error("");
         }
     }
     return cids;
@@ -97,13 +102,16 @@ std::string Database::getTrackName(int trackId) const {
     if (name == nullptr) {
         const char *errmsg = sqlite3_errmsg(db);
         if (errmsg) {
-            loge("name == nullptr: trackId: {} {}", trackId, errmsg);
-            throw std::runtime_error(fmt::format(
-                "name == nullptr: trackId: {} {}", trackId, errmsg));
+            SPDLOG_LOGGER_ERROR(logger,
+                                "Error: name == nullptr: trackId: {} {}",
+                                trackId, errmsg);
+            throw std::runtime_error("");
         } else {
-            loge("name == nullptr: trackId: {} <no error message>", trackId);
-            throw std::runtime_error(fmt::format(
-                "name == nullptr: trackId: {} <no error message>", trackId));
+            SPDLOG_LOGGER_ERROR(
+                logger,
+                "Error: name == nullptr: trackId: {} <no error message>",
+                trackId);
+            throw std::runtime_error("");
         }
     }
     return reinterpret_cast<const char *>(name);
@@ -124,13 +132,16 @@ std::string Database::getAlbumPath(int trackId) const {
     if (path == nullptr) {
         const char *errmsg = sqlite3_errmsg(db);
         if (errmsg) {
-            loge("path == nullptr: trackId: {} {}", trackId, errmsg);
-            throw std::runtime_error(fmt::format(
-                "path == nullptr: trackId: {} {}", trackId, errmsg));
+            SPDLOG_LOGGER_ERROR(logger,
+                                "Error: path == nullptr: trackId: {} {}",
+                                trackId, errmsg);
+            throw std::runtime_error("");
         } else {
-            loge("path == nullptr: trackId: {} <no error message>", trackId);
-            throw std::runtime_error(fmt::format(
-                "path == nullptr: trackId: {} <no error message>", trackId));
+            SPDLOG_LOGGER_ERROR(
+                logger,
+                "Error: path == nullptr: trackId: {} <no error message>",
+                trackId);
+            throw std::runtime_error("");
         }
     }
 
