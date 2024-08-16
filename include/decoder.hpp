@@ -101,9 +101,6 @@ class Decoder : public BaseDecoder {
     void decode() override;
 
   private:
-    const fs::path filePath;
-    const std::string extension;
-    const std::string pipeName;
     std::unique_ptr<BaseDecoder> decoder;
 
     void printTag(const std::string_view name, const TagLib::String &value);

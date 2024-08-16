@@ -299,8 +299,7 @@ void Mp3Decoder::processWriteData(bool resample, SoxrResampler &soxrResampler,
 
 Decoder::Decoder(const fs::path &filePath, const std::string_view &extension,
                  const std::string_view &pipeName)
-    : BaseDecoder(filePath, pipeName), filePath(filePath), extension(extension),
-      pipeName(pipeName) {
+    : BaseDecoder(filePath, pipeName) {
     if (extension == "opus") {
         decoder = std::make_unique<OpusDecoder>(filePath, pipeName);
     } else if (extension == "mp3") {
