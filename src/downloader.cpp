@@ -67,6 +67,9 @@ void FileDownloader::downloadCid(int cid_index) {
         const int timeout = config["timeout"];
         const int maxRetries = config["max_retries"];
 
+        SPDLOG_LOGGER_INFO(logger, "Downloading {}", cids[cid_index]);
+        logger->flush();
+
         for (int retries = 0; retries < maxRetries; ++retries) {
             if (cids[cid_index].size() == 59) {
                 url = fmt::format("https://{}.ipfs.nftstorage.link",
@@ -80,9 +83,6 @@ void FileDownloader::downloadCid(int cid_index) {
                 curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, timeout);
             }
             curl_easy_setopt(curl.get(), CURLOPT_URL, url.data());
-            SPDLOG_LOGGER_INFO(logger, "Downloading {} from {}",
-                               cids[cid_index], url.data());
-            logger->flush();
 
             if (curl_easy_perform(curl.get()) == CURLE_OK) {
                 curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
@@ -94,14 +94,15 @@ void FileDownloader::downloadCid(int cid_index) {
             }
             outfile.clear();
             outfile.seekp(0, std::ios::beg);
-            SPDLOG_LOGGER_INFO(logger, "Retry to download {} (attempt {})",
-                               cids[cid_index], retries + 1);
         }
 
         if (responseCode != 200) {
-            SPDLOG_LOGGER_ERROR(logger, "Error: Download of cid {} failed",
-                                cids[cid_index]);
+            SPDLOG_LOGGER_ERROR(
+                logger, "Error: Download of cid {} failed after {} attempts",
+                cids[cid_index], maxRetries);
             cidDownloadStatus[cid_index] = DownloadStatus::Failed;
+        } else {
+            SPDLOG_LOGGER_INFO(logger, "Finish {}", cids[cid_index]);
         }
     } catch (const std::exception &e) {
         SPDLOG_LOGGER_ERROR(logger, "Error: {}", e.what());

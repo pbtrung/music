@@ -133,6 +133,7 @@ void OpusDecoder::readAndWriteOpusData(opus_int64 totalSamples,
     logger->flush();
 
     if (samplesRead < 0) {
+        fmt::print(stdout, "\n");
         SPDLOG_LOGGER_ERROR(logger, "Error: Failed to decode Opus file");
     }
 }
@@ -272,6 +273,7 @@ void Mp3Decoder::readResampleAndWriteMp3Data(
     logger->flush();
 
     if (err != MPG123_DONE) {
+        fmt::print(stdout, "\n");
         SPDLOG_LOGGER_ERROR(logger, "Error: Failed to decode MP3 file: {}",
                             mpg123_strerror(mpg123Handle));
     }
@@ -398,6 +400,6 @@ void Decoder::decode() {
         SPDLOG_LOGGER_ERROR(logger, "Error: Decoder not initialized");
         throw std::runtime_error("");
     }
-    fmt::print("\n\n");
+    fmt::print(stdout, "\n\n");
     SPDLOG_LOGGER_INFO(file_logger, "finish decode");
 }
