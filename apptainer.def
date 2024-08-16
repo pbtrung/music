@@ -7,7 +7,7 @@ Stage: build
     apk add git
     apk add --no-cache alpine-sdk git pkgconf autoconf automake \
         cmake bash curl-dev sqlite-dev pcre2-dev fmt-dev mpg123-dev \
-        opusfile-dev soxr-dev utfcpp zlib-dev
+        opusfile-dev soxr-dev utfcpp zlib-dev spdlog-dev
 
     cd /root/
     git clone https://github.com/allinurl/gwsocket
@@ -48,7 +48,7 @@ Stage: final
     apk update
     apk upgrade
     apk add --no-cache curl sqlite-libs pcre2 fmt \
-        snapcast-server zlib mpg123-libs opusfile soxr
+        snapcast-server zlib mpg123-libs opusfile soxr spdlog
 
 %startscript
     #!/bin/ash
