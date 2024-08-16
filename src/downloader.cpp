@@ -45,9 +45,6 @@ FileDownloader::FileDownloader(const std::string &filename,
 }
 
 void FileDownloader::downloadCid(int cid_index) {
-    SPDLOG_LOGGER_INFO(logger, "Downloading {}", cids[cid_index]);
-    logger->flush();
-
     fs::path filePath = fs::path(config["output"]) / cids[cid_index];
     std::ofstream outfile(filePath, std::ios::binary);
     if (!outfile.is_open()) {
@@ -85,6 +82,7 @@ void FileDownloader::downloadCid(int cid_index) {
             curl_easy_setopt(curl.get(), CURLOPT_URL, url.data());
             SPDLOG_LOGGER_INFO(logger, "Downloading {} from {}",
                                cids[cid_index], url.data());
+            logger->flush();
 
             if (curl_easy_perform(curl.get()) == CURLE_OK) {
                 curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
