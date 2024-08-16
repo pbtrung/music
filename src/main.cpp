@@ -140,7 +140,6 @@ int main(int argc, char *argv[]) {
             logger->flush();
         }
         SPDLOG_LOGGER_INFO(logger, "end-5z2ok9v4iik5tdykgms90qrc6");
-        fmt::print(stdout, "\n");
         logger->flush();
     }
     SPDLOG_LOGGER_INFO(file_logger, "finish main loop");
