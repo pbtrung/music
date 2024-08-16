@@ -234,9 +234,9 @@ void Mp3Decoder::readResampleAndWriteMp3Data(
     audioBuffer.resize(bufferSize * inChannels);
     size_t bytesRead;
 
-    SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {}\n", "i-samplerate", WIDTH,
+    SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {}", "i-samplerate", WIDTH,
                        inSampleRate);
-    SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {}\n", "o-samplerate", WIDTH,
+    SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {}", "o-samplerate", WIDTH,
                        outSampleRate);
 
     SoxrResampler soxrResampler(inSampleRate, outSampleRate, outChannels,
@@ -244,9 +244,10 @@ void Mp3Decoder::readResampleAndWriteMp3Data(
     bool resample =
         (outSampleRate != inSampleRate || inChannels != outChannels);
     if (resample) {
-        SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {} -> {}, {} -> {}", "resample",
-                           WIDTH, inSampleRate, outSampleRate, inChannels,
-                           outChannels);
+        SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {} -> {}", "resample", WIDTH,
+                           inChannels, outChannels);
+        SPDLOG_LOGGER_INFO(logger, "  {:<{}}: {} -> {}", "resample", WIDTH,
+                           inSampleRate, outSampleRate);
         double freqRatio = outSampleRate / static_cast<double>(inSampleRate);
         outBufferSize = static_cast<size_t>(bufferSize * freqRatio + 1.0);
         resampledBuffer.resize(outBufferSize * outChannels);
@@ -381,7 +382,7 @@ void Decoder::printFileProperties(const TagLib::PropertyMap &fileProperties) {
             std::string kv = fmt::format("  {:<{}}:", keyStr, WIDTH);
             for (const auto &value : values) {
                 if (!value.isEmpty()) {
-                    kv = fmt::format("  {} {}", kv,
+                    kv = fmt::format("{} {}", kv,
                                      value.stripWhiteSpace().to8Bit(true));
                 }
             }
