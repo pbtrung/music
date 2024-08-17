@@ -102,6 +102,7 @@ int main(int argc, char *argv[]) {
             fileInfos = downloader.getFileInfo();
         } catch (const std::exception &e) {
             fmt::print(stdout, "\n");
+            logger->flush();
             return EXIT_FAILURE;
         }
         logger->flush();
@@ -135,6 +136,7 @@ int main(int argc, char *argv[]) {
                 decoder.decode();
             } catch (const std::exception &e) {
                 fmt::print(stdout, "\n");
+                logger->flush();
                 continue;
             }
             logger->flush();
