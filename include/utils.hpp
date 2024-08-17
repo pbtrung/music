@@ -1,6 +1,7 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
 
+#include <blake2.h>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -14,6 +15,11 @@ class Utils {
     static void toLowercase(std::string &str);
     static std::string getExtension(std::string_view text);
     static std::string formatTime(std::chrono::seconds seconds);
+    static std::array<uint8_t, BLAKE2B_OUTBYTES>
+    getBlake2Hash(const std::string &filename);
+    template <size_t n>
+    static bool compareHashes(
+        const std::array<std::array<uint8_t, BLAKE2B_OUTBYTES>, n> &hashes);
 
   private:
     using Pcre2CodePtr =

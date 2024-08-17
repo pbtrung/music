@@ -14,16 +14,6 @@
 
 namespace fs = std::filesystem;
 
-template <typename T, std::size_t N>
-static bool allElementsEqual(const std::array<T, N> &arr) {
-    if (arr.empty()) {
-        return false;
-    }
-    return std::all_of(arr.begin(), arr.end(), [&arr](const T &element) {
-        return element != 0 && element == arr[0];
-    });
-}
-
 static std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> createCurlHandle() {
     std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
     auto curl = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(
@@ -81,7 +71,7 @@ void FileDownloader::downloadCid(int cid_index) {
         const int maxRetries = config["max_retries"];
 
         size_t count = 0;
-        std::array<size_t, 2> file_size = {};
+        std::array<std::array<uint8_t, BLAKE2B_OUTBYTES>, 2> hashes = {};
 
         for (int retries = 0; retries < maxRetries; ++retries) {
             if (cids[cid_index].size() == 59) {
@@ -105,31 +95,29 @@ void FileDownloader::downloadCid(int cid_index) {
                 if (responseCode == 200) {
                     count++;
                     size_t remainder = count % 2;
-                    file_size[remainder] = fs::file_size(filePath);
-                    SPDLOG_LOGGER_INFO(logger, "Size: {} -> {}",
-                                       cids[cid_index], file_size[remainder]);
+                    hashes[remainder] = Utils::getBlake2Hash(filePath.string());
+                    SPDLOG_LOGGER_INFO(logger, "Hashed {}", cids[cid_index]);
                     if (remainder == 0) {
-                        if (allElementsEqual(file_size)) {
+                        if (Utils::compareHashes(hashes)) {
                             cidDownloadStatus[cid_index] =
                                 DownloadStatus::Succeeded;
                             break;
                         } else {
                             SPDLOG_LOGGER_ERROR(
-                                logger,
-                                "Error: Mismatched sizes [{}, {}] of {}",
-                                file_size[0], file_size[1], cids[cid_index]);
+                                logger, "Error: Mismatched hashes of {}",
+                                cids[cid_index]);
                         }
                     }
                 }
             }
             outfile.clear();
             outfile.seekp(0, std::ios::beg);
-            SPDLOG_LOGGER_INFO(logger, "Retry to download {} (attempt {})",
+            SPDLOG_LOGGER_INFO(logger, "Redownload {} (attempt {})",
                                cids[cid_index], retries + 1);
             logger->flush();
         }
 
-        if (responseCode != 200) {
+        if (responseCode != 200 || !Utils::compareHashes(hashes)) {
             SPDLOG_LOGGER_ERROR(
                 logger, "Error: Download of {} failed after {} attempts",
                 cids[cid_index], maxRetries);

@@ -31,6 +31,7 @@ pkg_check_modules(OPUSFILE REQUIRED opusfile)
 pkg_check_modules(MPG123 REQUIRED libmpg123)
 pkg_check_modules(SOXR REQUIRED soxr)
 pkg_check_modules(SPDLOG REQUIRED spdlog)
+pkg_check_modules(B2 REQUIRED libb2)
 
 add_executable(music
     src/main.cpp
@@ -52,6 +53,7 @@ target_include_directories(music PRIVATE
     ${MPG123_INCLUDE_DIRS}
     ${SOXR_INCLUDE_DIRS}
     ${SPDLOG_INCLUDE_DIRS}
+    ${B2_INCLUDE_DIRS}
     include
 )
 
@@ -65,6 +67,7 @@ target_link_directories(music PRIVATE
     ${MPG123_LIBRARY_DIRS}
     ${SOXR_LIBRARY_DIRS}
     ${SPDLOG_LIBRARY_DIRS}
+    ${B2_LIBRARY_DIRS}
 )
 
 target_link_libraries(music PRIVATE
@@ -77,4 +80,5 @@ target_link_libraries(music PRIVATE
     ${MPG123_LIBRARIES}
     ${SOXR_LIBRARIES}
     ${SPDLOG_LIBRARIES}
+    ${B2_LIBRARIES}
 )
