@@ -3,6 +3,8 @@
 #include "random.hpp"
 #include "thread_pool.hpp"
 #include "utils.hpp"
+#include <algorithm>
+#include <array>
 #include <curl/curl.h>
 #include <filesystem>
 #include <fmt/core.h>
@@ -11,6 +13,16 @@
 #include <stdexcept>
 
 namespace fs = std::filesystem;
+
+template <typename T, std::size_t N>
+static bool allElementsEqual(const std::array<T, N> &arr) {
+    if (arr.empty()) {
+        return false;
+    }
+    return std::all_of(arr.begin(), arr.end(), [&arr](const T &element) {
+        return element != 0 && element == arr[0];
+    });
+}
 
 static std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> createCurlHandle() {
     std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
@@ -68,8 +80,8 @@ void FileDownloader::downloadCid(int cid_index) {
         const int timeout = config["timeout"];
         const int maxRetries = config["max_retries"];
 
-        SPDLOG_LOGGER_INFO(logger, "Downloading {}", cids[cid_index]);
-        logger->flush();
+        size_t count = 0;
+        std::array<size_t, 2> file_size = {};
 
         for (int retries = 0; retries < maxRetries; ++retries) {
             if (cids[cid_index].size() == 59) {
@@ -84,22 +96,42 @@ void FileDownloader::downloadCid(int cid_index) {
                 curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, timeout);
             }
             curl_easy_setopt(curl.get(), CURLOPT_URL, url.data());
+            SPDLOG_LOGGER_INFO(logger, "Downloading {} from {}",
+                               cids[cid_index], url);
 
             if (curl_easy_perform(curl.get()) == CURLE_OK) {
                 curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
                                   &responseCode);
                 if (responseCode == 200) {
-                    cidDownloadStatus[cid_index] = DownloadStatus::Succeeded;
-                    break;
+                    count++;
+                    size_t remainder = count % 2;
+                    file_size[remainder] = fs::file_size(filePath);
+                    SPDLOG_LOGGER_INFO(logger, "Size: {} -> {}",
+                                       cids[cid_index], file_size[remainder]);
+                    if (remainder == 0) {
+                        if (allElementsEqual(file_size)) {
+                            cidDownloadStatus[cid_index] =
+                                DownloadStatus::Succeeded;
+                            break;
+                        } else {
+                            SPDLOG_LOGGER_ERROR(
+                                logger,
+                                "Error: Mismatched sizes [{}, {}] of {}",
+                                file_size[0], file_size[1], cids[cid_index]);
+                        }
+                    }
                 }
             }
             outfile.clear();
             outfile.seekp(0, std::ios::beg);
+            SPDLOG_LOGGER_INFO(logger, "Retry to download {} (attempt {})",
+                               cids[cid_index], retries + 1);
+            logger->flush();
         }
 
         if (responseCode != 200) {
             SPDLOG_LOGGER_ERROR(
-                logger, "Error: Download of cid {} failed after {} attempts",
+                logger, "Error: Download of {} failed after {} attempts",
                 cids[cid_index], maxRetries);
             cidDownloadStatus[cid_index] = DownloadStatus::Failed;
         } else {
