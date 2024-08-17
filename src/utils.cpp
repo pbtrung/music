@@ -6,24 +6,7 @@
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 
-template <size_t n>
-bool Utils::compareHashes(
-    const std::array<std::array<uint8_t, BLAKE2B_OUTBYTES>, n> &hashes) {
-    if (n <= 1) {
-        return true;
-    }
-
-    for (size_t i = 1; i < n; ++i) {
-        if (!std::equal(hashes[0].begin(), hashes[0].end(),
-                        hashes[i].begin())) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-std::array<uint8_t, BLAKE2B_OUTBYTES>
+std::array<uint8_t, BLAKE2S_OUTBYTES>
 Utils::getBlake2Hash(const std::string &filename) {
     std::shared_ptr<spdlog::logger> logger = spdlog::get("logger");
     std::ifstream file(filename, std::ios::binary);
@@ -32,18 +15,18 @@ Utils::getBlake2Hash(const std::string &filename) {
         throw std::runtime_error("");
     }
 
-    blake2b_state state;
-    blake2b_init(&state, BLAKE2B_OUTBYTES);
+    blake2s_state state;
+    blake2s_init(&state, BLAKE2S_OUTBYTES);
 
     const size_t buffer_size = 8192;
     std::vector<char> buffer(buffer_size);
     while (file.read(buffer.data(), buffer_size)) {
-        blake2b_update(&state, reinterpret_cast<uint8_t *>(buffer.data()),
+        blake2s_update(&state, reinterpret_cast<uint8_t *>(buffer.data()),
                        file.gcount());
     }
 
-    std::array<uint8_t, BLAKE2B_OUTBYTES> hashArray;
-    blake2b_final(&state, hashArray.data(), BLAKE2B_OUTBYTES);
+    std::array<uint8_t, BLAKE2S_OUTBYTES> hashArray;
+    blake2s_final(&state, hashArray.data(), BLAKE2S_OUTBYTES);
 
     return hashArray;
 }

@@ -71,7 +71,7 @@ void FileDownloader::downloadCid(int cid_index) {
         const int maxRetries = config["max_retries"];
 
         size_t count = 0;
-        std::array<std::array<uint8_t, BLAKE2B_OUTBYTES>, 2> hashes = {};
+        std::array<std::array<uint8_t, BLAKE2S_OUTBYTES>, 2> hashes = {};
 
         for (int retries = 0; retries < maxRetries; ++retries) {
             if (cids[cid_index].size() == 59) {

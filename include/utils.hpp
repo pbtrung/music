@@ -15,11 +15,22 @@ class Utils {
     static void toLowercase(std::string &str);
     static std::string getExtension(std::string_view text);
     static std::string formatTime(std::chrono::seconds seconds);
-    static std::array<uint8_t, BLAKE2B_OUTBYTES>
+    static std::array<uint8_t, BLAKE2S_OUTBYTES>
     getBlake2Hash(const std::string &filename);
     template <size_t n>
     static bool compareHashes(
-        const std::array<std::array<uint8_t, BLAKE2B_OUTBYTES>, n> &hashes);
+        const std::array<std::array<uint8_t, BLAKE2S_OUTBYTES>, n> &hashes) {
+        if (n <= 1) {
+            return true;
+        }
+        for (size_t i = 1; i < n; ++i) {
+            if (!std::equal(hashes[0].begin(), hashes[0].end(),
+                            hashes[i].begin())) {
+                return false;
+            }
+        }
+        return true;
+    }
 
   private:
     using Pcre2CodePtr =
