@@ -93,19 +93,27 @@ void FileDownloader::downloadCid(int cid_index) {
                 curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE,
                                   &responseCode);
                 if (responseCode == 200) {
-                    count++;
-                    size_t remainder = count % 2;
-                    hashes[remainder] = Utils::getBlake2Hash(filePath.string());
-                    SPDLOG_LOGGER_INFO(logger, "Hashed {}", cids[cid_index]);
-                    if (remainder == 0) {
-                        if (Utils::compareHashes(hashes)) {
-                            cidDownloadStatus[cid_index] =
-                                DownloadStatus::Succeeded;
-                            break;
-                        } else {
-                            SPDLOG_LOGGER_ERROR(
-                                logger, "Error: Mismatched hashes of {}",
-                                cids[cid_index]);
+                    if (cids[cid_index].size() == 59) {
+                        cidDownloadStatus[cid_index] =
+                            DownloadStatus::Succeeded;
+                        break;
+                    } else {
+                        count++;
+                        size_t remainder = count % 2;
+                        hashes[remainder] =
+                            Utils::getBlake2Hash(filePath.string());
+                        SPDLOG_LOGGER_INFO(logger, "Hashed {}",
+                                           cids[cid_index]);
+                        if (remainder == 0) {
+                            if (Utils::compareHashes(hashes)) {
+                                cidDownloadStatus[cid_index] =
+                                    DownloadStatus::Succeeded;
+                                break;
+                            } else {
+                                SPDLOG_LOGGER_ERROR(
+                                    logger, "Error: Mismatched hashes of {}",
+                                    cids[cid_index]);
+                            }
                         }
                     }
                 }
