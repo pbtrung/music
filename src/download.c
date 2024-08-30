@@ -74,7 +74,7 @@ void initialize_file_info(file_info_t *info, int index, sqlite3 *db,
     info->cid_download_status =
         (enum download_status *)malloc(num_cids * sizeof(enum download_status));
     if (!info->cid_download_status) {
-        log_trace("download_init: Memory allocation failed");
+        log_trace("Memory allocation failed");
         exit(-1);
     }
 
@@ -99,7 +99,7 @@ void download_init(file_info_t *infos, config_t *config, sqlite3 *db) {
 FILE *open_file_for_writing(const char *file_path) {
     FILE *fp = fopen(file_path, "wb");
     if (!fp) {
-        log_trace("download_cid: Failed to open file %s", file_path);
+        log_trace("Failed to open file %s", file_path);
         exit(-1);
     }
     return fp;
@@ -199,7 +199,7 @@ apr_thread_pool_t *create_thread_pool(apr_pool_t *pool, config_t *config) {
     status = apr_thread_pool_create(&thread_pool, config->num_files, 4 * ncores,
                                     pool);
     if (status != APR_SUCCESS) {
-        log_trace("download_files: Failed to create thread pool");
+        log_trace("Failed to create thread pool");
         exit(-1);
     }
 
@@ -217,9 +217,8 @@ void push_download_task(apr_thread_pool_t *thread_pool, file_info_t *info,
     apr_status_t status =
         apr_thread_pool_push(thread_pool, download_cid, download_info, 0, NULL);
     if (status != APR_SUCCESS) {
-        log_trace(
-            "download_files: Failed to push task to thread pool for cid %s",
-            info->cids[cid_index]);
+        log_trace("Failed to push task to thread pool for cid %s",
+                  info->cids[cid_index]);
         exit(-1);
     }
 }
@@ -232,7 +231,7 @@ void wait_for_tasks_to_complete(apr_thread_pool_t *thread_pool) {
 
 void log_download_time(apr_time_t start) {
     apr_time_t end = apr_time_now();
-    log_trace("download_files: Downloading took %.3f",
+    log_trace("Downloading took %.3f",
               (double)(end - start) / APR_USEC_PER_SEC);
     fprintf(stdout, "%s %.3f seconds\n", "Downloading took",
             (double)(end - start) / APR_USEC_PER_SEC);
@@ -272,20 +271,19 @@ int is_file_download_successful(file_info_t *info) {
 }
 
 void log_file_assembly(file_info_t *info) {
-    log_trace("assemble_files: start assembling %s", info->filename);
+    log_trace("assemble: start assembling %s", info->filename);
     fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "Assemble", info->filename);
-    log_trace("assemble_files: path: %s", info->album_path);
+    log_trace("assemble: path: %s", info->album_path);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "path", info->album_path);
-    log_trace("assemble_files: filename: %s", info->track_name);
+    log_trace("assemble: filename: %s", info->track_name);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename", info->track_name);
 
     if (info->num_cids == 1) {
-        log_trace("assemble_files: info: %s -> %s", info->cids[0],
-                  info->filename);
+        log_trace("assemble: info: %s -> %s", info->cids[0], info->filename);
         fprintf(stdout, "  %-*s: %s -> %s\n", WIDTH, "info", info->cids[0],
                 info->filename);
     } else {
-        log_trace("assemble_files: info: %d CIDs -> %s", info->num_cids,
+        log_trace("assemble: info: %d CIDs -> %s", info->num_cids,
                   info->filename);
         fprintf(stdout, "  %-*s: %d CIDs -> %s\n", WIDTH, "info",
                 info->num_cids, info->filename);
@@ -379,8 +377,7 @@ void assemble_files(file_info_t *infos, config_t *config) {
         if (is_file_download_successful(&infos[i])) {
             log_file_assembly(&infos[i]);
             assemble(&infos[i], config);
-            log_trace("assemble_files: finish assembling %s",
-                      infos[i].filename);
+            log_trace("assemble: finish assembling %s", infos[i].filename);
         }
     }
 }
