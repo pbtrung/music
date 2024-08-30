@@ -151,6 +151,7 @@ void perform_curl_download(CURL *curl, FILE *fp,
                 *(download_info->cid_download_status) = DOWNLOAD_SUCCEEDED;
                 log_trace("download_cid: finish downloading %s",
                           download_info->cid);
+                fprintf(stdout, "Finish downloading %s\n", download_info->cid);
                 break;
             }
         }
