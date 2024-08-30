@@ -16,6 +16,7 @@ static void decode_print_metadata(AVFormatContext *fmt_ctx) {
     while ((
         tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
         util_tolower(tag->key);
+        log_trace("%s: %s", tag->key, tag->value);
         fprintf(stdout, "  %-*s: %s\n", WIDTH, tag->key, tag->value);
     }
 
@@ -25,6 +26,7 @@ static void decode_print_metadata(AVFormatContext *fmt_ctx) {
         while ((tag = av_dict_get(stream->metadata, "", tag,
                                   AV_DICT_IGNORE_SUFFIX))) {
             util_tolower(tag->key);
+            log_trace("%s: %s", tag->key, tag->value);
             fprintf(stdout, "  %-*s: %s\n", WIDTH, tag->key, tag->value);
         }
     }
@@ -132,12 +134,15 @@ static FILE *decode_open_output_pipe(char *pipe_name) {
 // Function to print audio stream details
 static void decode_print_audio_info(AVCodecContext *codec_ctx, int out_channels,
                                     int out_samplerate) {
+    log_trace("codec: %s", codec_ctx->codec->long_name);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "codec",
             codec_ctx->codec->long_name);
     if (codec_ctx->bit_rate != 0) {
+        log_trace("bit-rate: %ld", (long)codec_ctx->bit_rate / 1000);
         fprintf(stdout, "  %-*s: %ld kbps\n", WIDTH, "bit-rate",
                 (long)codec_ctx->bit_rate / 1000);
     }
+    log_trace("sample-rate: %d", codec_ctx->sample_rate);
     fprintf(stdout, "  %-*s: %d\n", WIDTH, "sample-rate",
             codec_ctx->sample_rate);
 
@@ -145,17 +150,22 @@ static void decode_print_audio_info(AVCodecContext *codec_ctx, int out_channels,
     av_get_sample_fmt_string(sample_fmt, sizeof(sample_fmt),
                              codec_ctx->sample_fmt);
     util_remove_spaces(sample_fmt);
+    log_trace("sample-fmt: %s", sample_fmt);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "sample-fmt", sample_fmt);
+    log_trace("channels: %d", codec_ctx->ch_layout.nb_channels);
     fprintf(stdout, "  %-*s: %d\n", WIDTH, "channels",
             codec_ctx->ch_layout.nb_channels);
 
+    if (codec_ctx->ch_layout.nb_channels != out_channels) {
+        log_trace("resample: %d -> %d", codec_ctx->ch_layout.nb_channels,
+                  out_channels);
+        fprintf(stdout, "  %-*s: %d -> %d\n", WIDTH, "resample",
+                codec_ctx->ch_layout.nb_channels, out_channels);
+    }
     if (codec_ctx->sample_rate != out_samplerate) {
+        log_trace("resample: %d -> %d", codec_ctx->sample_rate, out_samplerate);
         fprintf(stdout, "  %-*s: %d -> %d\n", WIDTH, "resample",
                 codec_ctx->sample_rate, out_samplerate);
-    }
-    if (codec_ctx->ch_layout.nb_channels != out_channels) {
-        fprintf(stdout, "  %-*s: %d -> %d channels\n", WIDTH, "resample",
-                codec_ctx->ch_layout.nb_channels, out_channels);
     }
 }
 
@@ -303,10 +313,11 @@ void decode_audio(char *pipe_name, char *input_filename) {
     }
 
     apr_time_t end = apr_time_now();
+    log_trace("took: %.3f ms", (double)(end - start) / 1000);
     fprintf(stdout, "  %-*s: %.3f ms\n", WIDTH, "took",
             (double)(end - start) / 1000);
 
-    log_trace("decode_audio: start while");
+    log_trace("decode_audio: start decode loop");
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
         if (pkt->stream_index == stream_index) {
             ret = decode_process_frame(fmt_ctx, codec_ctx, swr_ctx, frame, pkt,
@@ -318,7 +329,7 @@ void decode_audio(char *pipe_name, char *input_filename) {
         }
         av_packet_unref(pkt);
     }
-    log_trace("decode_audio: finish while");
+    log_trace("decode_audio: finish decode loop");
 
     fprintf(stdout, "\n\n");
 
