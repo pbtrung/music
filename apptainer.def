@@ -36,6 +36,7 @@ Stage: final
     apk upgrade
     apk add --no-cache curl sqlite-libs pcre2 soxr snapcast-server \
         jansson apr apr-util
+    ls -lh /usr/bin/music
 
 %startscript
     #!/bin/ash
