@@ -240,7 +240,7 @@ static void assemble(file_info_t *info, config_t *config) {
             fwrite(buffer, 1, bytes_read, outfile);
         }
         fclose(infile);
-        log_trace("assemble: Failed to delete file %s", cid_path);
+        log_trace("assemble: %s -> %s", info->cids[j], info->filename);
 
         if (remove(cid_path) != 0) {
             log_trace("assemble: Failed to delete file %s", cid_path);
