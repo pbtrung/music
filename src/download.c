@@ -168,6 +168,11 @@ void perform_download(CURL *curl, FILE *fp, download_info_t *download_info) {
 
 static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
     download_info_t *download_info = (download_info_t *)data;
+
+    fprintf(stdout, "Downloading %s\n", download_info->cid);
+    log_trace("download_cid: start downloading %s", download_info->cid);
+    fflush(stdout);
+
     CURL *curl = curl_easy_init();
 
     if (!curl) {
@@ -290,8 +295,8 @@ void log_file_assembly(file_info_t *info) {
     fflush(stdout);
 }
 
-void append_cid_file_to_output(char *cid, FILE *outfile, char *buffer,
-                               config_t *config) {
+void append_cid_file_to_output(char *filename, char *cid, FILE *outfile,
+                               char *buffer, config_t *config) {
     char *cid_path = util_get_file_path(config->output, cid);
 
     FILE *infile = fopen(cid_path, "rb");
@@ -306,7 +311,7 @@ void append_cid_file_to_output(char *cid, FILE *outfile, char *buffer,
     }
 
     fclose(infile);
-    log_trace("assemble: %s -> %s", cid, cid_path);
+    log_trace("assemble: %s -> %s", cid, filename);
 
     if (remove(cid_path) != 0) {
         log_trace("assemble: Failed to delete file %s", cid_path);
@@ -350,7 +355,8 @@ void assemble_multiple_cid_files(file_info_t *info, char *file_path,
 
     char *buffer = allocate_buffer(4096);
     for (int j = 0; j < info->num_cids; j++) {
-        append_cid_file_to_output(info->cids[j], outfile, buffer, config);
+        append_cid_file_to_output(info->filename, info->cids[j], outfile,
+                                  buffer, config);
     }
 
     fclose(outfile);
