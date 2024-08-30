@@ -1,13 +1,13 @@
-Bootstrap: docker
-From: alpine:edge
+Bootstrap: library
+From: pbtrung/ffmpeg/ffmpeg:latest
 Stage: build
 
 %post
     apk update
     apk add git
     apk add --no-cache alpine-sdk git pkgconf autoconf automake \
-        cmake bash curl-dev sqlite-dev pcre2-dev fmt-dev mpg123-dev \
-        opusfile-dev soxr-dev utfcpp zlib-dev spdlog-dev libb2-dev
+        cmake bash curl-dev sqlite-dev pcre2-dev jansson-dev \
+        soxr-dev apr-dev apr-util-dev
 
     cd /root/
     git clone https://github.com/allinurl/gwsocket
@@ -15,18 +15,6 @@ Stage: build
     autoreconf -fiv
     ./configure
     make
-
-    cd /root/
-    git clone https://github.com/taglib/taglib
-    cd taglib
-    mkdir -p build/taglib
-    cd build
-    cmake -B taglib -DBUILD_SHARED_LIBS=ON -DVISIBILITY_HIDDEN=ON \
-        -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BINDINGS=OFF \
-        -DCMAKE_BUILD_TYPE=Release ..
-    cmake --build taglib --config Release
-    cmake --install taglib --config Release --prefix pkg --strip
-    cmake --install taglib --config Release --prefix /usr --strip
 
     cd /root/
     git clone https://github.com/pbtrung/music
@@ -42,14 +30,12 @@ Stage: final
 %files from build
     /root/music/build/music /usr/bin/
     /root/gwsocket/gwsocket /usr/bin/
-    /root/taglib/build/pkg/lib/* /usr/lib/
 
 %post
     apk update
     apk upgrade
-    apk add --no-cache curl sqlite-libs pcre2 fmt \
-        snapcast-server zlib mpg123-libs opusfile soxr \
-        spdlog libb2
+    apk add --no-cache curl sqlite-libs pcre2 soxr snapcast-server \
+        jansson apr apr-util
 
 %startscript
     #!/bin/ash
