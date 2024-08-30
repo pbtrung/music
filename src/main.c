@@ -24,10 +24,12 @@ int main(int argc, const char *argv[]) {
     }
     apr_pool_create(&pool, NULL);
 
-    config_t *config = apr_palloc(pool, sizeof(config_t));
+    config_t *config = malloc(sizeof(config_t));
+    if (!config) {
+        fprintf(stderr, "Memory allocation failed");
+        exit(-1);
+    }
     config_read(argv[1], config);
-    apr_pool_cleanup_register(pool, config, config_free, apr_pool_cleanup_null);
-
     FILE *fp = fopen(config->log, "w");
     if (!fp) {
         fprintf(stderr, "Failed to open file %s\n", config->log);
@@ -35,12 +37,20 @@ int main(int argc, const char *argv[]) {
     }
     log_add_fp(fp, LOG_TRACE);
     log_set_quiet(true);
+    config_free(config);
+    free(config);
+    config = NULL;
 
     log_trace("start main");
     while (true) {
         log_trace("start while");
+
         apr_pool_t *subp1;
         apr_pool_create(&subp1, pool);
+
+        config = apr_palloc(subp1, sizeof(config_t));
+        config_read(argv[1], config);
+        apr_pool_cleanup_register(subp1, config, config_free, apr_pool_cleanup_null);
 
         sqlite3 *db;
         database_open_readonly(config->db, &db);

@@ -172,7 +172,9 @@ void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
     apr_pool_t *subpool;
     apr_pool_create(&subpool, pool);
 
-    status = apr_thread_pool_create(&thread_pool, 10, 20, subpool);
+    apr_size_t ncores = 2;
+    status = apr_thread_pool_create(&thread_pool, config->num_files, 4 * ncores,
+                                    subpool);
     if (status != APR_SUCCESS) {
         log_trace("download_files: Failed to create thread pool");
         exit(-1);
