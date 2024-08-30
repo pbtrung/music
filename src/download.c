@@ -125,11 +125,19 @@ void set_curl_options(CURL *curl, char *url, download_info_t *download_info,
     log_trace("download_cid: downloading from %s", url);
 }
 
+static size_t write_cb(void *ptr, size_t size, size_t nmemb, FILE *stream) {
+    return fwrite(ptr, size, nmemb, stream);
+}
+
 void perform_download(CURL *curl, FILE *fp, download_info_t *download_info) {
     int retries = 0;
     CURLcode res;
     long response_code;
     char url[128];
+
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
     do {
         set_curl_options(curl, url, download_info, retries);
