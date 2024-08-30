@@ -120,11 +120,11 @@ static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx,
 }
 
 // Function to open the output pipe
-static FILE *decode_open_output_pipe(config_t *config) {
-    FILE *output_fp = fopen(config->pipe_name, "wb");
+static FILE *decode_open_output_pipe(char *pipe_name) {
+    FILE *output_fp = fopen(pipe_name, "wb");
     if (!output_fp) {
         log_trace("decode_open_output_pipe: Failed to open output pipe: %s",
-                  config->pipe_name);
+                  pipe_name);
     }
     return output_fp;
 }
@@ -230,7 +230,7 @@ static void ffmpeg_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
 }
 
 // Main function to decode audio
-void decode_audio(config_t *config, char *input_filename) {
+void decode_audio(char *pipe_name, char *input_filename) {
     log_trace("decode_audio: start decoding %s", input_filename);
     apr_time_t start = apr_time_now();
 
@@ -279,7 +279,7 @@ void decode_audio(config_t *config, char *input_filename) {
         goto cleanup;
     }
 
-    output_fp = decode_open_output_pipe(config);
+    output_fp = decode_open_output_pipe(pipe_name);
     if (!output_fp) {
         goto cleanup;
     }

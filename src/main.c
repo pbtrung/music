@@ -50,7 +50,8 @@ int main(int argc, const char *argv[]) {
 
         config = apr_palloc(subp1, sizeof(config_t));
         config_read(argv[1], config);
-        apr_pool_cleanup_register(subp1, config, config_free, apr_pool_cleanup_null);
+        apr_pool_cleanup_register(subp1, config, config_free,
+                                  apr_pool_cleanup_null);
 
         sqlite3 *db;
         database_open_readonly(config->db, &db);
@@ -78,12 +79,16 @@ int main(int argc, const char *argv[]) {
         file_downloaded_t *file_downloaded =
             downloaded_files(subp2, file_infos, config);
 
+        char *output = apr_pstrdup(subp2, config->output);
+        char *pipe_name = apr_pstrdup(subp2, config->pipe_name);
+        int num_files = config->num_files;
+
         apr_pool_destroy(subp1);
 
-        for (int i = 0; i < config->num_files; ++i) {
+        for (int i = 0; i < num_files; ++i) {
             if (file_downloaded[i].file_download_status == DOWNLOAD_SUCCEEDED) {
-                char *file_path = util_get_file_path(
-                    config->output, file_downloaded[i].filename);
+                char *file_path =
+                    util_get_file_path(output, file_downloaded[i].filename);
                 log_trace("main: start playing %s", file_path);
 
                 fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "PLAYING",
@@ -93,7 +98,7 @@ int main(int argc, const char *argv[]) {
                 fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename",
                         file_downloaded[i].track_name);
 
-                decode_audio(config, file_path);
+                decode_audio(pipe_name, file_path);
                 log_trace("main: finish playing %s", file_path);
                 free(file_path);
             }

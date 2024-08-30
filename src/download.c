@@ -240,6 +240,7 @@ static void assemble(file_info_t *info, config_t *config) {
             fwrite(buffer, 1, bytes_read, outfile);
         }
         fclose(infile);
+        log_trace("assemble: Failed to delete file %s", cid_path);
 
         if (remove(cid_path) != 0) {
             log_trace("assemble: Failed to delete file %s", cid_path);
@@ -271,6 +272,13 @@ void assemble_files(file_info_t *infos, config_t *config) {
             fprintf(stdout, "  %-*s: %s\n", WIDTH, "path", infos[i].album_path);
             fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename",
                     infos[i].track_name);
+            if (infos[i].num_cids == 1) {
+                fprintf(stdout, "  %-*s: %s -> %s\n", WIDTH, "info",
+                        infos[i].cids[0], infos[i].filename);
+            } else {
+                fprintf(stdout, "  %-*s: %d CIDs -> %s\n", WIDTH, "info",
+                        infos[i].num_cids, infos[i].filename);
+            }
             fprintf(stdout, "\n");
             fflush(stdout);
             assemble(&infos[i], config);
