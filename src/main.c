@@ -44,7 +44,7 @@ void play_files(file_downloaded_t *file_downloaded, int num_files, char *output,
         if (file_downloaded[i].file_download_status == DOWNLOAD_SUCCEEDED) {
             char *file_path =
                 util_get_file_path(output, file_downloaded[i].filename);
-            log_trace("main: start playing %s", file_path);
+            log_trace("main: start playing %s", file_downloaded[i].filename);
 
             log_trace("PLAYING: %s", file_downloaded[i].filename);
             fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "PLAYING",
@@ -56,8 +56,8 @@ void play_files(file_downloaded_t *file_downloaded, int num_files, char *output,
             fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename",
                     file_downloaded[i].track_name);
 
-            decode_audio(pipe_name, file_path);
-            log_trace("main: finish playing %s", file_path);
+            decode_audio(pipe_name, file_downloaded[i].filename, file_path);
+            log_trace("main: finish playing %s", file_downloaded[i].filename);
             free(file_path);
         }
     }

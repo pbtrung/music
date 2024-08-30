@@ -374,6 +374,7 @@ static void assemble(file_info_t *info, config_t *config) {
 }
 
 void assemble_files(file_info_t *infos, config_t *config) {
+    fprintf(stdout, "\n");
     for (int i = 0; i < config->num_files; ++i) {
         if (is_download_successful(&infos[i])) {
             log_assembly(&infos[i]);

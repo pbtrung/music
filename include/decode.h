@@ -3,6 +3,6 @@
 
 #include "config.h"
 
-void decode_audio(char *pipe_name, char *file_path);
+void decode_audio(char *pipe_name, char *filename, char *file_path);
 
 #endif // DECODE_H

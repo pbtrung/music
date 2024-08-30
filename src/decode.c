@@ -240,8 +240,8 @@ static void ffmpeg_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
 }
 
 // Main function to decode audio
-void decode_audio(char *pipe_name, char *input_filename) {
-    log_trace("decode_audio: start decoding %s", input_filename);
+void decode_audio(char *pipe_name, char *filename, char *file_path) {
+    log_trace("decode_audio: start decoding %s", filename);
     apr_time_t start = apr_time_now();
 
     AVFormatContext *fmt_ctx = NULL;
@@ -258,9 +258,9 @@ void decode_audio(char *pipe_name, char *input_filename) {
     av_log_set_level(AV_LOG_ERROR);
     av_log_set_callback(ffmpeg_log_cb);
 
-    if ((ret = avformat_open_input(&fmt_ctx, input_filename, NULL, NULL)) < 0) {
+    if ((ret = avformat_open_input(&fmt_ctx, file_path, NULL, NULL)) < 0) {
         log_trace("decode_audio: Failed to open source file '%s': %s",
-                  input_filename, av_err2str(ret));
+                  file_path, av_err2str(ret));
         goto cleanup;
     }
 
@@ -346,5 +346,5 @@ cleanup:
         avformat_close_input(&fmt_ctx);
     if (swr_ctx)
         swr_free(&swr_ctx);
-    log_trace("decode_audio: finish decoding %s", input_filename);
+    log_trace("decode_audio: finish decoding %s", filename);
 }
