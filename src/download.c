@@ -14,7 +14,7 @@ typedef struct {
     config_t *config;
 } download_info_t;
 
-void free_info(file_info_t *info) {
+static void free_info(file_info_t *info) {
     free(info->track_name);
     free(info->album_path);
     free(info->filename);
@@ -37,8 +37,8 @@ apr_status_t download_cleanup(void *data) {
     return APR_SUCCESS;
 }
 
-void populate_file_status(file_downloaded_t *file_downloaded, file_info_t *info,
-                          apr_pool_t *pool) {
+static void populate_file_status(file_downloaded_t *file_downloaded,
+                                 file_info_t *info, apr_pool_t *pool) {
     file_downloaded->file_download_status = info->file_download_status;
     if (info->file_download_status == DOWNLOAD_SUCCEEDED) {
         file_downloaded->filename = apr_pstrdup(pool, info->filename);
@@ -58,8 +58,8 @@ file_downloaded_t *downloaded_files(apr_pool_t *pool, file_info_t *infos,
     return file_downloaded;
 }
 
-void init_file_info(file_info_t *info, int index, sqlite3 *db,
-                    config_t *config) {
+static void init_file_info(file_info_t *info, int index, sqlite3 *db,
+                           config_t *config) {
     int num_cids;
 
     info->track_name = database_get_track_name(db, index);
@@ -96,7 +96,7 @@ void download_init(file_info_t *infos, config_t *config, sqlite3 *db) {
     log_trace("download_init: finish");
 }
 
-FILE *open_file_write(const char *file_path) {
+static FILE *open_file_write(const char *file_path) {
     FILE *fp = fopen(file_path, "wb");
     if (!fp) {
         log_trace("Failed to open file %s", file_path);
@@ -105,8 +105,8 @@ FILE *open_file_write(const char *file_path) {
     return fp;
 }
 
-void set_curl_opts(CURL *curl, char *url, download_info_t *download_info,
-                   int retries) {
+static void set_curl_opts(CURL *curl, char *url, download_info_t *download_info,
+                          int retries) {
     if (strlen(download_info->cid) == 59) {
         snprintf(url, 128, "https://%s.ipfs.nftstorage.link",
                  download_info->cid);
@@ -130,8 +130,8 @@ static size_t write_callback(void *ptr, size_t size, size_t nmemb,
     return fwrite(ptr, size, nmemb, stream);
 }
 
-void perform_curl_download(CURL *curl, FILE *fp,
-                           download_info_t *download_info) {
+static void perform_curl_download(CURL *curl, FILE *fp,
+                                  download_info_t *download_info) {
     int retries = 0;
     CURLcode res;
     long response_code;
@@ -194,7 +194,7 @@ static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
     return NULL;
 }
 
-apr_thread_pool_t *create_pool(apr_pool_t *pool, config_t *config) {
+static apr_thread_pool_t *create_pool(apr_pool_t *pool, config_t *config) {
     apr_thread_pool_t *thread_pool;
     apr_status_t status;
 
@@ -209,8 +209,8 @@ apr_thread_pool_t *create_pool(apr_pool_t *pool, config_t *config) {
     return thread_pool;
 }
 
-void push_task(apr_thread_pool_t *thread_pool, file_info_t *info, int cid_index,
-               apr_pool_t *pool) {
+static void push_task(apr_thread_pool_t *thread_pool, file_info_t *info,
+                      int cid_index, apr_pool_t *pool) {
     download_info_t *download_info = apr_palloc(pool, sizeof(download_info_t));
     download_info->cid = info->cids[cid_index];
     download_info->cid_download_status =
@@ -226,13 +226,13 @@ void push_task(apr_thread_pool_t *thread_pool, file_info_t *info, int cid_index,
     }
 }
 
-void wait_tasks(apr_thread_pool_t *thread_pool) {
+static void wait_tasks(apr_thread_pool_t *thread_pool) {
     while (apr_thread_pool_tasks_count(thread_pool) > 0) {
         apr_sleep(apr_time_from_sec(1));
     }
 }
 
-void log_duration(apr_time_t start) {
+static void log_duration(apr_time_t start) {
     apr_time_t end = apr_time_now();
     log_trace("Downloading took %.3f",
               (double)(end - start) / APR_USEC_PER_SEC);
@@ -262,7 +262,7 @@ void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {
     log_trace("download_files: finish");
 }
 
-int is_download_successful(file_info_t *info) {
+static int is_download_successful(file_info_t *info) {
     for (int j = 0; j < info->num_cids; ++j) {
         if (info->cid_download_status[j] != DOWNLOAD_SUCCEEDED) {
             info->file_download_status = DOWNLOAD_FAILED;
@@ -273,7 +273,7 @@ int is_download_successful(file_info_t *info) {
     return 1;
 }
 
-void log_assembly(file_info_t *info) {
+static void log_assembly(file_info_t *info) {
     log_trace("assemble: start assembling %s", info->filename);
     fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "Assemble", info->filename);
     log_trace("assemble: path: %s", info->album_path);
@@ -296,8 +296,8 @@ void log_assembly(file_info_t *info) {
     fflush(stdout);
 }
 
-void append_cid_output(char *filename, char *cid, FILE *outfile, char *buffer,
-                       config_t *config) {
+static void append_cid_output(char *filename, char *cid, FILE *outfile,
+                              char *buffer, config_t *config) {
     char *cid_path = util_get_file_path(config->output, cid);
 
     FILE *infile = fopen(cid_path, "rb");
@@ -322,7 +322,8 @@ void append_cid_output(char *filename, char *cid, FILE *outfile, char *buffer,
     free(cid_path);
 }
 
-void move_single_file(file_info_t *info, char *file_path, config_t *config) {
+static void move_single_file(file_info_t *info, char *file_path,
+                             config_t *config) {
     char *cid_path = util_get_file_path(config->output, info->cids[0]);
 
     if (rename(cid_path, file_path) != 0) {
@@ -336,7 +337,7 @@ void move_single_file(file_info_t *info, char *file_path, config_t *config) {
     free(file_path);
 }
 
-char *alloc_buffer(size_t buffer_size) {
+static char *alloc_buffer(size_t buffer_size) {
     char *buffer = (char *)malloc(buffer_size);
     if (!buffer) {
         log_trace("assemble: Memory allocation failed");
@@ -345,8 +346,8 @@ char *alloc_buffer(size_t buffer_size) {
     return buffer;
 }
 
-void assemble_multiple_cids(file_info_t *info, char *file_path,
-                            config_t *config) {
+static void assemble_multiple_cids(file_info_t *info, char *file_path,
+                                   config_t *config) {
     FILE *outfile = fopen(file_path, "wb");
     if (!outfile) {
         log_trace("assemble: Failed to open file %s", file_path);
