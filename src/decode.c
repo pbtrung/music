@@ -8,6 +8,10 @@
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 
+#define OUT_SAMPLERATE 48000
+#define OUT_SAMPLEFMT AV_SAMPLE_FMT_S16
+#define OUT_CHANNELS 2
+
 // Function to print format-level and stream-level metadata
 static void decode_print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
@@ -89,9 +93,7 @@ static AVCodecContext *decode_open_codec(AVFormatContext *fmt_ctx,
 }
 
 // Function to initialize the resampling context
-static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx,
-                                               int out_channels,
-                                               int out_samplerate) {
+static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx) {
     SwrContext *swr_ctx = swr_alloc();
     if (!swr_ctx) {
         log_trace(
@@ -104,10 +106,10 @@ static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx,
     av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", codec_ctx->sample_fmt, 0);
 
     AVChannelLayout out_chlayout;
-    av_channel_layout_default(&out_chlayout, out_channels);
+    av_channel_layout_default(&out_chlayout, OUT_CHANNELS);
     av_opt_set_chlayout(swr_ctx, "out_chlayout", &out_chlayout, 0);
-    av_opt_set_int(swr_ctx, "out_sample_rate", out_samplerate, 0);
-    av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+    av_opt_set_int(swr_ctx, "out_sample_rate", OUT_SAMPLERATE, 0);
+    av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", OUT_SAMPLEFMT, 0);
     av_opt_set(swr_ctx, "resampler", "soxr", 0);
     av_opt_set_int(swr_ctx, "precision", 20, 0);
 
@@ -132,8 +134,7 @@ static FILE *decode_open_output_pipe(char *pipe_name) {
 }
 
 // Function to print audio stream details
-static void decode_print_audio_info(AVCodecContext *codec_ctx, int out_channels,
-                                    int out_samplerate) {
+static void decode_print_audio_info(AVCodecContext *codec_ctx) {
     log_trace("codec: %s", codec_ctx->codec->long_name);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "codec",
             codec_ctx->codec->long_name);
@@ -156,16 +157,16 @@ static void decode_print_audio_info(AVCodecContext *codec_ctx, int out_channels,
     fprintf(stdout, "  %-*s: %d\n", WIDTH, "channels",
             codec_ctx->ch_layout.nb_channels);
 
-    if (codec_ctx->ch_layout.nb_channels != out_channels) {
+    if (codec_ctx->ch_layout.nb_channels != OUT_CHANNELS) {
         log_trace("resample: %d -> %d", codec_ctx->ch_layout.nb_channels,
-                  out_channels);
+                  OUT_CHANNELS);
         fprintf(stdout, "  %-*s: %d -> %d\n", WIDTH, "resample",
-                codec_ctx->ch_layout.nb_channels, out_channels);
+                codec_ctx->ch_layout.nb_channels, OUT_CHANNELS);
     }
-    if (codec_ctx->sample_rate != out_samplerate) {
-        log_trace("resample: %d -> %d", codec_ctx->sample_rate, out_samplerate);
+    if (codec_ctx->sample_rate != OUT_SAMPLERATE) {
+        log_trace("resample: %d -> %d", codec_ctx->sample_rate, OUT_SAMPLERATE);
         fprintf(stdout, "  %-*s: %d -> %d\n", WIDTH, "resample",
-                codec_ctx->sample_rate, out_samplerate);
+                codec_ctx->sample_rate, OUT_SAMPLERATE);
     }
 }
 
@@ -173,7 +174,6 @@ static void decode_print_audio_info(AVCodecContext *codec_ctx, int out_channels,
 static int decode_process_frame(AVFormatContext *fmt_ctx,
                                 AVCodecContext *codec_ctx, SwrContext *swr_ctx,
                                 AVFrame *frame, AVPacket *pkt, FILE *output_fp,
-                                int out_channels, int out_samplerate,
                                 const char *dur_str, int stream_index) {
     int ret;
     ret = avcodec_send_packet(codec_ctx, pkt);
@@ -196,11 +196,11 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
 
         uint8_t *output_buffer = NULL;
         int max_dst_nb_samples =
-            av_rescale_rnd(frame->nb_samples, out_samplerate,
+            av_rescale_rnd(frame->nb_samples, OUT_SAMPLERATE,
                            codec_ctx->sample_rate, AV_ROUND_UP);
         int output_buffer_size =
-            av_samples_alloc(&output_buffer, NULL, out_channels,
-                             max_dst_nb_samples, AV_SAMPLE_FMT_S16, 0);
+            av_samples_alloc(&output_buffer, NULL, OUT_CHANNELS,
+                             max_dst_nb_samples, OUT_SAMPLEFMT, 0);
         if (output_buffer_size < 0) {
             log_trace("decode_process_frame: Failed to allocate output buffer");
             return -1;
@@ -216,8 +216,8 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
         }
 
         fwrite(output_buffer, 1,
-               max_dst_nb_samples * out_channels *
-                   av_get_bytes_per_sample(AV_SAMPLE_FMT_S16),
+               max_dst_nb_samples * OUT_CHANNELS *
+                   av_get_bytes_per_sample(OUT_SAMPLEFMT),
                output_fp);
         av_freep(&output_buffer);
 
@@ -252,8 +252,6 @@ void decode_audio(char *pipe_name, char *filename, char *file_path) {
     FILE *output_fp = NULL;
     int stream_index = -1;
     int ret;
-    const int out_channels = 2;
-    const int out_samplerate = 48000;
 
     av_log_set_level(AV_LOG_ERROR);
     av_log_set_callback(ffmpeg_log_cb);
@@ -283,8 +281,7 @@ void decode_audio(char *pipe_name, char *filename, char *file_path) {
         goto cleanup;
     }
 
-    swr_ctx =
-        decode_initialize_resampler(codec_ctx, out_channels, out_samplerate);
+    swr_ctx = decode_initialize_resampler(codec_ctx);
     if (!swr_ctx) {
         goto cleanup;
     }
@@ -298,7 +295,7 @@ void decode_audio(char *pipe_name, char *filename, char *file_path) {
     char dur_str[9];
     util_seconds_to_time((int)duration, dur_str, sizeof(dur_str));
 
-    decode_print_audio_info(codec_ctx, out_channels, out_samplerate);
+    decode_print_audio_info(codec_ctx);
 
     pkt = av_packet_alloc();
     if (!pkt) {
@@ -321,8 +318,7 @@ void decode_audio(char *pipe_name, char *filename, char *file_path) {
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
         if (pkt->stream_index == stream_index) {
             ret = decode_process_frame(fmt_ctx, codec_ctx, swr_ctx, frame, pkt,
-                                       output_fp, out_channels, out_samplerate,
-                                       dur_str, stream_index);
+                                       output_fp, dur_str, stream_index);
             if (ret < 0) {
                 break;
             }
