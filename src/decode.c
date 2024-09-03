@@ -12,19 +12,15 @@
 #define OUT_SAMPLEFMT AV_SAMPLE_FMT_S16
 #define OUT_CHANNELS 2
 
-// Function to print format-level and stream-level metadata
 static void decode_print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
 
-    // Print format-level metadata
     while ((
         tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
         util_tolower(tag->key);
         log_trace("%s: %s", tag->key, tag->value);
         fprintf(stdout, "  %-*s: %s\n", WIDTH, tag->key, tag->value);
     }
-
-    // Print stream-level metadata
     for (int i = 0; i < fmt_ctx->nb_streams; i++) {
         AVStream *stream = fmt_ctx->streams[i];
         while ((tag = av_dict_get(stream->metadata, "", tag,
@@ -36,7 +32,6 @@ static void decode_print_metadata(AVFormatContext *fmt_ctx) {
     }
 }
 
-// Function to get the duration of the audio stream
 static int64_t decode_duration(AVFormatContext *fmt_ctx, int stream_index) {
     int64_t duration = -1;
     if (fmt_ctx->streams[stream_index]->duration != AV_NOPTS_VALUE) {
@@ -48,7 +43,6 @@ static int64_t decode_duration(AVFormatContext *fmt_ctx, int stream_index) {
     return duration;
 }
 
-// Function to find the audio stream index
 static int decode_find_audio_stream(AVFormatContext *fmt_ctx) {
     for (int i = 0; i < fmt_ctx->nb_streams; i++) {
         if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -58,7 +52,6 @@ static int decode_find_audio_stream(AVFormatContext *fmt_ctx) {
     return -1;
 }
 
-// Function to open the codec and get the codec context
 static AVCodecContext *decode_open_codec(AVFormatContext *fmt_ctx,
                                          int stream_index) {
     const AVCodec *codec = avcodec_find_decoder(
@@ -92,7 +85,6 @@ static AVCodecContext *decode_open_codec(AVFormatContext *fmt_ctx,
     return codec_ctx;
 }
 
-// Function to initialize the resampling context
 static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx) {
     SwrContext *swr_ctx = swr_alloc();
     if (!swr_ctx) {
@@ -123,7 +115,6 @@ static SwrContext *decode_initialize_resampler(AVCodecContext *codec_ctx) {
     return swr_ctx;
 }
 
-// Function to open the output pipe
 static FILE *decode_open_output_pipe(char *pipe_name) {
     FILE *output_fp = fopen(pipe_name, "wb");
     if (!output_fp) {
@@ -133,7 +124,6 @@ static FILE *decode_open_output_pipe(char *pipe_name) {
     return output_fp;
 }
 
-// Function to print audio stream details
 static void decode_print_audio_info(AVCodecContext *codec_ctx) {
     log_trace("codec: %s", codec_ctx->codec->long_name);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "codec",
@@ -170,7 +160,6 @@ static void decode_print_audio_info(AVCodecContext *codec_ctx) {
     }
 }
 
-// Function to process and resample each frame
 static int decode_process_frame(AVFormatContext *fmt_ctx,
                                 AVCodecContext *codec_ctx, SwrContext *swr_ctx,
                                 AVFrame *frame, AVPacket *pkt, FILE *output_fp,
@@ -239,7 +228,6 @@ static void ffmpeg_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
     }
 }
 
-// Main function to decode audio
 void decode_audio(char *pipe_name, char *filename, char *file_path) {
     log_trace("decode_audio: start decoding %s", filename);
     apr_time_t start = apr_time_now();
