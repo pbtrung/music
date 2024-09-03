@@ -234,10 +234,10 @@ static void wait_tasks(apr_thread_pool_t *thread_pool) {
 
 static void log_duration(apr_time_t start) {
     apr_time_t end = apr_time_now();
-    log_trace("Downloading took %.3f",
-              (double)(end - start) / APR_USEC_PER_SEC);
-    fprintf(stdout, "%s %.3f seconds\n", "Downloading took",
-            (double)(end - start) / APR_USEC_PER_SEC);
+    apr_time_t diff_usec = end - start;
+    double elapsed_time = (double)diff_usec / APR_USEC_PER_SEC;
+    log_trace("Downloading took %.3f seconds", elapsed_time);
+    fprintf(stdout, "%s %.3f seconds\n", "Downloading took", elapsed_time);
 }
 
 void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config) {

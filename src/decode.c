@@ -228,6 +228,78 @@ static void ffmpeg_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
     }
 }
 
+static void log_duration(apr_time_t start) {
+    apr_time_t end = apr_time_now();
+    apr_time_t diff_usec = end - start;
+    double elapsed_time = (double)diff_usec / 1000;
+    log_trace("took: %.3f ms", elapsed_time);
+    fprintf(stdout, "  %-*s: %.3f ms\n", WIDTH, "took", elapsed_time);
+}
+
+static int init_audio_decoding(AVFormatContext **fmt_ctx,
+                               AVCodecContext **codec_ctx, AVPacket **pkt,
+                               AVFrame **frame, SwrContext **swr_ctx,
+                               FILE **output_fp, int *stream_index,
+                               char *pipe_name, char *file_path,
+                               char *dur_str) {
+    int ret;
+
+    av_log_set_level(AV_LOG_ERROR);
+    av_log_set_callback(ffmpeg_log_cb);
+
+    if ((ret = avformat_open_input(fmt_ctx, file_path, NULL, NULL)) < 0) {
+        log_trace("Failed to open source file '%s': %s", file_path,
+                  av_err2str(ret));
+        return ret;
+    }
+
+    if ((ret = avformat_find_stream_info(*fmt_ctx, NULL)) < 0) {
+        log_trace("Failed to find stream information: %s", av_err2str(ret));
+        return ret;
+    }
+
+    decode_print_metadata(*fmt_ctx);
+
+    *stream_index = decode_find_audio_stream(*fmt_ctx);
+    if (*stream_index == -1) {
+        log_trace("Failed to find audio stream");
+        return -1;
+    }
+
+    *codec_ctx = decode_open_codec(*fmt_ctx, *stream_index);
+    if (!*codec_ctx) {
+        return -1;
+    }
+
+    *swr_ctx = decode_initialize_resampler(*codec_ctx);
+    if (!*swr_ctx) {
+        return -1;
+    }
+
+    *output_fp = decode_open_output_pipe(pipe_name);
+    if (!*output_fp) {
+        return -1;
+    }
+
+    *pkt = av_packet_alloc();
+    if (!*pkt) {
+        log_trace("Failed to allocate packet");
+        return -1;
+    }
+
+    *frame = av_frame_alloc();
+    if (!*frame) {
+        log_trace("Failed to allocate frame");
+        return -1;
+    }
+
+    int64_t duration = decode_duration(*fmt_ctx, *stream_index);
+    util_seconds_to_time((int)duration, dur_str, sizeof(dur_str));
+    decode_print_audio_info(*codec_ctx);
+
+    return 0;
+}
+
 void decode_audio(char *pipe_name, char *filename, char *file_path) {
     log_trace("decode_audio: start decoding %s", filename);
     apr_time_t start = apr_time_now();
@@ -240,67 +312,15 @@ void decode_audio(char *pipe_name, char *filename, char *file_path) {
     FILE *output_fp = NULL;
     int stream_index = -1;
     int ret;
+    char dur_str[10];
 
-    av_log_set_level(AV_LOG_ERROR);
-    av_log_set_callback(ffmpeg_log_cb);
-
-    if ((ret = avformat_open_input(&fmt_ctx, file_path, NULL, NULL)) < 0) {
-        log_trace("decode_audio: Failed to open source file '%s': %s",
-                  file_path, av_err2str(ret));
+    if ((ret = init_audio_decoding(&fmt_ctx, &codec_ctx, &pkt, &frame, &swr_ctx,
+                                   &output_fp, &stream_index, pipe_name,
+                                   file_path, dur_str)) < 0) {
         goto cleanup;
     }
 
-    if ((ret = avformat_find_stream_info(fmt_ctx, NULL)) < 0) {
-        log_trace("decode_audio: Failed to find stream information: %s",
-                  av_err2str(ret));
-        goto cleanup;
-    }
-
-    decode_print_metadata(fmt_ctx);
-
-    stream_index = decode_find_audio_stream(fmt_ctx);
-    if (stream_index == -1) {
-        log_trace("decode_audio: Failed to find audio stream");
-        goto cleanup;
-    }
-
-    codec_ctx = decode_open_codec(fmt_ctx, stream_index);
-    if (!codec_ctx) {
-        goto cleanup;
-    }
-
-    swr_ctx = decode_initialize_resampler(codec_ctx);
-    if (!swr_ctx) {
-        goto cleanup;
-    }
-
-    output_fp = decode_open_output_pipe(pipe_name);
-    if (!output_fp) {
-        goto cleanup;
-    }
-
-    int64_t duration = decode_duration(fmt_ctx, stream_index);
-    char dur_str[9];
-    util_seconds_to_time((int)duration, dur_str, sizeof(dur_str));
-
-    decode_print_audio_info(codec_ctx);
-
-    pkt = av_packet_alloc();
-    if (!pkt) {
-        log_trace("decode_audio: Failed to allocate packet");
-        goto cleanup;
-    }
-
-    frame = av_frame_alloc();
-    if (!frame) {
-        log_trace("decode_audio: Failed to allocate frame");
-        goto cleanup;
-    }
-
-    apr_time_t end = apr_time_now();
-    log_trace("took: %.3f ms", (double)(end - start) / 1000);
-    fprintf(stdout, "  %-*s: %.3f ms\n", WIDTH, "took",
-            (double)(end - start) / 1000);
+    log_duration(start);
 
     log_trace("decode_audio: start decode loop");
     while (av_read_frame(fmt_ctx, pkt) >= 0) {
@@ -322,8 +342,10 @@ cleanup:
         fclose(output_fp);
     if (frame)
         av_frame_free(&frame);
-    if (pkt)
+    if (pkt) {
+        // av_packet_free calls av_packet_unref
         av_packet_free(&pkt);
+    }
     if (codec_ctx)
         avcodec_free_context(&codec_ctx);
     if (fmt_ctx)
