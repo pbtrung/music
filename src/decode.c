@@ -236,12 +236,10 @@ static void log_duration(apr_time_t start) {
     fprintf(stdout, "  %-*s: %.3f ms\n", WIDTH, "took", elapsed_time);
 }
 
-static int init_audio_decoding(AVFormatContext **fmt_ctx,
-                               AVCodecContext **codec_ctx, AVPacket **pkt,
-                               AVFrame **frame, SwrContext **swr_ctx,
-                               FILE **output_fp, int *stream_index,
-                               char *pipe_name, char *file_path,
-                               char *dur_str) {
+static int decode_init(AVFormatContext **fmt_ctx, AVCodecContext **codec_ctx,
+                       AVPacket **pkt, AVFrame **frame, SwrContext **swr_ctx,
+                       FILE **output_fp, int *stream_index, char *pipe_name,
+                       char *file_path, char *dur_str) {
     int ret;
 
     av_log_set_level(AV_LOG_ERROR);
@@ -314,9 +312,9 @@ void decode_audio(char *pipe_name, char *filename, char *file_path) {
     int ret;
     char dur_str[10];
 
-    if ((ret = init_audio_decoding(&fmt_ctx, &codec_ctx, &pkt, &frame, &swr_ctx,
-                                   &output_fp, &stream_index, pipe_name,
-                                   file_path, dur_str)) < 0) {
+    if ((ret = decode_init(&fmt_ctx, &codec_ctx, &pkt, &frame, &swr_ctx,
+                           &output_fp, &stream_index, pipe_name, file_path,
+                           dur_str)) < 0) {
         goto cleanup;
     }
 
