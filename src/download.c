@@ -278,8 +278,10 @@ static int is_download_successful(file_info_t *info) {
 static void log_assembly(file_info_t *info) {
     log_trace("assemble: start assembling %s", info->filename);
     fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "Assemble", info->filename);
-    log_trace("assemble: track_id: %d", info->track_id);
-    fprintf(stdout, "  %-*s: %d\n", WIDTH, "track_id", info->track_id);
+    log_trace("assemble: track: %d / %d", info->track_id,
+              info->config->num_tracks);
+    fprintf(stdout, "  %-*s: %d / %d\n", WIDTH, "track", info->track_id,
+            info->config->num_tracks);
     log_trace("assemble: path: %s", info->album_path);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "path", info->album_path);
     log_trace("assemble: filename: %s", info->track_name);

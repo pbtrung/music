@@ -38,8 +38,8 @@ FILE *setup_logging(const char *config_file, config_t **config) {
     return fp;
 }
 
-void play_files(file_downloaded_t *file_downloaded, int num_files, char *output,
-                char *pipe_name) {
+void play_files(file_downloaded_t *file_downloaded, int num_files,
+                int num_tracks, char *output, char *pipe_name) {
     for (int i = 0; i < num_files; ++i) {
         if (file_downloaded[i].file_download_status == DOWNLOAD_SUCCEEDED) {
             char *file_path =
@@ -49,9 +49,10 @@ void play_files(file_downloaded_t *file_downloaded, int num_files, char *output,
             log_trace("PLAYING: %s", file_downloaded[i].filename);
             fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "PLAYING",
                     file_downloaded[i].filename);
-            log_trace("track_id: %d", file_downloaded[i].track_id);
-            fprintf(stdout, "  %-*s: %d\n", WIDTH, "track_id",
-                    file_downloaded[i].track_id);
+            log_trace("track: %d / %d", file_downloaded[i].track_id,
+                      num_tracks);
+            fprintf(stdout, "  %-*s: %d / %d\n", WIDTH, "track",
+                    file_downloaded[i].track_id, num_tracks);
             log_trace("path: %s", file_downloaded[i].album_path);
             fprintf(stdout, "  %-*s: %s\n", WIDTH, "path",
                     file_downloaded[i].album_path);
@@ -104,10 +105,11 @@ void process_files(apr_pool_t *pool, const char *config_file,
     char *output = apr_pstrdup(subp2, (*config)->output);
     char *pipe_name = apr_pstrdup(subp2, (*config)->pipe_name);
     int num_files = (*config)->num_files;
+    int num_tracks = (*config)->num_tracks;
 
     apr_pool_destroy(subp1);
 
-    play_files(file_downloaded, num_files, output, pipe_name);
+    play_files(file_downloaded, num_files, num_tracks, output, pipe_name);
     apr_pool_destroy(subp2);
 }
 
