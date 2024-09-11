@@ -15,6 +15,7 @@ typedef struct {
     char *extension;
     char **cids;
     int num_cids;
+    int track_id;
     config_t *config;
     enum download_status *cid_download_status;
     enum download_status file_download_status;
@@ -30,6 +31,7 @@ typedef struct {
     char *extension;
     char *album_path;
     char *track_name;
+    int track_id;
     enum download_status file_download_status;
 } file_downloaded_t;
 

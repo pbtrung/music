@@ -40,6 +40,7 @@ apr_status_t download_cleanup(void *data) {
 static void populate_file_status(file_downloaded_t *file_downloaded,
                                  file_info_t *info, apr_pool_t *pool) {
     file_downloaded->file_download_status = info->file_download_status;
+    file_downloaded->track_id = info->track_id;
     if (info->file_download_status == DOWNLOAD_SUCCEEDED) {
         file_downloaded->filename = apr_pstrdup(pool, info->filename);
         file_downloaded->album_path = apr_pstrdup(pool, info->album_path);
@@ -68,6 +69,7 @@ static void init_file_info(file_info_t *info, int index, sqlite3 *db,
     info->extension = util_get_extension(info->track_name);
     info->cids = database_get_cids(db, index, &num_cids);
     info->num_cids = num_cids;
+    info->track_id = index;
     info->config = config;
     info->file_download_status = DOWNLOAD_PENDING;
 
@@ -276,6 +278,8 @@ static int is_download_successful(file_info_t *info) {
 static void log_assembly(file_info_t *info) {
     log_trace("assemble: start assembling %s", info->filename);
     fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "Assemble", info->filename);
+    log_trace("assemble: track_id: %d", info->track_id);
+    fprintf(stdout, "  %-*s: %d\n", WIDTH, "track_id", info->track_id);
     log_trace("assemble: path: %s", info->album_path);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "path", info->album_path);
     log_trace("assemble: filename: %s", info->track_name);

@@ -49,6 +49,9 @@ void play_files(file_downloaded_t *file_downloaded, int num_files, char *output,
             log_trace("PLAYING: %s", file_downloaded[i].filename);
             fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "PLAYING",
                     file_downloaded[i].filename);
+            log_trace("track_id: %d", file_downloaded[i].track_id);
+            fprintf(stdout, "  %-*s: %d\n", WIDTH, "track_id",
+                    file_downloaded[i].track_id);
             log_trace("path: %s", file_downloaded[i].album_path);
             fprintf(stdout, "  %-*s: %s\n", WIDTH, "path",
                     file_downloaded[i].album_path);
