@@ -11,6 +11,7 @@
 #define OUT_SAMPLERATE 48000
 #define OUT_SAMPLEFMT AV_SAMPLE_FMT_S16
 #define OUT_CHANNELS 2
+#define DUR_STRLEN 10
 
 static void decode_print_metadata(AVFormatContext *fmt_ctx) {
     AVDictionaryEntry *tag = NULL;
@@ -292,7 +293,7 @@ static int decode_init(AVFormatContext **fmt_ctx, AVCodecContext **codec_ctx,
     }
 
     int64_t duration = decode_duration(*fmt_ctx, *stream_index);
-    util_seconds_to_time((int)duration, dur_str, sizeof(dur_str));
+    util_seconds_to_time((int)duration, dur_str, DUR_STRLEN);
     decode_print_audio_info(*codec_ctx);
 
     return 0;
@@ -310,7 +311,7 @@ void decode_audio(char *pipe_name, char *filename, char *file_path) {
     FILE *output_fp = NULL;
     int stream_index = -1;
     int ret;
-    char dur_str[10];
+    char dur_str[DUR_STRLEN];
 
     if ((ret = decode_init(&fmt_ctx, &codec_ctx, &pkt, &frame, &swr_ctx,
                            &output_fp, &stream_index, pipe_name, file_path,
