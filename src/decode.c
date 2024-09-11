@@ -213,8 +213,8 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
 
         int64_t current_pts =
             frame->pts * av_q2d(fmt_ctx->streams[stream_index]->time_base);
-        char time_str[9];
-        util_seconds_to_time((int)current_pts, time_str, sizeof(time_str));
+        char time_str[DUR_STRLEN];
+        util_seconds_to_time((int)current_pts, time_str, DUR_STRLEN);
         fprintf(stdout, "  %-*s: %s / %s\r", WIDTH, "position", time_str,
                 dur_str);
         fflush(stdout);
