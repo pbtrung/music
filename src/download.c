@@ -151,8 +151,11 @@ static void perform_curl_download(CURL *curl, FILE *fp,
         if (res == CURLE_OK) {
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
             curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &content_type);
-            if (response_code == 200 && content_type &&
-                strcmp(content_type, "application/octet-stream") == 0) {
+            if (response_code == 200 &&
+                (strlen(download_info->cid) == 59 ||
+                 (content_type &&
+                  strcmp(content_type, "application/octet-stream") == 0))) {
+
                 *(download_info->cid_download_status) = DOWNLOAD_SUCCEEDED;
                 log_trace("download_cid: finish downloading %s",
                           download_info->cid);
