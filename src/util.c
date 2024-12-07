@@ -77,7 +77,7 @@ char *util_get_extension(const char *text) {
 
     // Compile the regular expression for file extension
     re = pcre2_compile(
-        (PCRE2_SPTR) "(.*)\\.(opus|mp3|m4a)$",
+        (PCRE2_SPTR) "(.*)\\.(opus|mp3|m4a|m4b)$",
         PCRE2_ZERO_TERMINATED, // Pattern length (0 means null-terminated)
         PCRE2_CASELESS,        // Options
         &errcode,              // Error code
