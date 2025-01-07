@@ -85,14 +85,14 @@ char *util_get_extension(const char *text) {
         NULL);                 // Compile context
 
     if (!re) {
-        log_trace("util_get_extension: PCRE2 compilation failed");
+        log_trace("util_get_extension: PCRE2 compilation failed: %s", text);
         exit(-1);
     }
 
     // Create a match data block
     match_data = pcre2_match_data_create_from_pattern(re, NULL);
     if (!match_data) {
-        log_trace("util_get_extension: Failed to create match data");
+        log_trace("util_get_extension: Failed to create match data: %s", text);
         exit(-1);
     }
 
@@ -107,7 +107,7 @@ char *util_get_extension(const char *text) {
     );
 
     if (rc < 0) {
-        log_trace("util_get_extension: No match");
+        log_trace("util_get_extension: No match: %s", text);
         exit(-1);
     }
 
