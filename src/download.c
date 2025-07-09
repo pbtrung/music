@@ -115,12 +115,17 @@ static void set_curl_opts(CURL *curl, char *url, download_info_t *download_info,
         curl_easy_setopt(curl, CURLOPT_TIMEOUT,
                          2 * download_info->config->timeout);
     } else {
-        int *random_index =
-            util_random_ints(1, 0, download_info->config->num_gateways - 1);
-        snprintf(url, 128, "https://%s/%s",
-                 download_info->config->gateways[*random_index],
-                 download_info->cid);
-        free(random_index);
+        if (retries == 4 || retries == 5) {
+            snprintf(url, 128, "https://gateway.irys.xyz/%s",
+                     download_info->cid);
+        } else {
+            int *random_index =
+                util_random_ints(1, 0, download_info->config->num_gateways - 1);
+            snprintf(url, 128, "https://%s/%s",
+                     download_info->config->gateways[*random_index],
+                     download_info->cid);
+            free(random_index);
+        }
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, download_info->config->timeout);
     }
     curl_easy_setopt(curl, CURLOPT_URL, url);
