@@ -192,10 +192,18 @@ static int is_download_successful(file_info_t *info) {
     return 1;
 }
 
+static void log_duration(apr_time_t start) {
+    apr_time_t end = apr_time_now();
+    apr_time_t diff_usec = end - start;
+    double elapsed_time = (double)diff_usec / APR_USEC_PER_SEC;
+    log_trace("Downloading took %.3f seconds", elapsed_time);
+    fprintf(stdout, "%s %.3f seconds\n", "Downloading took", elapsed_time);
+}
+
 void download_assemble_files(apr_pool_t *pool, sqlite3 *db, config_t *config) {
     log_trace("download_files: start");
 
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 3; ++i) {
         log_trace("download_files: start loop");
         apr_pool_t *subpool;
         apr_pool_create(&subpool, pool);
@@ -216,6 +224,7 @@ void download_assemble_files(apr_pool_t *pool, sqlite3 *db, config_t *config) {
         }
 
         wait_tasks(thread_pool);
+        log_duration(start);
         apr_thread_pool_destroy(thread_pool);
         apr_pool_destroy(subpool);
 
@@ -303,6 +312,32 @@ static void assemble_multiple_cids(file_info_t *info, char *file_path,
     free(buffer);
 }
 
+static void log_assembly(file_info_t *info) {
+    fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "Assemble", info->filename);
+    log_trace("assemble: track: %d / %d", info->track_id,
+              info->config->num_tracks);
+    fprintf(stdout, "  %-*s: %d / %d\n", WIDTH, "track", info->track_id,
+            info->config->num_tracks);
+    log_trace("assemble: path: %s", info->album_path);
+    fprintf(stdout, "  %-*s: %s\n", WIDTH, "path", info->album_path);
+    log_trace("assemble: filename: %s", info->track_name);
+    fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename", info->track_name);
+
+    if (info->num_cids == 1) {
+        log_trace("assemble: info: %s -> %s", info->cids[0], info->filename);
+        fprintf(stdout, "  %-*s: %s -> %s\n", WIDTH, "info", info->cids[0],
+                info->filename);
+    } else {
+        log_trace("assemble: info: %d CIDs -> %s", info->num_cids,
+                  info->filename);
+        fprintf(stdout, "  %-*s: %d CIDs -> %s\n", WIDTH, "info",
+                info->num_cids, info->filename);
+    }
+
+    fprintf(stdout, "\n");
+    fflush(stdout);
+}
+
 static void move_single_file(file_info_t *info, char *file_path,
                              config_t *config) {
     char *cid_path = util_get_file_path(config->output, info->cids[0]);
@@ -320,6 +355,7 @@ static void move_single_file(file_info_t *info, char *file_path,
 
 static void assemble_file(file_info_t *info, config_t *config) {
     log_trace("assemble_file: start assembling %s", info->filename);
+    log_assembly(info);
     char *file_path = util_get_file_path(config->output, info->filename);
 
     if (info->num_cids == 1) {
