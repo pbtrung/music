@@ -56,30 +56,9 @@ void process_files(apr_pool_t *pool, const char *config_file,
     dir_delete(subp1, (*config)->output);
     dir_create(subp1, (*config)->output);
 
-    file_info_t *file_infos =
-        apr_palloc(subp1, (*config)->num_files * sizeof(file_info_t));
-    file_infos_t *file_infos_cleaner = apr_palloc(subp1, sizeof(file_infos_t));
-    file_infos_cleaner->file_infos = file_infos;
-    file_infos_cleaner->num_files = (*config)->num_files;
-    apr_pool_cleanup_register(subp1, file_infos_cleaner, download_cleanup,
-                              apr_pool_cleanup_null);
-
-    download_init(file_infos, *config, db);
-    download_files(subp1, file_infos, *config);
-    assemble_files(file_infos, *config);
-
-    apr_pool_t *subp2;
-    apr_pool_create(&subp2, pool);
-
-    file_downloaded_t *file_downloaded =
-        downloaded_files(subp2, file_infos, *config);
-    char *output = apr_pstrdup(subp2, (*config)->output);
-    char *pipe_name = apr_pstrdup(subp2, (*config)->pipe_name);
-    int num_files = (*config)->num_files;
-    int num_tracks = (*config)->num_tracks;
+    download_assemble_files(subp1, db, *config);
 
     apr_pool_destroy(subp1);
-    apr_pool_destroy(subp2);
 }
 
 int main(int argc, const char *argv[]) {

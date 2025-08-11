@@ -22,25 +22,9 @@ typedef struct {
     enum download_status file_download_status;
 } file_info_t;
 
-typedef struct {
-    file_info_t *file_infos;
-    int num_files;
-} file_infos_t;
+void file_info_init(file_info_t *info, int index, sqlite3 *db,
+                    config_t *config);
 
-typedef struct {
-    char *filename;
-    char *extension;
-    char *album_path;
-    char *track_name;
-    int track_id;
-    enum download_status file_download_status;
-} file_downloaded_t;
-
-apr_status_t download_cleanup(void *data);
-void download_init(file_info_t *infos, config_t *config, sqlite3 *db);
-void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config);
-void assemble_files(file_info_t *infos, config_t *config);
-file_downloaded_t *downloaded_files(apr_pool_t *pool, file_info_t *infos,
-                                    config_t *config);
+void download_assemble_files(apr_pool_t *pool, sqlite3 *db, config_t *config);
 
 #endif // DOWNLOAD_H
