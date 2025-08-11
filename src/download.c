@@ -112,14 +112,14 @@ static FILE *open_file_write(const char *file_path) {
 static void set_curl_opts(CURL *curl, char *url, download_info_t *download_info,
                           int retries) {
     if (strlen(download_info->cid) == 59) {
-        snprintf(url, 128, "https://%s.ipfs.nftstorage.link",
-                 download_info->cid);
+        snprintf(url, 128, "https://%s.%s", download_info->cid,
+                 download_info->config->n_gateway);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT,
                          2 * download_info->config->timeout);
     } else {
         if (retries == 4 || retries == 5) {
-            snprintf(url, 128, "https://gateway.irys.xyz/%s",
-                     download_info->cid);
+            snprintf(url, 128, "https://%s/%s",
+                     download_info->config->i_gateway, download_info->cid);
         } else {
             int *random_index =
                 util_random_ints(1, 0, download_info->config->num_gateways - 1);
