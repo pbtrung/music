@@ -1,0 +1,46 @@
+#ifndef DOWNLOAD_H
+#define DOWNLOAD_H
+
+#include <apr_pools.h>
+
+#include "config.h"
+#include "database.h"
+#include "utils.h"
+
+enum download_status { DOWNLOAD_PENDING, DOWNLOAD_SUCCEEDED, DOWNLOAD_FAILED };
+
+typedef struct {
+    char *filename;
+    char *album_path;
+    char *track_name;
+    char *extension;
+    char **cids;
+    int num_cids;
+    int track_id;
+    config_t *config;
+    enum download_status *cid_download_status;
+    enum download_status file_download_status;
+} file_info_t;
+
+typedef struct {
+    file_info_t *file_infos;
+    int num_files;
+} file_infos_t;
+
+typedef struct {
+    char *filename;
+    char *extension;
+    char *album_path;
+    char *track_name;
+    int track_id;
+    enum download_status file_download_status;
+} file_downloaded_t;
+
+apr_status_t download_cleanup(void *data);
+void download_init(file_info_t *infos, config_t *config, sqlite3 *db);
+void download_files(apr_pool_t *pool, file_info_t *infos, config_t *config);
+void assemble_files(file_info_t *infos, config_t *config);
+file_downloaded_t *downloaded_files(apr_pool_t *pool, file_info_t *infos,
+                                    config_t *config);
+
+#endif // DOWNLOAD_H
