@@ -1,3 +1,8 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <apr_pools.h>
+
 #include "config.h"
 #include "database.h"
 #include "dir.h"
@@ -5,9 +10,6 @@
 #include "log.h"
 #include "queue.h"
 #include "utils.h"
-#include <apr_pools.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 typedef struct {
     file_queue_t *queue;
@@ -60,26 +62,23 @@ static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg,
     return info;
 }
 
-static void push_and_delete(file_queue_t *q, char *file_path) {
-    if (!queue_push(q, file_path)) {
-        log_trace("push_and_delete: Failed to push %s", file_path);
-        exit(-1);
-    }
-    if (remove(file_path) != 0) {
-        log_trace("push_and_delete: Failed to delete %s", file_path);
-        exit(-1);
-    }
-    free(file_path);
-}
-
 static void process_file(apr_pool_t *subpool, config_t *cfg, file_queue_t *q) {
     sqlite3 *db;
     file_info_t *info = prepare_file_info(subpool, cfg, &db);
     download_assemble_file(subpool, db, cfg, info);
+
     if (info->file_download_status != DOWNLOAD_SUCCEEDED)
         return;
-    char *path = util_get_file_path(cfg->output, info->filename);
-    push_and_delete(q, path);
+    
+    char *file_path = util_get_file_path(cfg->output, info->filename);
+    if (!queue_push(q, file_path)) {
+        log_trace("process_file: Failed to push %s", file_path);
+        if (remove(file_path) != 0) {
+            log_trace("process_file: Failed to delete %s", file_path);
+        }
+        exit(-1);
+    }
+    free(file_path);
 }
 
 static void run_downloader(apr_pool_t *pool, const char *cfg_file,
