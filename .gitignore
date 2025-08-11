@@ -1,4 +1,5 @@
 *.json
 *.sif
+*.db
 
 build/
