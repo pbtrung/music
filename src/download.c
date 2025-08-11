@@ -147,7 +147,7 @@ static apr_thread_pool_t *create_pool(apr_pool_t *pool, config_t *config) {
     apr_thread_pool_t *thread_pool;
     apr_status_t status;
 
-    apr_size_t ncores = 2;
+    apr_size_t ncores = 1;
     status = apr_thread_pool_create(&thread_pool, config->num_files, 4 * ncores,
                                     pool);
     if (status != APR_SUCCESS) {
@@ -226,11 +226,12 @@ void download_assemble_files(apr_pool_t *pool, sqlite3 *db, config_t *config) {
         wait_tasks(thread_pool);
         log_duration(start);
         apr_thread_pool_destroy(thread_pool);
-        apr_pool_destroy(subpool);
 
         if (is_download_successful(info)) {
             assemble_file(info, config);
         }
+
+        apr_pool_destroy(subpool);
         log_trace("download_files: end loop");
     }
 
