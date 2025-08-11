@@ -14,7 +14,7 @@ typedef struct {
     file_queue_t *queue;
     apr_pool_t *pool;
     const char *config_file;
-    config_t *config;
+    config_t **config;
 } downloader_args_t;
 
 void initialize_pool(apr_pool_t **pool) {
@@ -51,27 +51,27 @@ static void *APR_THREAD_FUNC downloader_thread(apr_thread_t *thd, void *data) {
     downloader_args_t *args = (downloader_args_t *)data;
     file_queue_t *q = args->queue;
     apr_pool_t *pool = args->pool;
-    config_t *config = args->config;
+    config_t **config = args->config;
     const char *config_file = args->config_file;
 
     apr_pool_t *subpool;
     apr_pool_create(&subpool, pool);
 
-    config = apr_palloc(subpool, sizeof(config_t));
-    config_read(config_file, config);
-    apr_pool_cleanup_register(subpool, config, config_free,
+    *config = apr_palloc(subpool, sizeof(config_t));
+    config_read(config_file, *config);
+    apr_pool_cleanup_register(subpool, *config, config_free,
                               apr_pool_cleanup_null);
 
     sqlite3 *db;
-    database_open_readonly(config->db, &db);
+    database_open_readonly((*config)->db, &db);
     apr_pool_cleanup_register(subpool, db, database_close,
                               apr_pool_cleanup_null);
 
-    config->num_tracks = database_count_tracks(db);
-    dir_delete(subpool, config->output);
-    dir_create(subpool, config->output);
+    (*config)->num_tracks = database_count_tracks(db);
+    dir_delete(subpool, (*config)->output);
+    dir_create(subpool, (*config)->output);
 
-    download_assemble_files(subpool, db, config);
+    download_assemble_files(subpool, db, *config);
 
     apr_pool_destroy(subpool);
 }
@@ -95,7 +95,7 @@ int main(int argc, const char *argv[]) {
     downloader_args_t dl_args = {.queue = &queue,
                                  .pool = pool,
                                  .config_file = argv[1],
-                                 .config = config};
+                                 .config = &config};
     apr_threadattr_create(&dl_attr, pool);
     apr_thread_create(&dl_thread, dl_attr, downloader_thread, &dl_args, pool);
 
