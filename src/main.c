@@ -39,9 +39,6 @@ FILE *setup_logging(const char *config_file, config_t **config) {
     }
     log_add_fp(fp, LOG_TRACE);
     log_set_quiet(true);
-    config_free(*config);
-    free(*config);
-    *config = NULL;
 
     return fp;
 }
@@ -88,8 +85,13 @@ int main(int argc, const char *argv[]) {
     config_t *config = NULL;
     FILE *fp = setup_logging(argv[1], &config);
 
-    file_queue_t queue;
+    file_queue_t queue = {.num_files = config->num_files,
+                          .max_pathlen = config->max_pathlen};
     queue_init(&queue, pool);
+    config_free(config);
+    free(config);
+    config = NULL;
+
     apr_thread_t *dl_thread = NULL;
     apr_threadattr_t *dl_attr = NULL;
     downloader_args_t dl_args = {.queue = &queue,

@@ -19,7 +19,8 @@ typedef struct {
     apr_thread_cond_t *not_full;
     apr_pool_t *pool;
     int producer_done;
-    config_t *config;
+    int num_files;
+    int max_pathlen;
 } file_queue_t;
 
 void queue_init(file_queue_t *q, apr_pool_t *pool);
