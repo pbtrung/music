@@ -98,8 +98,6 @@ int main(int argc, const char *argv[]) {
                                  .config = &config};
     apr_threadattr_create(&dl_attr, pool);
     apr_thread_create(&dl_thread, dl_attr, downloader_thread, &dl_args, pool);
-    int rv = 0;
-    apr_thread_join(&rv, dl_thread);
 
     fclose(fp);
     apr_pool_destroy(pool);
