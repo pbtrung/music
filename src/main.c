@@ -80,7 +80,7 @@ static void *APR_THREAD_FUNC downloader_thread(apr_thread_t *thd, void *data) {
             char *file_path =
                 util_get_file_path((*config)->output, info->filename);
             if (!queue_push(q, file_path)) {
-                log_trace("downloader_thread: Failed to push: %s", file_path);
+                log_trace("downloader_thread: Failed to push file %s", file_path);
                 if (remove(file_path) != 0) {
                     log_trace("append_cid_output: Failed to delete file %s",
                               file_path);
