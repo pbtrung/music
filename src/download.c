@@ -200,42 +200,30 @@ static void log_duration(apr_time_t start) {
     fprintf(stdout, "%s %.3f seconds\n", "Downloading took", elapsed_time);
 }
 
-void download_assemble_files(apr_pool_t *pool, sqlite3 *db, config_t *config) {
-    log_trace("download_files: start");
+void download_assemble_file(apr_pool_t *pool, sqlite3 *db, config_t *config,
+                            file_info_t *info) {
+    log_trace("download_assemble_file: start");
 
-    for (int i = 0; i < 3; ++i) {
-        log_trace("download_files: start loop");
-        apr_pool_t *subpool;
-        apr_pool_create(&subpool, pool);
+    apr_pool_t *subpool;
+    apr_pool_create(&subpool, pool);
 
-        apr_thread_pool_t *thread_pool = create_pool(subpool, config);
-        apr_time_t start = apr_time_now();
+    apr_thread_pool_t *thread_pool = create_pool(subpool, config);
+    apr_time_t start = apr_time_now();
 
-        file_info_t *info = apr_palloc(subpool, sizeof(file_info_t));
-        int *random_index =
-            util_random_ints(1, config->min_value, config->num_tracks);
-        file_info_init(info, *random_index, db, config);
-        free(random_index);
-        apr_pool_cleanup_register(subpool, info, file_info_free,
-                                  apr_pool_cleanup_null);
-
-        for (int j = 0; j < info->num_cids; ++j) {
-            push_task(thread_pool, info, j, subpool);
-        }
-
-        wait_tasks(thread_pool);
-        log_duration(start);
-        apr_thread_pool_destroy(thread_pool);
-
-        if (is_download_successful(info)) {
-            assemble_file(info, config);
-        }
-
-        apr_pool_destroy(subpool);
-        log_trace("download_files: end loop");
+    for (int j = 0; j < info->num_cids; ++j) {
+        push_task(thread_pool, info, j, subpool);
     }
 
-    log_trace("download_files: finish");
+    wait_tasks(thread_pool);
+    log_duration(start);
+    apr_thread_pool_destroy(thread_pool);
+
+    if (is_download_successful(info)) {
+        assemble_file(info, config);
+    }
+
+    apr_pool_destroy(subpool);
+    log_trace("download_assemble_file: finish");
 }
 
 void file_info_init(file_info_t *info, int index, sqlite3 *db,

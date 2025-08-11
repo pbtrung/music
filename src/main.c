@@ -9,6 +9,7 @@
 #include "download.h"
 #include "log.h"
 #include "queue.h"
+#include "utils.h"
 
 typedef struct {
     file_queue_t *queue;
@@ -51,26 +52,46 @@ static void *APR_THREAD_FUNC downloader_thread(apr_thread_t *thd, void *data) {
     config_t **config = args->config;
     const char *config_file = args->config_file;
 
-    apr_pool_t *subpool;
-    apr_pool_create(&subpool, pool);
+    for (int i = 0; i < 3; ++i) {
+        apr_pool_t *subpool;
+        apr_pool_create(&subpool, pool);
 
-    *config = apr_palloc(subpool, sizeof(config_t));
-    config_read(config_file, *config);
-    apr_pool_cleanup_register(subpool, *config, config_free,
-                              apr_pool_cleanup_null);
+        *config = apr_palloc(subpool, sizeof(config_t));
+        config_read(config_file, *config);
+        apr_pool_cleanup_register(subpool, *config, config_free,
+                                  apr_pool_cleanup_null);
 
-    sqlite3 *db;
-    database_open_readonly((*config)->db, &db);
-    apr_pool_cleanup_register(subpool, db, database_close,
-                              apr_pool_cleanup_null);
+        sqlite3 *db;
+        database_open_readonly((*config)->db, &db);
+        apr_pool_cleanup_register(subpool, db, database_close,
+                                  apr_pool_cleanup_null);
+        (*config)->num_tracks = database_count_tracks(db);
 
-    (*config)->num_tracks = database_count_tracks(db);
-    dir_delete(subpool, (*config)->output);
-    dir_create(subpool, (*config)->output);
+        file_info_t *info = apr_palloc(subpool, sizeof(file_info_t));
+        int *random_index =
+            util_random_ints(1, (*config)->min_value, (*config)->num_tracks);
+        file_info_init(info, *random_index, db, *config);
+        free(random_index);
+        apr_pool_cleanup_register(subpool, info, file_info_free,
+                                  apr_pool_cleanup_null);
+        download_assemble_file(subpool, db, *config, info);
 
-    download_assemble_files(subpool, db, *config);
+        if (info->file_download_status == DOWNLOAD_SUCCEEDED) {
+            char *file_path =
+                util_get_file_path((*config)->output, info->filename);
+            if (!queue_push(q, file_path)) {
+                log_trace("downloader_thread: Failed to push: %s", file_path);
+                if (remove(file_path) != 0) {
+                    log_trace("append_cid_output: Failed to delete file %s",
+                              file_path);
+                    exit(-1);
+                }
+            }
+            free(file_path);
+        }
 
-    apr_pool_destroy(subpool);
+        apr_pool_destroy(subpool);
+    }
 }
 
 int main(int argc, const char *argv[]) {
@@ -84,6 +105,9 @@ int main(int argc, const char *argv[]) {
 
     config_t *config = NULL;
     FILE *fp = setup_logging(argv[1], &config);
+
+    dir_delete(pool, config->output);
+    dir_create(pool, config->output);
 
     file_queue_t queue = {.num_files = config->num_files,
                           .max_pathlen = config->max_pathlen};
@@ -100,7 +124,13 @@ int main(int argc, const char *argv[]) {
                                  .config = &config};
     apr_threadattr_create(&dl_attr, pool);
     apr_thread_create(&dl_thread, dl_attr, downloader_thread, &dl_args, pool);
-    int rv = 0;
+
+    /* request stop and wake any waiting threads */
+    apr_thread_mutex_lock(queue.mutex);
+    apr_thread_cond_broadcast(queue.not_empty);
+    apr_thread_cond_broadcast(queue.not_full);
+    apr_thread_mutex_unlock(queue.mutex);
+    apr_status_t rv;
     apr_thread_join(&rv, dl_thread);
 
     fclose(fp);

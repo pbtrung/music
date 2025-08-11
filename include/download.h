@@ -24,7 +24,9 @@ typedef struct {
 
 void file_info_init(file_info_t *info, int index, sqlite3 *db,
                     config_t *config);
+apr_status_t file_info_free(void *data);
 
-void download_assemble_files(apr_pool_t *pool, sqlite3 *db, config_t *config);
+void download_assemble_file(apr_pool_t *pool, sqlite3 *db, config_t *config,
+                            file_info_t *info);
 
 #endif // DOWNLOAD_H
