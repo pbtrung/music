@@ -82,15 +82,13 @@ static void free_file_task(file_task_t *task) {
 static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg,
                                       sqlite3 **db) {
     database_open_readonly(cfg->db, db);
-    apr_pool_cleanup_register(subpool, *db, database_close,
-                              apr_pool_cleanup_null);
-
     cfg->num_tracks = database_count_tracks(*db);
 
     file_info_t *info = apr_palloc(subpool, sizeof(file_info_t));
     int *rand_idx = util_random_ints(1, cfg->min_value, cfg->num_tracks);
 
     file_info_init(info, *rand_idx, *db, cfg);
+    database_close(*db);
     free(rand_idx);
 
     apr_pool_cleanup_register(subpool, info, file_info_free,
@@ -142,7 +140,7 @@ static apr_status_t push_task_to_queue(apr_queue_t *q, file_task_t *task) {
 static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
     sqlite3 *db;
     file_info_t *info = prepare_file_info(subpool, cfg, &db);
-    download_assemble_file(subpool, db, cfg, info);
+    download_assemble_file(subpool, cfg, info);
 
     if (info->file_download_status != DOWNLOAD_SUCCEEDED)
         return;
