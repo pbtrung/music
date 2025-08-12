@@ -200,6 +200,19 @@ static void log_duration(apr_time_t start) {
     // fprintf(stdout, "Downloading took %.3f seconds\r\n", elapsed_time);
 }
 
+static void delete_failed_file(file_info_t *info, config_t *config) {
+    for (int j = 0; j < info->num_cids; j++) {
+        char *cid_path = util_get_file_path(config->output, info->cids[j]);
+
+        if (remove(cid_path) != 0) {
+            log_trace("delete_failed_file: Failed to delete file %s", cid_path);
+            exit(-1);
+        }
+
+        free(cid_path);
+    }
+}
+
 void download_assemble_file(apr_pool_t *pool, sqlite3 *db, config_t *config,
                             file_info_t *info) {
     log_trace("download_assemble_file: start");
@@ -222,6 +235,8 @@ void download_assemble_file(apr_pool_t *pool, sqlite3 *db, config_t *config,
 
     if (is_download_successful(info)) {
         assemble_file(info, config);
+    } else {
+        delete_failed_file(info, config);
     }
 
     apr_pool_destroy(subpool);
