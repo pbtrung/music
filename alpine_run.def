@@ -1,5 +1,6 @@
 Bootstrap: docker
 From: alpine:edge
+Stage: build
 
 %post
     apk update
