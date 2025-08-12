@@ -186,7 +186,7 @@ static void consume_files(apr_queue_t *queue) {
         fprintf(stdout, "  %-*s: %d / %d\n", WIDTH, "track", task->track_id,
                 task->num_tracks);
         fprintf(stdout, "  %-*s: %s\n", WIDTH, "album", task->album_path);
-        fprintf(stdout, "  %-*s: %s\n", WIDTH, "track", task->track_name);
+        fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename", task->track_name);
         if (task->num_cids == 1) {
             fprintf(stdout, "  %-*s: %s -> %s\n", WIDTH, "info", task->cid,
                     task->filename);
