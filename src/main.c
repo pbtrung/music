@@ -7,6 +7,7 @@
 #include <apr_thread_proc.h>
 
 #include "config.h"
+#include "const.h"
 #include "database.h"
 #include "decode.h"
 #include "dir.h"
@@ -18,6 +19,12 @@ typedef struct {
     char *filename;
     char *pipe_name;
     char *file_path;
+    char *album_path;
+    char *track_name;
+    char *cid;
+    int track_id;
+    int num_tracks;
+    int num_cids;
 } file_task_t;
 
 typedef struct {
@@ -71,6 +78,47 @@ static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg,
     return info;
 }
 
+static file_task_t *create_file_task(const file_info_t *info,
+                                     const config_t *cfg) {
+    file_task_t *task = malloc(sizeof(file_task_t));
+    if (!task) {
+        log_trace("create_file_task: Failed malloc");
+        return NULL;
+    }
+
+    // Copy strings to heap so they survive after pool destruction
+    task->filename = strdup(info->filename);
+    task->pipe_name = strdup(cfg->pipe_name);
+    task->album_path = strdup(info->album_path);
+    task->track_name = strdup(info->track_name);
+    task->cid = strdup(info->cids[0]);
+    task->file_path = util_get_file_path(cfg->output, info->filename);
+
+    task->track_id = info->track_id;
+    task->num_tracks = cfg->num_tracks;
+    task->num_cids = info->num_cids;
+
+    if (!task->filename || !task->pipe_name || !task->album_path ||
+        !task->track_name || !task->cid || !task->file_path) {
+        log_trace("create_file_task: Failed strdup");
+        return NULL;
+    }
+
+    return task;
+}
+
+static apr_status_t push_task_to_queue(apr_queue_t *q, file_task_t *task) {
+    apr_status_t rv = apr_queue_push(q, task);
+    if (rv != APR_SUCCESS) {
+        log_trace("push_task_to_queue: Failed to push %s", task->file_path);
+        if (remove(task->file_path) != 0) {
+            log_trace("push_task_to_queue: Failed to delete %s",
+                      task->file_path);
+        }
+    }
+    return rv;
+}
+
 static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
     sqlite3 *db;
     file_info_t *info = prepare_file_info(subpool, cfg, &db);
@@ -79,29 +127,17 @@ static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
     if (info->file_download_status != DOWNLOAD_SUCCEEDED)
         return;
 
-    file_task_t *task = malloc(sizeof(file_task_t));
+    file_task_t *task = create_file_task(info, cfg);
     if (!task) {
-        log_trace("process_file: Failed malloc");
+        // Fatal allocation failure
         exit(-1);
     }
-    // Make heap copies so they survive pool destruction
-    task->filename = strdup(info->filename);
-    task->pipe_name = strdup(cfg->pipe_name);
-    if (!task->filename || !task->pipe_name) {
-        log_trace("process_file: Failed strdup");
-        exit(-1);
-    }
-    task->file_path = util_get_file_path(cfg->output, info->filename);
 
-    log_trace("process_file: queue_push: filename: %s", task->filename);
-    apr_status_t rv = apr_queue_push(q, task);
-    if (rv != APR_SUCCESS) {
-        log_trace("process_file: Failed to push %s", task->file_path);
-        if (remove(task->file_path) != 0) {
-            log_trace("process_file: Failed to delete %s", task->file_path);
-        }
+    if (push_task_to_queue(q, task) != APR_SUCCESS) {
         exit(-1);
     }
+
+    log_trace("process_file: queued %s", task->filename);
 }
 
 static void run_downloader(apr_pool_t *pool, const char *cfg_file,
@@ -147,6 +183,18 @@ static void consume_files(apr_queue_t *queue) {
         log_trace("main: start decode_audio: %s", task->filename);
 
         fprintf(stdout, "PLAYING: %s\n", task->filename);
+        fprintf(stdout, "  %-*s: %d / %d\n", WIDTH, "track", task->track_id,
+                task->num_tracks);
+        fprintf(stdout, "  %-*s: %s\n", WIDTH, "album", task->album_path);
+        fprintf(stdout, "  %-*s: %s\n", WIDTH, "track", task->track_name);
+        if (task->num_cids == 1) {
+            fprintf(stdout, "  %-*s: %s -> %s\n", WIDTH, "info", task->cid,
+                    task->filename);
+        } else {
+            fprintf(stdout, "  %-*s: %d CIDs -> %s\n", WIDTH, "info",
+                    task->num_cids, task->filename);
+        }
+
         decode_audio(task->pipe_name, task->filename, task->file_path);
         log_trace("main: end decode_audio: %s", task->filename);
 
@@ -159,6 +207,9 @@ static void consume_files(apr_queue_t *queue) {
         free(task->filename);
         free(task->pipe_name);
         free(task->file_path);
+        free(task->album_path);
+        free(task->track_name);
+        free(task->cid);
         free(task);
     }
 }

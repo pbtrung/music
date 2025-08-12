@@ -304,29 +304,29 @@ static void assemble_multiple_cids(file_info_t *info, char *file_path,
 }
 
 static void log_assembly(file_info_t *info) {
-    fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "Assemble", info->filename);
+    // fprintf(stdout, "%-*s: %s\n", WIDTH + 2, "Assemble", info->filename);
     log_trace("assemble: track: %d / %d", info->track_id,
               info->config->num_tracks);
-    fprintf(stdout, "  %-*s: %d / %d\n", WIDTH, "track", info->track_id,
-            info->config->num_tracks);
+    // fprintf(stdout, "  %-*s: %d / %d\n", WIDTH, "track", info->track_id,
+    //         info->config->num_tracks);
     log_trace("assemble: path: %s", info->album_path);
-    fprintf(stdout, "  %-*s: %s\n", WIDTH, "path", info->album_path);
+    // fprintf(stdout, "  %-*s: %s\n", WIDTH, "path", info->album_path);
     log_trace("assemble: filename: %s", info->track_name);
-    fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename", info->track_name);
+    // fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename", info->track_name);
 
     if (info->num_cids == 1) {
         log_trace("assemble: info: %s -> %s", info->cids[0], info->filename);
-        fprintf(stdout, "  %-*s: %s -> %s\n", WIDTH, "info", info->cids[0],
-                info->filename);
+        // fprintf(stdout, "  %-*s: %s -> %s\n", WIDTH, "info", info->cids[0],
+        //         info->filename);
     } else {
         log_trace("assemble: info: %d CIDs -> %s", info->num_cids,
                   info->filename);
-        fprintf(stdout, "  %-*s: %d CIDs -> %s\n", WIDTH, "info",
-                info->num_cids, info->filename);
+        // fprintf(stdout, "  %-*s: %d CIDs -> %s\n", WIDTH, "info",
+        //         info->num_cids, info->filename);
     }
 
-    fprintf(stdout, "\n");
-    fflush(stdout);
+    // fprintf(stdout, "\n");
+    // fflush(stdout);
 }
 
 static void move_single_file(file_info_t *info, char *file_path,
