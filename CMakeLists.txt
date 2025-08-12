@@ -29,7 +29,6 @@ add_executable(music
     src/dir.c
     src/database.c
     src/decode.c
-    src/queue.c
     src/download.c
 )
 
