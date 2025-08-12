@@ -13,6 +13,12 @@
 #include "utils.h"
 
 typedef struct {
+    char *filename;
+    char *pipe_name;
+    char *file_path;
+} file_task_t;
+
+typedef struct {
     apr_queue_t *queue;
     apr_pool_t *pool;
     const char *config_file;
@@ -71,16 +77,28 @@ static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
     if (info->file_download_status != DOWNLOAD_SUCCEEDED)
         return;
 
-    char *file_path = util_get_file_path(cfg->output, info->filename);
-    apr_status_t rv = apr_queue_push(q, file_path);
+    file_task_t *task = malloc(sizeof(file_task_t));
+    if (!task) {
+        log_trace("process_file: Failed malloc");
+        exit(-1);
+    }
+    // Make heap copies so they survive pool destruction
+    task->filename = strdup(info->filename);
+    task->pipe_name = strdup(cfg->pipe_name);
+    if (!task->filename || !task->pipe_name) {
+        log_trace("process_file: Failed strdup");
+        exit(-1);
+    }
+    task->file_path = util_get_file_path(cfg->output, info->filename);
+
+    apr_status_t rv = apr_queue_push(q, task);
     if (rv != APR_SUCCESS) {
-        log_trace("process_file: Failed to push %s", file_path);
-        if (remove(file_path) != 0) {
-            log_trace("process_file: Failed to delete %s", file_path);
+        log_trace("process_file: Failed to push %s", task->file_path);
+        if (remove(task->file_path) != 0) {
+            log_trace("process_file: Failed to delete %s", task->file_path);
         }
         exit(-1);
     }
-    free(file_path);
 }
 
 static void run_downloader(apr_pool_t *pool, const char *cfg_file,
@@ -111,22 +129,29 @@ static void *APR_THREAD_FUNC downloader_thread(apr_thread_t *thd, void *data) {
 
 static void consume_files(apr_queue_t *queue) {
     for (int i = 0; i < 3; ++i) {
-        char *file_path = NULL;
-        apr_status_t rv = apr_queue_pop(queue, (void **)&file_path);
+        file_task_t *task = NULL;
+        apr_status_t rv = apr_queue_pop(queue, (void **)&task);
         if (rv == APR_EOF) {
             // producer finished
             break;
         }
-        if (rv != APR_SUCCESS || !file_path) {
+        if (rv != APR_SUCCESS || !task->file_path) {
             // skip invalid entries
             continue;
         }
-        fprintf(stdout, "main: queue_pop: file_path: %s\n", file_path);
+        fprintf(stdout, "main: queue_pop: filename=%s\n", task->filename);
+        log_trace("main: queue_pop: filename=%s", task->filename);
         apr_sleep(apr_time_from_sec(60));
-        if (remove(file_path) != 0) {
-            log_trace("main: Failed to delete file %s", file_path);
+        if (remove(task->file_path) != 0) {
+            log_trace("main: Failed to delete file %s", task->file_path);
             exit(-1);
         }
+
+        // Free heap memory
+        free(task->filename);
+        free(task->pipe_name);
+        free(task->file_path);
+        free(task);
     }
 }
 
