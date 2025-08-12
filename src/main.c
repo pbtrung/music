@@ -2,17 +2,18 @@
 #include <stdlib.h>
 
 #include <apr_pools.h>
+#include <apr_queue.h>
+#include <apr_thread_proc.h>
 
 #include "config.h"
 #include "database.h"
 #include "dir.h"
 #include "download.h"
 #include "log.h"
-#include "queue.h"
 #include "utils.h"
 
 typedef struct {
-    file_queue_t *queue;
+    apr_queue_t *queue;
     apr_pool_t *pool;
     const char *config_file;
     config_t **config;
@@ -62,16 +63,17 @@ static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg,
     return info;
 }
 
-static void process_file(apr_pool_t *subpool, config_t *cfg, file_queue_t *q) {
+static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
     sqlite3 *db;
     file_info_t *info = prepare_file_info(subpool, cfg, &db);
     download_assemble_file(subpool, db, cfg, info);
 
     if (info->file_download_status != DOWNLOAD_SUCCEEDED)
         return;
-    
+
     char *file_path = util_get_file_path(cfg->output, info->filename);
-    if (!queue_push(q, file_path)) {
+    apr_status_t rv = apr_queue_push(q, file_path);
+    if (rv != APR_SUCCESS) {
         log_trace("process_file: Failed to push %s", file_path);
         if (remove(file_path) != 0) {
             log_trace("process_file: Failed to delete %s", file_path);
@@ -82,7 +84,7 @@ static void process_file(apr_pool_t *subpool, config_t *cfg, file_queue_t *q) {
 }
 
 static void run_downloader(apr_pool_t *pool, const char *cfg_file,
-                           config_t **cfg, file_queue_t *q) {
+                           config_t **cfg, apr_queue_t *q) {
     for (int i = 0; i < 3; ++i) {
         log_trace("downloader_thread: start loop");
         apr_pool_t *subpool;
@@ -101,15 +103,24 @@ static void *APR_THREAD_FUNC downloader_thread(apr_thread_t *thd, void *data) {
     log_trace("downloader_thread: start");
     downloader_args_t *args = data;
     run_downloader(args->pool, args->config_file, args->config, args->queue);
-    queue_mark_done(args->queue);
+    // signal producer done
+    apr_queue_term(args->queue);
     log_trace("downloader_thread: end");
     return NULL;
 }
 
-static void consume_files(file_queue_t *queue, char *file_path) {
+static void consume_files(apr_queue_t *queue) {
     for (int i = 0; i < 3; ++i) {
-        if (!queue_pop(queue, file_path))
+        char *file_path = NULL;
+        apr_status_t rv = apr_queue_pop(queue, (void **)&file_path);
+        if (rv == APR_EOF) {
+            // producer finished
             break;
+        }
+        if (rv != APR_SUCCESS || !file_path) {
+            // skip invalid entries
+            continue;
+        }
         fprintf(stdout, "main: queue_pop: file_path: %s\n", file_path);
         apr_sleep(apr_time_from_sec(60));
         if (remove(file_path) != 0) {
@@ -133,10 +144,13 @@ int main(int argc, const char *argv[]) {
     dir_delete(pool, cfg->output);
     dir_create(pool, cfg->output);
 
-    file_queue_t queue = {.num_files = cfg->num_files,
-                          .max_pathlen = cfg->max_pathlen};
-    queue_init(&queue, pool);
-    char *file_path = apr_palloc(pool, cfg->max_pathlen);
+    apr_queue_t *queue;
+    apr_status_t rv = apr_queue_create(&queue, cfg->num_files, pool);
+    if (rv != APR_SUCCESS) {
+        fprintf(stderr, "Failed to create APR queue\n");
+        exit(-1);
+    }
+
     config_free(cfg);
     free(cfg);
     cfg = NULL;
@@ -145,21 +159,14 @@ int main(int argc, const char *argv[]) {
     apr_threadattr_t *dl_attr;
     apr_threadattr_create(&dl_attr, pool);
     downloader_args_t dl_args = {
-        .queue = &queue, .pool = pool, .config_file = argv[1], .config = &cfg};
+        .queue = queue, .pool = pool, .config_file = argv[1], .config = &cfg};
     apr_thread_create(&dl_thread, dl_attr, downloader_thread, &dl_args, pool);
 
-    consume_files(&queue, file_path);
+    consume_files(queue);
 
-    apr_thread_mutex_lock(queue.mutex);
-    apr_thread_cond_broadcast(queue.not_empty);
-    apr_thread_cond_broadcast(queue.not_full);
-    apr_thread_mutex_unlock(queue.mutex);
-
-    apr_status_t rv;
     apr_thread_join(&rv, dl_thread);
 
     fclose(fp);
-    queue_destroy(&queue);
     apr_pool_destroy(pool);
     apr_terminate();
     return 0;
