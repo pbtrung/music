@@ -11,5 +11,6 @@ int *util_random_ints(int num_samples, int min_value, int max_value);
 char *util_random_string(int length);
 void util_seconds_to_time(int seconds, char *time_str, size_t time_str_size);
 void util_remove_spaces(char *str);
+char *format_number_commas(long num, char *buf, size_t bufsize);
 
 #endif // UTILS_H

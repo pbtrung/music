@@ -196,9 +196,13 @@ static void consume_files(apr_queue_t *queue) {
         log_trace("main: queue_pop: filename: %s", task->filename);
         log_trace("main: start decode_audio: %s", task->filename);
 
+        char track_id[16], num_tracks[16];
+        format_number_commas(task->track_id, track_id, sizeof(track_id));
+        format_number_commas(task->num_tracks, num_tracks, sizeof(num_tracks));
+
         fprintf(stdout, "PLAYING: %s\n", task->filename);
-        fprintf(stdout, "  %-*s: %d / %d\n", WIDTH, "track", task->track_id,
-                task->num_tracks);
+        fprintf(stdout, "  %-*s: %s / %s\n", WIDTH, "track", track_id,
+                num_tracks);
         fprintf(stdout, "  %-*s: %s\n", WIDTH, "album", task->album_path);
         fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename", task->track_name);
         if (task->num_cids == 1)

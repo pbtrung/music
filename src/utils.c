@@ -208,3 +208,30 @@ char *util_random_string(int length) {
 
     return result;
 }
+
+char *format_number_commas(long num, char *buf, size_t bufsize) {
+    char tmp[64];
+    snprintf(tmp, sizeof(tmp), "%ld", num);
+
+    int len = (int)strlen(tmp);
+    int commas = (len - 1) / 3;
+    if ((size_t)(len + commas + 1) > bufsize) {
+        // not enough space, return plain number
+        snprintf(buf, bufsize, "%ld", num);
+        return buf;
+    }
+
+    int i = len - 1;
+    int j = len + commas;
+    buf[j--] = '\0';
+
+    int count = 0;
+    while (i >= 0) {
+        buf[j--] = tmp[i--];
+        if (++count == 3 && i >= 0) {
+            buf[j--] = ',';
+            count = 0;
+        }
+    }
+    return buf;
+}
