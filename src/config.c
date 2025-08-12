@@ -42,13 +42,16 @@ void config_read(const char *config_file, config_t *config) {
     json_t *log_obj = json_object_get(root, "log");
     json_t *n_gateway_obj = json_object_get(root, "n_gateway");
     json_t *i_gateway_obj = json_object_get(root, "i_gateway");
+    json_t *ncores_obj = json_object_get(root, "ncores");
+    json_t *mul_factor_obj = json_object_get(root, "mul_factor");
 
     if (!json_is_string(db_obj) || !json_is_string(output_obj) ||
         !json_is_integer(max_retries_obj) || !json_is_integer(timeout_obj) ||
         !json_is_array(gateways_array) || !json_is_integer(num_files_obj) ||
         !json_is_string(pipe_name_obj) || !json_is_integer(min_value_obj) ||
         !json_is_string(log_obj) || !json_is_string(n_gateway_obj) ||
-        !json_is_string(i_gateway_obj)) {
+        !json_is_string(i_gateway_obj) || !json_is_integer(ncores_obj) ||
+        !json_is_integer(mul_factor_obj)) {
 
         log_trace("config_read: Invalid config file format");
         exit(-1);
@@ -64,6 +67,8 @@ void config_read(const char *config_file, config_t *config) {
     config->min_value = json_integer_value(min_value_obj);
     config->n_gateway = strdup(json_string_value(n_gateway_obj));
     config->i_gateway = strdup(json_string_value(i_gateway_obj));
+    config->ncores = json_integer_value(ncores_obj);
+    config->mul_factor = json_integer_value(mul_factor_obj);
 
     config->num_gateways = json_array_size(gateways_array);
     config->gateways = malloc(config->num_gateways * sizeof(char *));

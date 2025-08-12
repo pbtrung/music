@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -7,6 +8,7 @@
 
 #include "config.h"
 #include "database.h"
+#include "decode.h"
 #include "dir.h"
 #include "download.h"
 #include "log.h"
@@ -91,6 +93,7 @@ static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
     }
     task->file_path = util_get_file_path(cfg->output, info->filename);
 
+    log_trace("process_file: queue_push: filename: %s", task->filename);
     apr_status_t rv = apr_queue_push(q, task);
     if (rv != APR_SUCCESS) {
         log_trace("process_file: Failed to push %s", task->file_path);
@@ -103,7 +106,7 @@ static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
 
 static void run_downloader(apr_pool_t *pool, const char *cfg_file,
                            config_t **cfg, apr_queue_t *q) {
-    for (int i = 0; i < 3; ++i) {
+    while (true) {
         log_trace("downloader_thread: start loop");
         apr_pool_t *subpool;
         apr_pool_create(&subpool, pool);
@@ -121,27 +124,32 @@ static void *APR_THREAD_FUNC downloader_thread(apr_thread_t *thd, void *data) {
     log_trace("downloader_thread: start");
     downloader_args_t *args = data;
     run_downloader(args->pool, args->config_file, args->config, args->queue);
-    // signal producer done
-    apr_queue_term(args->queue);
+    // apr_queue_term(args->queue);
     log_trace("downloader_thread: end");
     return NULL;
 }
 
 static void consume_files(apr_queue_t *queue) {
-    for (int i = 0; i < 3; ++i) {
+    while (true) {
         file_task_t *task = NULL;
         apr_status_t rv = apr_queue_pop(queue, (void **)&task);
+
         if (rv == APR_EOF) {
-            // producer finished
+            // No more items and producer has finished
             break;
         }
         if (rv != APR_SUCCESS || !task->file_path) {
             // skip invalid entries
             continue;
         }
-        fprintf(stdout, "main: queue_pop: filename=%s\n", task->filename);
-        log_trace("main: queue_pop: filename=%s", task->filename);
-        apr_sleep(apr_time_from_sec(60));
+
+        log_trace("main: queue_pop: filename: %s", task->filename);
+        log_trace("main: start decode_audio: %s", task->filename);
+
+        fprintf(stdout, "PLAYING: %s\n", task->filename);
+        decode_audio(task->pipe_name, task->filename, task->file_path);
+        log_trace("main: end decode_audio: %s", task->filename);
+
         if (remove(task->file_path) != 0) {
             log_trace("main: Failed to delete file %s", task->file_path);
             exit(-1);
@@ -166,6 +174,8 @@ int main(int argc, const char *argv[]) {
     config_t *cfg = load_config(argv[1]);
     FILE *fp = open_log_file(cfg);
 
+    log_trace("main: start");
+
     dir_delete(pool, cfg->output);
     dir_create(pool, cfg->output);
 
@@ -185,12 +195,16 @@ int main(int argc, const char *argv[]) {
     apr_threadattr_create(&dl_attr, pool);
     downloader_args_t dl_args = {
         .queue = queue, .pool = pool, .config_file = argv[1], .config = &cfg};
+    log_trace("main: start downloader_thread");
     apr_thread_create(&dl_thread, dl_attr, downloader_thread, &dl_args, pool);
 
+    log_trace("main: start consume_files");
     consume_files(queue);
 
+    log_trace("main: start apr_thread_join");
     apr_thread_join(&rv, dl_thread);
 
+    log_trace("main: end");
     fclose(fp);
     apr_pool_destroy(pool);
     apr_terminate();

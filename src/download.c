@@ -100,7 +100,8 @@ static void perform_curl_download(CURL *curl, FILE *fp,
                 *(download_info->cid_download_status) = DOWNLOAD_SUCCEEDED;
                 log_trace("download_cid: finish downloading %s",
                           download_info->cid);
-                fprintf(stdout, "Finish downloading %s\n", download_info->cid);
+                // fprintf(stdout, "Finish downloading %s\n",
+                // download_info->cid);
                 break;
             }
         }
@@ -121,7 +122,7 @@ static void perform_curl_download(CURL *curl, FILE *fp,
 static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
     download_info_t *download_info = (download_info_t *)data;
 
-    fprintf(stdout, "Downloading %s\n", download_info->cid);
+    // fprintf(stdout, "Downloading %s\n", download_info->cid);
     log_trace("download_cid: start downloading %s", download_info->cid);
     fflush(stdout);
 
@@ -147,9 +148,8 @@ static apr_thread_pool_t *create_pool(apr_pool_t *pool, config_t *config) {
     apr_thread_pool_t *thread_pool;
     apr_status_t status;
 
-    apr_size_t ncores = 1;
-    status = apr_thread_pool_create(&thread_pool, config->num_files, 4 * ncores,
-                                    pool);
+    status = apr_thread_pool_create(&thread_pool, config->num_files,
+                                    config->mul_factor * config->ncores, pool);
     if (status != APR_SUCCESS) {
         log_trace("Failed to create thread pool");
         exit(-1);
@@ -197,7 +197,7 @@ static void log_duration(apr_time_t start) {
     apr_time_t diff_usec = end - start;
     double elapsed_time = (double)diff_usec / APR_USEC_PER_SEC;
     log_trace("Downloading took %.3f seconds", elapsed_time);
-    fprintf(stdout, "%s %.3f seconds\n", "Downloading took", elapsed_time);
+    // fprintf(stdout, "Downloading took %.3f seconds\r\n", elapsed_time);
 }
 
 void download_assemble_file(apr_pool_t *pool, sqlite3 *db, config_t *config,
@@ -210,6 +210,8 @@ void download_assemble_file(apr_pool_t *pool, sqlite3 *db, config_t *config,
     apr_thread_pool_t *thread_pool = create_pool(subpool, config);
     apr_time_t start = apr_time_now();
 
+    log_trace("download_assemble_file: downloading %d cid(s)", info->num_cids);
+    // fprintf(stdout, "Downloading %d cid(s)\r\n", info->num_cids);
     for (int j = 0; j < info->num_cids; ++j) {
         push_task(thread_pool, info, j, subpool);
     }

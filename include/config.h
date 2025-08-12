@@ -17,6 +17,8 @@ typedef struct {
     char *log;
     char *n_gateway;
     char *i_gateway;
+    int ncores;
+    int mul_factor;
 } config_t;
 
 void config_read(const char *config_file, config_t *config);
