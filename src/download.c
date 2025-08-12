@@ -213,7 +213,7 @@ static void delete_failed_file(file_info_t *info, config_t *config) {
     }
 }
 
-void download_assemble_file(apr_pool_t *pool, sqlite3 *db, config_t *config,
+void download_assemble_file(apr_pool_t *pool, config_t *config,
                             file_info_t *info) {
     log_trace("download_assemble_file: start");
 
