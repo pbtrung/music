@@ -141,6 +141,7 @@ static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
     fclose(fp);
     free(file_path);
     curl_easy_cleanup(curl);
+    log_trace("download_cid: end downloading %s", download_info->cid);
     return NULL;
 }
 
@@ -160,6 +161,7 @@ static apr_thread_pool_t *create_pool(apr_pool_t *pool, config_t *config) {
 
 static void push_task(apr_thread_pool_t *thread_pool, file_info_t *info,
                       int cid_index, apr_pool_t *pool) {
+    log_trace("push_task: start %s", info->cids[cid_index]);
     download_info_t *download_info = apr_palloc(pool, sizeof(download_info_t));
     download_info->cid = info->cids[cid_index];
     download_info->cid_download_status =
@@ -173,12 +175,7 @@ static void push_task(apr_thread_pool_t *thread_pool, file_info_t *info,
                   info->cids[cid_index]);
         exit(-1);
     }
-}
-
-static void wait_tasks(apr_thread_pool_t *thread_pool) {
-    while (apr_thread_pool_tasks_count(thread_pool) > 0) {
-        apr_sleep(apr_time_from_sec(1));
-    }
+    log_trace("push_task: end %s", info->cids[cid_index]);
 }
 
 static int is_download_successful(file_info_t *info) {
@@ -229,9 +226,9 @@ void download_assemble_file(apr_pool_t *pool, config_t *config,
         push_task(thread_pool, info, j, subpool);
     }
 
-    wait_tasks(thread_pool);
-    log_duration(start);
+    // Destroying the pool will block until all tasks have finished
     apr_thread_pool_destroy(thread_pool);
+    log_duration(start);
 
     if (is_download_successful(info)) {
         assemble_file(info, config);
