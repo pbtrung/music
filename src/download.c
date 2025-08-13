@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <apr_strings.h>
 #include <apr_thread_pool.h>
@@ -204,11 +205,13 @@ static void delete_failed_file(file_info_t *info, config_t *config) {
         if (access(cid_path, F_OK) == 0) {
             // File exists, attempt to delete
             if (remove(cid_path) != 0) {
-                log_trace("delete_failed_file: Failed to delete file %s", cid_path);
+                log_trace("delete_failed_file: Failed to delete file %s",
+                          cid_path);
                 exit(-1);
             }
         } else {
-            log_trace("delete_failed_file: File does not exist, skipping %s", cid_path);
+            log_trace("delete_failed_file: File does not exist, skipping %s",
+                      cid_path);
         }
 
         free(cid_path);
