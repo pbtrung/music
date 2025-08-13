@@ -201,9 +201,14 @@ static void delete_failed_file(file_info_t *info, config_t *config) {
     for (int j = 0; j < info->num_cids; j++) {
         char *cid_path = util_get_file_path(config->output, info->cids[j]);
 
-        if (remove(cid_path) != 0) {
-            log_trace("delete_failed_file: Failed to delete file %s", cid_path);
-            exit(-1);
+        if (access(cid_path, F_OK) == 0) {
+            // File exists, attempt to delete
+            if (remove(cid_path) != 0) {
+                log_trace("delete_failed_file: Failed to delete file %s", cid_path);
+                exit(-1);
+            }
+        } else {
+            log_trace("delete_failed_file: File does not exist, skipping %s", cid_path);
         }
 
         free(cid_path);
