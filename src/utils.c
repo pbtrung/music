@@ -137,7 +137,7 @@ char *util_get_extension(const char *text) {
 
 char *util_get_filename_with_extension(char *text) {
     char *ext = util_get_extension(text);
-    int fn_len = 20;
+    int fn_len = 25;
     char *fn = util_random_string(fn_len);
     int filename_len = fn_len + 1 + strlen(ext);
     char *filename = (char *)malloc(filename_len + 1);
