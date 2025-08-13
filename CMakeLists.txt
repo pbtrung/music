@@ -20,6 +20,7 @@ pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(JANSSON REQUIRED jansson)
 pkg_check_modules(PCRE2 REQUIRED libpcre2-8)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswresample)
+pkg_check_modules(OPENSSL REQUIRED libssl libcrypto)
 
 add_executable(music
     src/main.c
@@ -31,6 +32,10 @@ add_executable(music
     src/decode.c
     src/download.c
 )
+add_executable(ex01
+    examples/ex01.c
+    src/aws_dynamodb.c
+)
 
 set(COMMON_INCLUDE_DIRS
     ${APR_INCLUDE_DIRS}
@@ -40,6 +45,7 @@ set(COMMON_INCLUDE_DIRS
     ${JANSSON_INCLUDE_DIRS}
     ${PCRE2_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
+    ${OPENSSL_INCLUDE_DIRS}
     include
 )
 
@@ -51,6 +57,7 @@ set(COMMON_LINK_DIRS
     ${JANSSON_LIBRARY_DIRS}
     ${PCRE2_LIBRARY_DIRS}
     ${FFMPEG_LIBRARY_DIRS}
+    ${OPENSSL_LIBRARY_DIRS}
 )
 
 set(COMMON_LINK_LIBS
@@ -61,9 +68,10 @@ set(COMMON_LINK_LIBS
     ${JANSSON_LIBRARIES}
     ${PCRE2_LIBRARIES}
     ${FFMPEG_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
 )
 
-foreach(target music)
+foreach(target music ex01)
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
     target_link_directories(${target} PRIVATE ${COMMON_LINK_DIRS})
     target_link_libraries(${target} PRIVATE ${COMMON_LINK_LIBS})

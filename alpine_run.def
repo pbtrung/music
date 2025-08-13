@@ -24,7 +24,8 @@ Stage: final
 %post
     apk update
     apk --no-cache upgrade
-    apk --no-cache add apr apr-util jansson libcurl sqlite-libs pcre2 ffmpeg snapcast-server
+    apk --no-cache add apr apr-util jansson libcurl sqlite-libs \
+        pcre2 ffmpeg snapcast-server openssl
 
 %runscript
     #!/bin/ash
