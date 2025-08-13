@@ -218,9 +218,8 @@ static void delete_failed_file(file_info_t *info, config_t *config) {
     }
 }
 
-static void wait_tasks(apr_thread_pool_t *thread_pool) {
-    while (apr_thread_pool_tasks_count(thread_pool) > 0 ||
-           apr_thread_pool_tasks_run_count(thread_pool) > 0) {
+static void wait_tasks(apr_thread_pool_t *thread_pool, int total_tasks) {
+    while (apr_thread_pool_tasks_run_count(thread_pool) < total_tasks) {
         apr_sleep(apr_time_from_sec(1));
     }
 }
@@ -241,7 +240,7 @@ void download_assemble_file(apr_pool_t *pool, config_t *config,
         push_task(thread_pool, info, j, subpool);
     }
 
-    wait_tasks(thread_pool);
+    wait_tasks(thread_pool, info->num_cids);
     log_duration(start);
     apr_thread_pool_destroy(thread_pool);
 
