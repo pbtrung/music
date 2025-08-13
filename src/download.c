@@ -218,6 +218,13 @@ static void delete_failed_file(file_info_t *info, config_t *config) {
     }
 }
 
+static void wait_tasks(apr_thread_pool_t *thread_pool) {
+    while (apr_thread_pool_tasks_count(thread_pool) > 0 ||
+           apr_thread_pool_tasks_run_count(thread_pool) > 0) {
+        apr_sleep(apr_time_from_sec(1));
+    }
+}
+
 void download_assemble_file(apr_pool_t *pool, config_t *config,
                             file_info_t *info) {
     log_trace("download_assemble_file: start");
@@ -234,9 +241,9 @@ void download_assemble_file(apr_pool_t *pool, config_t *config,
         push_task(thread_pool, info, j, subpool);
     }
 
-    // Destroying the pool will block until all tasks have finished
-    apr_thread_pool_destroy(thread_pool);
+    wait_tasks(thread_pool);
     log_duration(start);
+    apr_thread_pool_destroy(thread_pool);
 
     if (is_download_successful(info)) {
         assemble_file(info, config);
