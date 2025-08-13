@@ -1,7 +1,7 @@
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <stdbool.h>
 
 #include <apr_strings.h>
 #include <apr_thread_pool.h>
@@ -221,11 +221,17 @@ static void delete_failed_file(file_info_t *info, config_t *config) {
 
 static void wait_tasks(file_info_t *info) {
     while (true) {
-        bool completed = false;
+        bool completed = true;
         for (int j = 0; j < info->num_cids; ++j) {
             if (info->cid_download_status[j] == DOWNLOAD_PENDING) {
+                completed = false;
+                break;
             }
         }
+        if (completed) {
+            break;
+        }
+        apr_sleep(apr_time_from_sec(1));
     }
 }
 
@@ -245,7 +251,7 @@ void download_assemble_file(apr_pool_t *pool, config_t *config,
         push_task(thread_pool, info, j, subpool);
     }
 
-    wait_tasks(thread_pool, info->num_cids);
+    wait_tasks(info);
     log_duration(start);
     apr_thread_pool_destroy(thread_pool);
 
