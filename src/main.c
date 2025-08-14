@@ -83,6 +83,7 @@ static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg) {
     file_info_t *info = apr_palloc(subpool, sizeof(file_info_t));
     json_t *doc = cosmosdb_get_item(subpool, cfg);
     cosmosdb_file_info_init(info, doc, cfg);
+    json_decref(doc);
     return info;
 }
 
