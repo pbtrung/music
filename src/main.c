@@ -9,7 +9,7 @@
 
 #include "config.h"
 #include "const.h"
-#include "database.h"
+#include "cosmosdb.h"
 #include "decode.h"
 #include "dir.h"
 #include "download.h"
@@ -79,20 +79,10 @@ static void free_file_task(file_task_t *task) {
     free(task);
 }
 
-static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg,
-                                      sqlite3 **db) {
-    database_open_readonly(cfg->db, db);
-    cfg->num_tracks = database_count_tracks(*db);
-
+static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg) {
     file_info_t *info = apr_palloc(subpool, sizeof(file_info_t));
-    int *rand_idx = util_random_ints(1, cfg->min_value, cfg->num_tracks);
-
-    file_info_init(info, *rand_idx, *db, cfg);
-    database_close(*db);
-    free(rand_idx);
-
-    apr_pool_cleanup_register(subpool, info, file_info_free,
-                              apr_pool_cleanup_null);
+    json_t *doc = cosmosdb_get_item(subpool, cfg);
+    cosmosdb_file_info_init(info, doc, cfg);
     return info;
 }
 
@@ -112,7 +102,7 @@ static file_task_t *create_file_task(const file_info_t *info,
     task->file_path = util_get_file_path(cfg->output, info->filename);
 
     task->track_id = info->track_id;
-    task->num_tracks = cfg->num_tracks;
+    task->num_tracks = cfg->max_value;
     task->num_cids = info->num_cids;
 
     if (!task->filename || !task->pipe_name || !task->album_path ||
@@ -138,8 +128,7 @@ static apr_status_t push_task_to_queue(apr_queue_t *q, file_task_t *task) {
 }
 
 static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
-    sqlite3 *db;
-    file_info_t *info = prepare_file_info(subpool, cfg, &db);
+    file_info_t *info = prepare_file_info(subpool, cfg);
     download_assemble_file(subpool, cfg, info);
 
     if (info->file_download_status != DOWNLOAD_SUCCEEDED)
@@ -232,6 +221,7 @@ int main(int argc, const char *argv[]) {
     initialize_pool(&pool);
 
     config_t *cfg = load_config(argv[1]);
+    cfg->num_tracks = cfg->max_value;
     FILE *fp = open_log_file(cfg->log);
 
     log_trace("main: start");

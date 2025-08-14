@@ -31,6 +31,7 @@ add_executable(music
     src/database.c
     src/decode.c
     src/download.c
+    src/cosmosdb.c
 )
 add_executable(ex01
     examples/ex01.c
