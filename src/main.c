@@ -82,6 +82,8 @@ static void free_file_task(file_task_t *task) {
 static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg) {
     file_info_t *info = apr_palloc(subpool, sizeof(file_info_t));
     json_t *doc = cosmosdb_get_item(subpool, cfg);
+    if (!doc)
+        return NULL;
     cosmosdb_file_info_init(info, doc, cfg);
     json_decref(doc);
     return info;
@@ -130,6 +132,8 @@ static apr_status_t push_task_to_queue(apr_queue_t *q, file_task_t *task) {
 
 static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
     file_info_t *info = prepare_file_info(subpool, cfg);
+    if (!info)
+        return;
     download_assemble_file(subpool, cfg, info);
 
     if (info->file_download_status != DOWNLOAD_SUCCEEDED)
