@@ -85,7 +85,11 @@ static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg) {
     if (!doc)
         return NULL;
     cosmosdb_file_info_init(info, doc, cfg);
+
     json_decref(doc);
+    apr_pool_cleanup_register(subpool, info, file_info_free,
+                              apr_pool_cleanup_null);
+    
     return info;
 }
 
