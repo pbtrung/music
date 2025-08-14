@@ -156,7 +156,7 @@ static void run_downloader(apr_pool_t *pool, const char *cfg_file,
         config_read(cfg_file, *cfg);
         apr_pool_cleanup_register(subpool, *cfg, config_free,
                                   apr_pool_cleanup_null);
-        cfg->num_tracks = cfg->max_value;
+        (*cfg)->num_tracks = (*cfg)->max_value;
 
         process_file(subpool, *cfg, q);
 
