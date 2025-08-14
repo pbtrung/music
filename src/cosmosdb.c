@@ -163,7 +163,7 @@ static json_t *try_get_item(apr_pool_t *pool, const config_t *config,
 
     log_trace("try_get_item: HTTP status=%ld", status);
 
-    if (rc != CURLE_OK) {
+    if (rc != CURLE_OK || status != 200) {
         log_trace("try_get_item: curl error=%s", curl_easy_strerror(rc));
         free(resp.data);
         return NULL;
