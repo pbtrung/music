@@ -12,6 +12,7 @@ typedef struct {
     int num_gateways;
     int num_tracks;
     int min_value;
+    int max_value;
     int num_files;
     char *pipe_name;
     char *log;
@@ -19,6 +20,10 @@ typedef struct {
     char *i_gateway;
     int ncores;
     int mul_factor;
+    char *cosmos_uri;
+    char *cosmos_key;
+    char *cosmos_db_name;
+    char *cosmos_container;
 } config_t;
 
 void config_read(const char *config_file, config_t *config);

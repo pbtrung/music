@@ -39,6 +39,11 @@ add_executable(ex01
 add_executable(ex02
     examples/ex02.c
     src/cosmosdb.c
+    src/config.c
+    src/log.c
+    src/utils.c
+    src/download.c
+    src/database.c
 )
 
 set(COMMON_INCLUDE_DIRS

@@ -14,6 +14,10 @@ apr_status_t config_free(void *data) {
     free(config->pipe_name);
     free(config->n_gateway);
     free(config->i_gateway);
+    free(config->cosmos_uri);
+    free(config->cosmos_key);
+    free(config->cosmos_db_name);
+    free(config->cosmos_container);
     for (int i = 0; i < config->num_gateways; ++i) {
         free(config->gateways[i]);
     }
@@ -44,6 +48,11 @@ void config_read(const char *config_file, config_t *config) {
     json_t *i_gateway_obj = json_object_get(root, "i_gateway");
     json_t *ncores_obj = json_object_get(root, "ncores");
     json_t *mul_factor_obj = json_object_get(root, "mul_factor");
+    json_t *cosmos_uri_obj = json_object_get(root, "cosmos_uri");
+    json_t *cosmos_key_obj = json_object_get(root, "cosmos_key");
+    json_t *cosmos_db_name_obj = json_object_get(root, "cosmos_db_name");
+    json_t *cosmos_container_obj = json_object_get(root, "cosmos_container");
+    json_t *max_value_obj = json_object_get(root, "max_value");
 
     if (!json_is_string(db_obj) || !json_is_string(output_obj) ||
         !json_is_integer(max_retries_obj) || !json_is_integer(timeout_obj) ||
@@ -51,7 +60,11 @@ void config_read(const char *config_file, config_t *config) {
         !json_is_string(pipe_name_obj) || !json_is_integer(min_value_obj) ||
         !json_is_string(log_obj) || !json_is_string(n_gateway_obj) ||
         !json_is_string(i_gateway_obj) || !json_is_integer(ncores_obj) ||
-        !json_is_integer(mul_factor_obj)) {
+        !json_is_integer(mul_factor_obj) || !json_is_string(cosmos_uri_obj) ||
+        !json_is_string(cosmos_key_obj) ||
+        !json_is_string(cosmos_db_name_obj) ||
+        !json_is_string(cosmos_container_obj) ||
+        !json_is_integer(max_value_obj)) {
 
         log_trace("config_read: Invalid config file format");
         exit(-1);
@@ -69,6 +82,11 @@ void config_read(const char *config_file, config_t *config) {
     config->i_gateway = strdup(json_string_value(i_gateway_obj));
     config->ncores = json_integer_value(ncores_obj);
     config->mul_factor = json_integer_value(mul_factor_obj);
+    config->cosmos_uri = strdup(json_string_value(cosmos_uri_obj));
+    config->cosmos_key = strdup(json_string_value(cosmos_key_obj));
+    config->cosmos_db_name = strdup(json_string_value(cosmos_db_name_obj));
+    config->cosmos_container = strdup(json_string_value(cosmos_container_obj));
+    config->max_value = json_integer_value(max_value_obj);
 
     config->num_gateways = json_array_size(gateways_array);
     config->gateways = malloc(config->num_gateways * sizeof(char *));
