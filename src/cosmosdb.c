@@ -15,247 +15,587 @@
 #include "log.h"
 #include "utils.h"
 
-struct mem {
+#define COSMOS_API_VERSION "2018-12-31"
+#define RFC1123_BUFFER_SIZE 64
+#define MAX_MAC_SIZE EVP_MAX_MD_SIZE
+#define HTTP_STATUS_OK 200
+#define HTTP_STATUS_NOT_FOUND 404
+
+typedef struct {
     char *data;
     size_t len;
-};
+    size_t capacity;
+} http_response_t;
 
-static char *strdup_safe(const char *s) {
+typedef struct {
+    const config_t *config;
+    apr_pool_t *pool;
+    CURL *curl;
+    char *auth_token;
+    char *date_header;
+} cosmos_request_ctx_t;
+
+static char *safe_strdup(const char *s) {
     if (!s)
         return NULL;
-    char *copy = malloc(strlen(s) + 1);
-    return copy ? strcpy(copy, s) : NULL;
+
+    size_t len = strlen(s);
+    char *copy = malloc(len + 1);
+    if (!copy)
+        return NULL;
+
+    return strcpy(copy, s);
 }
 
-static size_t write_cb(void *ptr, size_t size, size_t nmemb, void *userdata) {
-    size_t total = size * nmemb;
-    struct mem *m = userdata;
-    char *p = realloc(m->data, m->len + total + 1);
-    if (!p)
+static void string_to_lowercase(char *s) {
+    if (!s)
+        return;
+
+    for (char *p = s; *p; ++p) {
+        *p = (char)tolower((unsigned char)*p);
+    }
+}
+
+static void http_response_init(http_response_t *resp) {
+    if (!resp)
+        return;
+
+    resp->data = NULL;
+    resp->len = 0;
+    resp->capacity = 0;
+}
+
+static void http_response_cleanup(http_response_t *resp) {
+    if (!resp)
+        return;
+
+    free(resp->data);
+    resp->data = NULL;
+    resp->len = 0;
+    resp->capacity = 0;
+}
+
+static size_t http_write_callback(void *ptr, size_t size, size_t nmemb,
+                                  void *userdata) {
+    size_t total_size = size * nmemb;
+    http_response_t *resp = (http_response_t *)userdata;
+
+    if (!resp || !ptr)
         return 0;
-    m->data = p;
-    memcpy(m->data + m->len, ptr, total);
-    m->len += total;
-    m->data[m->len] = '\0';
-    return total;
+
+    size_t required_capacity = resp->len + total_size + 1;
+    if (required_capacity > resp->capacity) {
+        size_t new_capacity = required_capacity * 2;
+        char *new_data = realloc(resp->data, new_capacity);
+
+        if (!new_data) {
+            log_trace(
+                "http_write_callback: Failed to allocate memory for HTTP response");
+            return 0;
+        }
+
+        resp->data = new_data;
+        resp->capacity = new_capacity;
+    }
+
+    memcpy(resp->data + resp->len, ptr, total_size);
+    resp->len += total_size;
+    resp->data[resp->len] = '\0';
+
+    return total_size;
 }
 
-static char *rfc1123_now(apr_pool_t *pool) {
+static char *create_rfc1123_timestamp(apr_pool_t *pool) {
+    if (!pool)
+        return NULL;
+
     time_t now = time(NULL);
     struct tm gmt;
-    gmtime_r(&now, &gmt);
-    char *buf = apr_palloc(pool, 64);
-    strftime(buf, 64, "%a, %d %b %Y %H:%M:%S GMT", &gmt);
-    return buf;
+
+    if (!gmtime_r(&now, &gmt)) {
+        log_trace("create_rfc1123_timestamp: Failed to convert time to GMT");
+        return NULL;
+    }
+
+    char *buffer = apr_palloc(pool, RFC1123_BUFFER_SIZE);
+    if (!buffer)
+        return NULL;
+
+    size_t result = strftime(buffer, RFC1123_BUFFER_SIZE,
+                             "%a, %d %b %Y %H:%M:%S GMT", &gmt);
+
+    return (result > 0) ? buffer : NULL;
 }
 
-static void lowercase(char *s) {
-    for (; *s; ++s)
-        *s = (char)tolower((unsigned char)*s);
+static unsigned char *
+decode_base64_key(apr_pool_t *pool, const char *encoded_key, int *decoded_len) {
+    if (!pool || !encoded_key || !decoded_len) {
+        log_trace(
+            "decode_base64_key: Invalid parameters for base64 key decoding");
+        return NULL;
+    }
+
+    int buffer_len = apr_base64_decode_len(encoded_key);
+    if (buffer_len <= 0) {
+        log_trace("decode_base64_key: Invalid base64 encoded key length");
+        return NULL;
+    }
+
+    unsigned char *decoded = apr_palloc(pool, buffer_len);
+    if (!decoded) {
+        log_trace(
+            "decode_base64_key: Failed to allocate memory for decoded key");
+        return NULL;
+    }
+
+    *decoded_len = apr_base64_decode_binary(decoded, encoded_key);
+    if (*decoded_len <= 0) {
+        log_trace("decode_base64_key: Failed to decode base64 key");
+        return NULL;
+    }
+
+    return decoded;
 }
 
-static unsigned char *decode_key(apr_pool_t *pool, const char *key,
-                                 int *out_len) {
-    int buf_len = apr_base64_decode_len(key);
-    unsigned char *raw = apr_palloc(pool, buf_len);
-    *out_len = apr_base64_decode_binary(raw, key);
-    return raw;
-}
+static char *create_hmac_signature(apr_pool_t *pool, const unsigned char *key,
+                                   int key_len, const char *message) {
+    if (!pool || !key || !message || key_len <= 0) {
+        log_trace(
+            "create_hmac_signature: Invalid parameters for HMAC signature creation");
+        return NULL;
+    }
 
-static char *hmac_sha256_b64(apr_pool_t *pool, const unsigned char *key,
-                             int key_len, const char *msg) {
-    unsigned char mac[EVP_MAX_MD_SIZE];
+    unsigned char mac[MAX_MAC_SIZE];
     unsigned int mac_len = 0;
-    HMAC(EVP_sha256(), key, key_len, (const unsigned char *)msg, strlen(msg),
-         mac, &mac_len);
-    char *out = apr_palloc(pool, apr_base64_encode_len(mac_len));
-    apr_base64_encode(out, (const char *)mac, (int)mac_len);
-    return out;
+
+    if (!HMAC(EVP_sha256(), key, key_len, (const unsigned char *)message,
+              strlen(message), mac, &mac_len)) {
+        log_trace("create_hmac_signature: HMAC computation failed");
+        return NULL;
+    }
+
+    int encoded_len = apr_base64_encode_len(mac_len);
+    char *encoded = apr_palloc(pool, encoded_len);
+    if (!encoded) {
+        log_trace(
+            "create_hmac_signature: Failed to allocate memory for encoded signature");
+        return NULL;
+    }
+
+    apr_base64_encode(encoded, (const char *)mac, (int)mac_len);
+    return encoded;
 }
 
-static char *build_auth_token(CURL *curl, apr_pool_t *pool,
-                              const config_t *config, const char *verb,
-                              const char *resource_type,
-                              const char *resource_link,
-                              const char *date_rfc1123) {
-    log_trace("build_auth_token: verb=%s, resource_type=%s, link=%s", verb,
-              resource_type, resource_link);
+static char *build_signature_payload(apr_pool_t *pool, const char *http_verb,
+                                     const char *resource_type,
+                                     const char *resource_link,
+                                     const char *timestamp) {
+    if (!pool || !http_verb || !resource_type || !resource_link || !timestamp) {
+        log_trace(
+            "build_signature_payload: Invalid parameters for signature payload");
+        return NULL;
+    }
 
-    char *verb_l = apr_pstrdup(pool, verb);
-    lowercase(verb_l);
-    char *rtype_l = apr_pstrdup(pool, resource_type);
-    lowercase(rtype_l);
-    char *date_l = apr_pstrdup(pool, date_rfc1123);
-    lowercase(date_l);
+    char *verb_lower = apr_pstrdup(pool, http_verb);
+    char *type_lower = apr_pstrdup(pool, resource_type);
+    char *date_lower = apr_pstrdup(pool, timestamp);
 
-    char *to_sign = apr_psprintf(pool, "%s\n%s\n%s\n%s\n\n", verb_l, rtype_l,
-                                 resource_link, date_l);
-    log_trace("build_auth_token: to_sign='%s'", to_sign);
+    if (!verb_lower || !type_lower || !date_lower) {
+        log_trace(
+            "build_signature_payload: Failed to duplicate strings for signature payload");
+        return NULL;
+    }
+
+    string_to_lowercase(verb_lower);
+    string_to_lowercase(type_lower);
+    string_to_lowercase(date_lower);
+
+    return apr_psprintf(pool, "%s\n%s\n%s\n%s\n\n", verb_lower, type_lower,
+                        resource_link, date_lower);
+}
+
+static char *create_auth_token(cosmos_request_ctx_t *ctx, const char *http_verb,
+                               const char *resource_type,
+                               const char *resource_link) {
+    if (!ctx || !ctx->pool || !ctx->config || !http_verb || !resource_type ||
+        !resource_link) {
+        log_trace("create_auth_token: Invalid context for auth token creation");
+        return NULL;
+    }
+
+    log_trace(
+        "create_auth_token: Creating auth token: verb=%s, type=%s, link=%s",
+        http_verb, resource_type, resource_link);
+
+    char *payload = build_signature_payload(ctx->pool, http_verb, resource_type,
+                                            resource_link, ctx->date_header);
+    if (!payload) {
+        log_trace("create_auth_token: Failed to build signature payload");
+        return NULL;
+    }
+
+    log_trace("create_auth_token: Signature payload: '%s'", payload);
 
     int key_len;
-    unsigned char *key_raw = decode_key(pool, config->cosmos_key, &key_len);
-    char *sig_b64 = hmac_sha256_b64(pool, key_raw, key_len, to_sign);
+    unsigned char *decoded_key =
+        decode_base64_key(ctx->pool, ctx->config->cosmos_key, &key_len);
+    if (!decoded_key) {
+        log_trace("create_auth_token: Failed to decode CosmosDB key");
+        return NULL;
+    }
+
+    char *signature =
+        create_hmac_signature(ctx->pool, decoded_key, key_len, payload);
+    if (!signature) {
+        log_trace("create_auth_token: Failed to create HMAC signature");
+        return NULL;
+    }
 
     char *token_plain =
-        apr_psprintf(pool, "type=master&ver=1.0&sig=%s", sig_b64);
-    char *token_enc = curl_easy_escape(curl, token_plain, 0);
-    char *auth = apr_pstrdup(pool, token_enc);
-    curl_free(token_enc);
+        apr_psprintf(ctx->pool, "type=master&ver=1.0&sig=%s", signature);
+    if (!token_plain) {
+        log_trace("create_auth_token: Failed to create plain auth token");
+        return NULL;
+    }
 
-    log_trace("build_auth_token: done");
-    return auth;
+    char *token_encoded = curl_easy_escape(ctx->curl, token_plain, 0);
+    if (!token_encoded) {
+        log_trace("create_auth_token: Failed to URL encode auth token");
+        return NULL;
+    }
+
+    char *result = apr_pstrdup(ctx->pool, token_encoded);
+    curl_free(token_encoded);
+
+    log_trace("create_auth_token: Auth token created successfully");
+    return result;
 }
 
-static CURL *setup_curl_request(apr_pool_t *pool, const char *url,
-                                const char *auth, const char *date,
-                                const char *version, const char *partition_key,
-                                struct mem *resp) {
-    log_trace("setup_curl_request: url=%s", url);
-
-    CURL *curl = curl_easy_init();
-    if (!curl)
+static struct curl_slist *build_http_headers(cosmos_request_ctx_t *ctx,
+                                             const char *partition_key) {
+    if (!ctx || !ctx->pool || !partition_key) {
+        log_trace("build_http_headers: Invalid parameters for HTTP headers");
         return NULL;
+    }
+
     struct curl_slist *headers = NULL;
-    headers = curl_slist_append(headers, "Accept: application/json");
-    headers =
-        curl_slist_append(headers, apr_psprintf(pool, "x-ms-date: %s", date));
-    headers = curl_slist_append(
-        headers, apr_psprintf(pool, "x-ms-version: %s", version));
-    headers = curl_slist_append(headers,
-                                apr_psprintf(pool, "authorization: %s", auth));
-    headers = curl_slist_append(
-        headers, apr_psprintf(pool, "x-ms-documentdb-partitionkey: [\"%s\"]",
-                              partition_key));
 
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "GET");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, resp);
-    return curl;
+    headers = curl_slist_append(headers, "Accept: application/json");
+    headers = curl_slist_append(
+        headers, apr_psprintf(ctx->pool, "x-ms-date: %s", ctx->date_header));
+    headers =
+        curl_slist_append(headers, apr_psprintf(ctx->pool, "x-ms-version: %s",
+                                                COSMOS_API_VERSION));
+    headers = curl_slist_append(
+        headers, apr_psprintf(ctx->pool, "authorization: %s", ctx->auth_token));
+    headers = curl_slist_append(
+        headers,
+        apr_psprintf(ctx->pool, "x-ms-documentdb-partitionkey: [\"%s\"]",
+                     partition_key));
+
+    return headers;
 }
 
-static json_t *try_get_item(apr_pool_t *pool, const config_t *config,
-                            const char *track_id) {
-    log_trace("try_get_item: track_id=%s", track_id);
+static bool setup_curl_get_request(cosmos_request_ctx_t *ctx, const char *url,
+                                   const char *partition_key,
+                                   http_response_t *response) {
+    if (!ctx || !ctx->curl || !url || !partition_key || !response) {
+        log_trace(
+            "setup_curl_get_request: Invalid parameters for CURL GET request setup");
+        return false;
+    }
 
-    char *resource_link =
-        apr_psprintf(pool, "dbs/%s/colls/%s/docs/%s", config->cosmos_db_name,
-                     config->cosmos_container, track_id);
-    const char *xms_version = "2018-12-31";
-    char *xms_date = rfc1123_now(pool);
+    log_trace("setup_curl_get_request: Setting up CURL request: url=%s", url);
 
-    CURL *curl = curl_easy_init();
-    char *auth = build_auth_token(curl, pool, config, "GET", "docs",
-                                  resource_link, xms_date);
-    char *url = apr_psprintf(pool, "%s/%s", config->cosmos_uri, resource_link);
+    struct curl_slist *headers = build_http_headers(ctx, partition_key);
+    if (!headers) {
+        log_trace("setup_curl_get_request: Failed to build HTTP headers");
+        return false;
+    }
 
-    struct mem resp = {0};
-    CURL *req = setup_curl_request(pool, url, auth, xms_date, xms_version,
-                                   track_id, &resp);
-    if (!req)
-        return NULL;
+    curl_easy_setopt(ctx->curl, CURLOPT_URL, url);
+    curl_easy_setopt(ctx->curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(ctx->curl, CURLOPT_CUSTOMREQUEST, "GET");
+    curl_easy_setopt(ctx->curl, CURLOPT_WRITEFUNCTION, http_write_callback);
+    curl_easy_setopt(ctx->curl, CURLOPT_WRITEDATA, response);
+    curl_easy_setopt(ctx->curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(ctx->curl, CURLOPT_FOLLOWLOCATION, 1L);
 
-    CURLcode rc = curl_easy_perform(req);
-    long status = 0;
-    curl_easy_getinfo(req, CURLINFO_RESPONSE_CODE, &status);
-    curl_easy_cleanup(req);
+    return true;
+}
 
-    log_trace("try_get_item: HTTP status=%ld", status);
-
-    if (rc != CURLE_OK || status != 200) {
-        log_trace("try_get_item: curl error=%s", curl_easy_strerror(rc));
-        free(resp.data);
+static json_t *fetch_cosmos_item(cosmos_request_ctx_t *ctx,
+                                 const char *track_id) {
+    if (!ctx || !ctx->pool || !ctx->config || !track_id) {
+        log_trace(
+            "fetch_cosmos_item: Invalid parameters for CosmosDB item fetch");
         return NULL;
     }
 
-    json_error_t jerr;
-    json_t *root = json_loads(resp.data ? resp.data : "", 0, &jerr);
-    free(resp.data);
+    log_trace("fetch_cosmos_item: Fetching CosmosDB item: track_id=%s",
+              track_id);
 
-    if (!root) {
-        log_trace("try_get_item: JSON parse error=%s (line %d)", jerr.text,
-                  jerr.line);
+    char *resource_link = apr_psprintf(ctx->pool, "dbs/%s/colls/%s/docs/%s",
+                                       ctx->config->cosmos_db_name,
+                                       ctx->config->cosmos_container, track_id);
+    if (!resource_link) {
+        log_trace("fetch_cosmos_item: Failed to build resource link");
         return NULL;
     }
-    return root;
+
+    ctx->auth_token = create_auth_token(ctx, "GET", "docs", resource_link);
+    if (!ctx->auth_token) {
+        log_trace("fetch_cosmos_item: Failed to create auth token");
+        return NULL;
+    }
+
+    char *url = apr_psprintf(ctx->pool, "%s/%s", ctx->config->cosmos_uri,
+                             resource_link);
+    if (!url) {
+        log_trace("fetch_cosmos_item: Failed to build request URL");
+        return NULL;
+    }
+
+    http_response_t response;
+    http_response_init(&response);
+
+    if (!setup_curl_get_request(ctx, url, track_id, &response)) {
+        log_trace("fetch_cosmos_item: Failed to setup CURL request");
+        http_response_cleanup(&response);
+        return NULL;
+    }
+
+    CURLcode curl_result = curl_easy_perform(ctx->curl);
+    long http_status = 0;
+    curl_easy_getinfo(ctx->curl, CURLINFO_RESPONSE_CODE, &http_status);
+
+    log_trace(
+        "fetch_cosmos_item: HTTP request completed: status=%ld, curl_result=%s",
+        http_status, curl_easy_strerror(curl_result));
+
+    if (curl_result != CURLE_OK) {
+        log_trace("fetch_cosmos_item: CURL request failed: %s",
+                  curl_easy_strerror(curl_result));
+        http_response_cleanup(&response);
+        return NULL;
+    }
+
+    if (http_status != HTTP_STATUS_OK) {
+        log_trace("fetch_cosmos_item: HTTP request returned status %ld",
+                  http_status);
+        http_response_cleanup(&response);
+        return NULL;
+    }
+
+    if (!response.data || response.len == 0) {
+        log_trace("fetch_cosmos_item: Empty response from CosmosDB");
+        http_response_cleanup(&response);
+        return NULL;
+    }
+
+    json_error_t json_error;
+    json_t *document = json_loads(response.data, 0, &json_error);
+    http_response_cleanup(&response);
+
+    if (!document) {
+        log_trace("fetch_cosmos_item: JSON parse error: %s (line %d)",
+                  json_error.text, json_error.line);
+        return NULL;
+    }
+
+    return document;
+}
+
+static bool is_not_found_response(json_t *document) {
+    if (!document)
+        return false;
+
+    json_t *code_field = json_object_get(document, "code");
+    if (!json_is_string(code_field))
+        return false;
+
+    return (strcmp(json_string_value(code_field), "NotFound") == 0);
+}
+
+static char *generate_random_track_id(apr_pool_t *pool,
+                                      const config_t *config) {
+    if (!pool || !config) {
+        log_trace(
+            "generate_random_track_id: Invalid parameters for random track ID generation");
+        return NULL;
+    }
+
+    int *random_values = util_rand_ints(1, 1, config->max_value);
+    if (!random_values) {
+        log_trace("generate_random_track_id: Failed to generate random values");
+        return NULL;
+    }
+
+    char *track_id = apr_psprintf(pool, "%d", random_values[0]);
+    free(random_values);
+
+    return track_id;
 }
 
 json_t *cosmosdb_get_item(apr_pool_t *pool, const config_t *config) {
-    log_trace("cosmosdb_get_item: start");
+    if (!pool || !config) {
+        log_trace(
+            "cosmosdb_get_item: Invalid parameters for CosmosDB get item");
+        return NULL;
+    }
+
+    log_trace("cosmosdb_get_item: Starting CosmosDB item retrieval");
+
+    cosmos_request_ctx_t ctx = {0};
+    ctx.config = config;
+    ctx.pool = pool;
+    ctx.curl = curl_easy_init();
+
+    if (!ctx.curl) {
+        log_trace("cosmosdb_get_item: Failed to initialize CURL");
+        return NULL;
+    }
+
+    ctx.date_header = create_rfc1123_timestamp(pool);
+    if (!ctx.date_header) {
+        log_trace("cosmosdb_get_item: Failed to create timestamp");
+        curl_easy_cleanup(ctx.curl);
+        return NULL;
+    }
+
+    json_t *result = NULL;
 
     for (int attempt = 1; attempt <= config->max_retries; attempt++) {
-        log_trace("cosmosdb_get_item: attempt %d", attempt);
+        log_trace("cosmosdb_get_item: CosmosDB retrieval attempt %d of %d",
+                  attempt, config->max_retries);
 
-        int *random_index = util_random_ints(1, 1, config->max_value);
-        char *track_id = apr_psprintf(pool, "%d", random_index[0]);
-        free(random_index);
-        log_trace("cosmosdb_get_item: track_id=%s", track_id);
-
-        json_t *root = try_get_item(pool, config, track_id);
-        if (!root)
-            continue;
-
-        json_t *code = json_object_get(root, "code");
-        if (json_is_string(code) &&
-            strcmp(json_string_value(code), "NotFound") == 0) {
-            log_trace("cosmosdb_get_item: NotFound for track_id=%s, retrying",
-                      track_id);
-            json_decref(root);
+        char *track_id = generate_random_track_id(pool, config);
+        if (!track_id) {
+            log_trace("cosmosdb_get_item: Failed to generate random track ID");
             continue;
         }
-        return root;
+
+        log_trace("cosmosdb_get_item: Trying track_id=%s", track_id);
+
+        json_t *document = fetch_cosmos_item(&ctx, track_id);
+        if (!document) {
+            log_trace(
+                "cosmosdb_get_item: Failed to fetch document for track_id=%s",
+                track_id);
+            continue;
+        }
+
+        if (is_not_found_response(document)) {
+            log_trace(
+                "cosmosdb_get_item: Document not found for track_id=%s, retrying",
+                track_id);
+            json_decref(document);
+            continue;
+        }
+
+        result = document;
+        break;
     }
 
-    log_trace("cosmosdb_get_item: Max retries reached");
-    return NULL;
-}
+    curl_easy_cleanup(ctx.curl);
 
-static void set_string_field(char **dst, json_t *obj, const char *field_name) {
-    if (json_is_string(obj)) {
-        *dst = strdup_safe(json_string_value(obj));
-        log_trace("set_string_field: %s=%s", field_name, *dst);
+    if (!result) {
+        log_trace(
+            "cosmosdb_get_item: Failed to retrieve CosmosDB item after %d attempts",
+            config->max_retries);
+    } else {
+        log_trace("cosmosdb_get_item: Successfully retrieved CosmosDB item");
     }
+
+    return result;
 }
 
-static void set_cids(file_info_t *info, json_t *cids) {
-    if (!json_is_array(cids))
+static void extract_string_field(char **destination, json_t *json_object,
+                                 const char *field_name) {
+    if (!destination || !json_object || !field_name)
         return;
-    info->num_cids = json_array_size(cids);
+
+    if (json_is_string(json_object)) {
+        *destination = safe_strdup(json_string_value(json_object));
+        log_trace("extract_string_field: Extracted field %s: %s", field_name,
+                  *destination ? *destination : "(null)");
+    }
+}
+
+static void initialize_cid_array(file_info_t *info, json_t *cids_array) {
+    if (!info || !json_is_array(cids_array)) {
+        log_trace("initialize_cid_array: Invalid CIDs array or info structure");
+        return;
+    }
+
+    info->num_cids = (int)json_array_size(cids_array);
+    if (info->num_cids <= 0) {
+        log_trace("initialize_cid_array: Empty CIDs array");
+        return;
+    }
+
+    log_trace("initialize_cid_array: Initializing %d CIDs", info->num_cids);
+
     info->cids = calloc(info->num_cids, sizeof(char *));
     info->cid_download_status =
         calloc(info->num_cids, sizeof(enum download_status));
 
-    log_trace("set_cids: num_cids=%d", info->num_cids);
+    if (!info->cids || !info->cid_download_status) {
+        log_trace("initialize_cid_array: Failed to allocate memory for CIDs");
+        free(info->cids);
+        free(info->cid_download_status);
+        info->cids = NULL;
+        info->cid_download_status = NULL;
+        info->num_cids = 0;
+        return;
+    }
 
     for (int i = 0; i < info->num_cids; i++) {
-        set_string_field(&info->cids[i], json_array_get(cids, i), "cid");
+        json_t *cid_element = json_array_get(cids_array, i);
+        if (cid_element) {
+            extract_string_field(&info->cids[i], cid_element, "cid");
+        }
         info->cid_download_status[i] = DOWNLOAD_PENDING;
     }
 }
 
-void cosmosdb_file_info_init(file_info_t *info, json_t *doc, config_t *config) {
-    if (!info || !doc)
+void cosmosdb_file_info_init(file_info_t *info, json_t *document,
+                             config_t *config) {
+    if (!info || !document || !config) {
+        log_trace(
+            "cosmosdb_file_info_init: Invalid parameters for file info initialization");
         return;
+    }
 
-    set_string_field(&info->track_name, json_object_get(doc, "track_name"),
-                     "track_name");
+    log_trace(
+        "cosmosdb_file_info_init: Initializing file info from CosmosDB document");
 
-    json_t *album = json_object_get(doc, "album");
-    if (json_is_object(album))
-        set_string_field(&info->album_path, json_object_get(album, "path"),
-                         "album_path");
-
-    info->extension = util_get_extension(info->track_name);
-    info->filename = util_get_filename_with_extension(info->track_name);
+    memset(info, 0, sizeof(file_info_t));
     info->config = config;
     info->file_download_status = DOWNLOAD_PENDING;
 
-    json_t *track_id = json_object_get(doc, "track_id");
-    if (json_is_integer(track_id)) {
-        info->track_id = (int)json_integer_value(track_id);
-        log_trace("cosmosdb_file_info_init: track_id=%d", info->track_id);
+    json_t *track_name_field = json_object_get(document, "track_name");
+    extract_string_field(&info->track_name, track_name_field, "track_name");
+
+    json_t *album_object = json_object_get(document, "album");
+    if (json_is_object(album_object)) {
+        json_t *album_path_field = json_object_get(album_object, "path");
+        extract_string_field(&info->album_path, album_path_field, "album_path");
     }
 
-    set_cids(info, json_object_get(doc, "cids"));
+    json_t *track_id_field = json_object_get(document, "track_id");
+    if (json_is_integer(track_id_field)) {
+        info->track_id = (int)json_integer_value(track_id_field);
+        log_trace("cosmosdb_file_info_init: Track ID: %d", info->track_id);
+    }
+
+    if (info->track_name) {
+        info->extension = util_get_ext(info->track_name);
+        info->filename = util_gen_filename(info->track_name);
+    }
+
+    json_t *cids_field = json_object_get(document, "cids");
+    initialize_cid_array(info, cids_field);
+
+    log_trace("cosmosdb_file_info_init: File info initialization completed");
 }

@@ -19,7 +19,7 @@ static void decode_print_metadata(AVFormatContext *fmt_ctx) {
 
     while ((
         tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
-        util_tolower(tag->key);
+        util_to_lower(tag->key);
         log_trace("%s: %s", tag->key, tag->value);
         fprintf(stdout, "  %-*s: %s\n", WIDTH, tag->key, tag->value);
     }
@@ -27,7 +27,7 @@ static void decode_print_metadata(AVFormatContext *fmt_ctx) {
         AVStream *stream = fmt_ctx->streams[i];
         while ((tag = av_dict_get(stream->metadata, "", tag,
                                   AV_DICT_IGNORE_SUFFIX))) {
-            util_tolower(tag->key);
+            util_to_lower(tag->key);
             log_trace("%s: %s", tag->key, tag->value);
             fprintf(stdout, "  %-*s: %s\n", WIDTH, tag->key, tag->value);
         }
@@ -142,7 +142,7 @@ static void decode_print_audio_info(AVCodecContext *codec_ctx) {
     char sample_fmt[16];
     av_get_sample_fmt_string(sample_fmt, sizeof(sample_fmt),
                              codec_ctx->sample_fmt);
-    util_remove_spaces(sample_fmt);
+    util_trim_spaces(sample_fmt);
     log_trace("sample-fmt: %s", sample_fmt);
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "sample-fmt", sample_fmt);
     log_trace("channels: %d", codec_ctx->ch_layout.nb_channels);
@@ -215,7 +215,7 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
         int64_t current_pts =
             frame->pts * av_q2d(fmt_ctx->streams[stream_index]->time_base);
         char time_str[DUR_STRLEN];
-        util_seconds_to_time((int)current_pts, time_str, DUR_STRLEN);
+        util_format_time((int)current_pts, time_str, DUR_STRLEN);
         fprintf(stdout, "  %-*s: %s / %s\r", WIDTH, "position", time_str,
                 dur_str);
         fflush(stdout);
@@ -294,7 +294,7 @@ static int decode_init(AVFormatContext **fmt_ctx, AVCodecContext **codec_ctx,
     }
 
     int64_t duration = decode_duration(*fmt_ctx, *stream_index);
-    util_seconds_to_time((int)duration, dur_str, DUR_STRLEN);
+    util_format_time((int)duration, dur_str, DUR_STRLEN);
     decode_print_audio_info(*codec_ctx);
 
     return 0;
