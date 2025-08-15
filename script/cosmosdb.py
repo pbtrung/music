@@ -63,12 +63,43 @@ async def send_bulk(container, docs):
     print(f"Inserted {len(docs)} docs.")
 
 
+async def upsert_track_count(container, conn):
+    """Upsert the document with counts for tracks, albums, and content cids."""
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT t.c AS num_tracks, a.c AS num_albums, c.c AS num_cids
+        FROM (SELECT COUNT(*) AS c FROM tracks) AS t
+        CROSS JOIN (SELECT COUNT(*) AS c FROM albums) AS a
+        CROSS JOIN (SELECT COUNT(*) AS c FROM content) AS c
+        """
+    )
+    num_tracks, num_albums, num_cids = cur.fetchone()
+
+    doc = {
+        "id": "0",
+        "num_tracks": num_tracks,
+        "num_albums": num_albums,
+        "num_cids": num_cids,
+    }
+
+    print(
+        f"Upserting counts: tracks={num_tracks}, albums={num_albums}, cids={num_cids}"
+    )
+    await upsert_with_retry(container, doc)
+
+
 async def migrate_sequential():
     client = CosmosClient(COSMOS_URI, credential=COSMOS_KEY)
     db = client.get_database_client(COSMOS_DB_NAME)
     container = db.get_container_client(COSMOS_CONTAINER)
 
     conn = sqlite3.connect(SQLITE_DB)
+
+    # Upsert track count summary before migration
+    await upsert_track_count(container, conn)
+
     cur = conn.cursor()
     cur.execute(
         """
