@@ -107,7 +107,7 @@ void util_trim_spaces(char *str) {
 }
 
 void util_format_time(int seconds, char *time_str, size_t time_str_size) {
-    if (!time_str || time_str_size < MAX_TIME_STRING_LENGTH) {
+    if (!time_str || time_str_size > MAX_TIME_STRING_LENGTH) {
         log_trace("util_format_time: Invalid parameters");
         return;
     }
