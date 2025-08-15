@@ -1,0 +1,6 @@
+*.json
+*.sif
+*.db
+
+build/
+tmp/

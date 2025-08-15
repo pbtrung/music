@@ -1,0 +1,32 @@
+Bootstrap: docker
+From: alpine:edge
+Stage: build
+
+%post
+    apk update
+    apk --no-cache upgrade
+    apk add --no-cache alpine-sdk git pkgconf autoconf automake
+
+    cd /root/
+    git clone https://github.com/allinurl/gwsocket
+    cd gwsocket
+    autoreconf -fiv
+    ./configure
+    make
+
+Bootstrap: docker
+From: alpine:edge
+Stage: final
+
+%files from build
+    /root/gwsocket/gwsocket /usr/bin/
+
+%post
+    apk update
+    apk --no-cache upgrade
+    apk --no-cache add libcurl pcre2 ffmpeg snapcast-server openssl fmt spdlog
+
+%runscript
+    #!/bin/ash
+    snapserver --config "$1" &
+    "$2" "$3" | gwsocket --port=9000 --addr=0.0.0.0 --std
