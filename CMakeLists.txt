@@ -15,7 +15,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 find_package(PkgConfig REQUIRED)
 set(PKG_LIST
     libcurl
-    libpcre2-8
     libavcodec
     libavformat
     libavutil

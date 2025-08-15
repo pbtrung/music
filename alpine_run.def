@@ -24,7 +24,7 @@ Stage: final
 %post
     apk update
     apk --no-cache upgrade
-    apk --no-cache add libcurl pcre2 ffmpeg snapcast-server openssl fmt spdlog
+    apk --no-cache add libcurl ffmpeg snapcast-server openssl fmt spdlog
 
 %runscript
     #!/bin/ash
