@@ -40,6 +40,7 @@ add_executable(music
     src/curl.cpp
     src/utils.cpp
     src/audio_decoder.cpp
+    src/cosmosdb.cpp
 )
 add_executable(ex01
     examples/ex01.cpp

@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 #include <curl/curl.h>
 
@@ -24,6 +25,8 @@ class Curl {
 
     void perform();
 
+    void set_header(std::string_view header);
+
     const std::string &get_response() const noexcept {
         return response_data;
     }
@@ -38,9 +41,11 @@ class Curl {
             curl_easy_cleanup(ptr);
         }
     };
+
     std::unique_ptr<CURL, curl_deleter> curl_handle;
 
     std::string response_data;
+    struct curl_slist *headers = nullptr;
 
     static size_t write_callback(char *ptr, size_t size, size_t nmemb,
                                  void *userdata);

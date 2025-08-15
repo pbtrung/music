@@ -1,3 +1,6 @@
+#include <stdexcept>
+#include <string>
+
 #include "curl.hpp"
 
 Curl::Curl() : curl_handle(curl_easy_init(), curl_deleter{}) {
@@ -5,13 +8,16 @@ Curl::Curl() : curl_handle(curl_easy_init(), curl_deleter{}) {
         throw std::runtime_error("Failed to initialize CURL easy handle");
     }
 
-    // Set write callback and userdata
     curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEFUNCTION,
                      &Curl::write_callback);
     curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEDATA, this);
 }
 
-Curl::~Curl() = default;
+Curl::~Curl() {
+    if (headers) {
+        curl_slist_free_all(headers);
+    }
+}
 
 size_t Curl::write_callback(char *ptr, size_t size, size_t nmemb,
                             void *userdata) {
@@ -53,6 +59,14 @@ void Curl::perform() {
     if (curl_easy_perform(curl_handle.get()) != CURLE_OK) {
         throw std::runtime_error("Failed to perform CURL");
     }
+}
+
+void Curl::set_header(std::string_view header) {
+    headers = curl_slist_append(headers, std::string(header).c_str());
+    if (!headers) {
+        throw std::runtime_error("Failed to append header");
+    }
+    curl_easy_setopt(curl_handle.get(), CURLOPT_HTTPHEADER, headers);
 }
 
 // Explicit instantiations
