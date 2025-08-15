@@ -9,14 +9,6 @@
 #include <string_view>
 #include <vector>
 
-inline constexpr size_t max_path_length = 4096;
-inline constexpr size_t max_filename_length = 255;
-inline constexpr size_t max_extension_length = 10;
-inline constexpr size_t max_time_string_length = 32;
-inline constexpr size_t min_random_string_length = 1;
-inline constexpr size_t max_random_string_length = 256;
-inline constexpr size_t default_filename_length = 25;
-
 class Utilities {
   private:
     mutable std::random_device rd_;
@@ -55,6 +47,14 @@ class Utilities {
     static std::string format_with_commas(T num) noexcept;
 
     static Utilities &get_instance() noexcept;
+
+    static constexpr size_t max_path_length = 4096;
+    static constexpr size_t max_filename_length = 255;
+    static constexpr size_t max_extension_length = 10;
+    static constexpr size_t max_time_string_length = 32;
+    static constexpr size_t min_random_string_length = 1;
+    static constexpr size_t max_random_string_length = 256;
+    static constexpr size_t default_filename_length = 25;
 };
 
 template <std::integral T>
