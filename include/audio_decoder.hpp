@@ -41,7 +41,7 @@ class AudioDecoder {
     std::string pipe_name;
     std::string filename;
     std::string file_path;
-    std::string duration_str; // Changed from char array to std::string
+    std::string duration_str;
 
     // FFmpeg resources with custom deleters
     struct AVFormatContextDeleter {
@@ -86,7 +86,6 @@ class AudioDecoder {
     std::unique_ptr<AVFrame, AVFrameDeleter> frame;
     std::unique_ptr<SwrContext, SwrContextDeleter> swr_ctx;
 
-    // Pure C++ binary output
     std::ofstream output_stream;
 
     int stream_index = -1;
