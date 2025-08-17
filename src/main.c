@@ -571,6 +571,9 @@ int main(int argc, const char *argv[]) {
 
     initialize_pool(&pool);
 
+    if (log_init(pool) != 0)
+        exit_on_error("main: Failed to init logger");
+
     cfg = load_config(argv[1]);
     fp = open_log_file(cfg->log);
 
@@ -581,7 +584,7 @@ int main(int argc, const char *argv[]) {
 
     apr_queue_t *queue = create_safe_queue(pool, cfg->num_files);
     if (!queue)
-        exit_on_error("Failed to create APR queue");
+        exit_on_error("main: Failed to create APR queue");
 
     // Clean up initial config since it will be reloaded in thread
     config_free(cfg);
@@ -626,15 +629,9 @@ int main(int argc, const char *argv[]) {
 
     log_trace("main: end");
 
-    // Cleanup
-    if (fp) {
-        fclose(fp);
-    }
-
-    if (pool) {
-        apr_pool_destroy(pool);
-    }
-
+    fclose(fp);
+    log_shutdown();
+    apr_pool_destroy(pool);
     apr_terminate();
     return 0;
 }
