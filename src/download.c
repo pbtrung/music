@@ -442,37 +442,6 @@ void download_assemble_file(apr_pool_t *pool, config_t *config,
     log_trace("download_assemble_file: finish");
 }
 
-void file_info_init(file_info_t *info, int index, sqlite3 *db,
-                    config_t *config) {
-    if (!info || !db || !config) {
-        log_trace("file_info_init: Invalid parameters");
-        exit(-1);
-    }
-
-    int num_cids;
-
-    info->track_name = database_get_track_name(db, index);
-    info->album_path = database_get_album(db, index);
-    info->filename = util_gen_filename(info->track_name);
-    info->extension = util_get_ext(info->track_name);
-    info->cids = database_get_cids(db, index, &num_cids);
-    info->num_cids = num_cids;
-    info->track_id = index;
-    info->config = config;
-    info->file_download_status = DOWNLOAD_PENDING;
-
-    info->cid_download_status =
-        (enum download_status *)malloc(num_cids * sizeof(enum download_status));
-    if (!info->cid_download_status) {
-        log_trace("Memory allocation failed");
-        exit(-1);
-    }
-
-    for (int j = 0; j < info->num_cids; ++j) {
-        info->cid_download_status[j] = DOWNLOAD_PENDING;
-    }
-}
-
 static void append_cid_output(char *filename, char *cid, FILE *outfile,
                               char *buffer, config_t *config) {
     if (!filename || !cid || !outfile || !buffer || !config) {
