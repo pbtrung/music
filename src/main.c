@@ -159,19 +159,16 @@ static config_t *load_config(const char *config_file) {
     // Validate critical config values
     if (!cfg->output || strlen(cfg->output) == 0) {
         log_trace("load_config: Invalid output directory in config");
-        free(cfg);
         exit_on_error("Invalid output directory in config");
     }
 
     if (!cfg->log || strlen(cfg->log) == 0) {
         log_trace("load_config: Invalid log path in config");
-        free(cfg);
         exit_on_error("Invalid log path in config");
     }
 
     if (cfg->num_files <= 0 || cfg->num_files > MAX_QUEUE_SIZE_LIMIT) {
         log_trace("load_config: Invalid num_files: %d", cfg->num_files);
-        free(cfg);
         exit_on_error("Invalid num_files in config");
     }
 
@@ -192,7 +189,6 @@ static FILE *open_log_file(const char *path) {
     }
 
     if (log_add_fp(fp, LOG_TRACE) != 0) {
-        fclose(fp);
         exit_on_error("Failed to configure logging");
     }
 
@@ -584,14 +580,8 @@ int main(int argc, const char *argv[]) {
     dir_create(pool, cfg->output);
 
     apr_queue_t *queue = create_safe_queue(pool, cfg->num_files);
-    if (!queue) {
-        fclose(fp);
-        config_free(cfg);
-        free(cfg);
-        apr_pool_destroy(pool);
-        apr_terminate();
+    if (!queue)
         exit_on_error("Failed to create APR queue");
-    }
 
     // Clean up initial config since it will be reloaded in thread
     config_free(cfg);
@@ -606,9 +596,6 @@ int main(int argc, const char *argv[]) {
         char errbuf[256];
         apr_strerror(status, errbuf, sizeof(errbuf));
         log_trace("main: Failed to create thread attributes: %s", errbuf);
-        fclose(fp);
-        apr_pool_destroy(pool);
-        apr_terminate();
         exit_on_error("Failed to create thread attributes");
     }
 
@@ -622,9 +609,6 @@ int main(int argc, const char *argv[]) {
         char errbuf[256];
         apr_strerror(status, errbuf, sizeof(errbuf));
         log_trace("main: Failed to create downloader thread: %s", errbuf);
-        fclose(fp);
-        apr_pool_destroy(pool);
-        apr_terminate();
         exit_on_error("Failed to create downloader thread");
     }
 

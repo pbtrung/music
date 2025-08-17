@@ -35,10 +35,6 @@ add_executable(music
 )
 add_executable(ex01
     examples/ex01.c
-    src/aws_dynamodb.c
-)
-add_executable(ex02
-    examples/ex02.c
     src/cosmosdb.c
     src/config.c
     src/log.c
@@ -81,7 +77,7 @@ set(COMMON_LINK_LIBS
     ${OPENSSL_LIBRARIES}
 )
 
-foreach(target music ex01 ex02)
+foreach(target music ex01)
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
     target_link_directories(${target} PRIVATE ${COMMON_LINK_DIRS})
     target_link_libraries(${target} PRIVATE ${COMMON_LINK_LIBS})
