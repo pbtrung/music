@@ -16,7 +16,6 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(APR REQUIRED apr-1)
 pkg_check_modules(APRU REQUIRED apr-util-1)
 pkg_check_modules(CURL REQUIRED libcurl)
-pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(JANSSON REQUIRED jansson)
 pkg_check_modules(PCRE2 REQUIRED libpcre2-8)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswresample)
@@ -28,7 +27,6 @@ add_executable(music
     src/log.c
     src/utils.c
     src/dir.c
-    src/database.c
     src/decode.c
     src/download.c
     src/cosmosdb.c
@@ -40,14 +38,12 @@ add_executable(ex01
     src/log.c
     src/utils.c
     src/download.c
-    src/database.c
 )
 
 set(COMMON_INCLUDE_DIRS
     ${APR_INCLUDE_DIRS}
     ${APRU_INCLUDE_DIRS}
     ${CURL_INCLUDE_DIRS}
-    ${SQLITE3_INCLUDE_DIRS}
     ${JANSSON_INCLUDE_DIRS}
     ${PCRE2_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
@@ -59,7 +55,6 @@ set(COMMON_LINK_DIRS
     ${APR_LIBRARY_DIRS}
     ${APRU_LIBRARY_DIRS}
     ${CURL_LIBRARY_DIRS}
-    ${SQLITE3_LIBRARY_DIRS}
     ${JANSSON_LIBRARY_DIRS}
     ${PCRE2_LIBRARY_DIRS}
     ${FFMPEG_LIBRARY_DIRS}
@@ -70,7 +65,6 @@ set(COMMON_LINK_LIBS
     ${APR_LIBRARIES}
     ${APRU_LIBRARIES}
     ${CURL_LIBRARIES}
-    ${SQLITE3_LIBRARIES}
     ${JANSSON_LIBRARIES}
     ${PCRE2_LIBRARIES}
     ${FFMPEG_LIBRARIES}
