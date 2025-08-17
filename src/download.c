@@ -75,20 +75,6 @@ static bool validate_gateway(const char *gateway) {
     return true;
 }
 
-static char *safe_strdup(const char *str) {
-    if (!str)
-        return NULL;
-
-    size_t len = strlen(str);
-    char *dup = malloc(len + 1);
-    if (!dup) {
-        log_trace("safe_strdup: Memory allocation failed");
-        exit(-1);
-    }
-    strcpy(dup, str);
-    return dup;
-}
-
 apr_status_t file_info_free(void *data) {
     log_trace("file_info_free: start");
     if (!data) {
@@ -324,8 +310,7 @@ static void push_task(apr_thread_pool_t *thread_pool, file_info_t *info,
         exit(-1);
     }
 
-    // Create a safe copy of the CID to avoid use-after-free
-    download_info->cid = safe_strdup(info->cids[cid_index]);
+    download_info->cid = info->cids[cid_index];
     download_info->cid_download_status =
         &(info->cid_download_status[cid_index]);
     download_info->config = info->config;
@@ -335,7 +320,6 @@ static void push_task(apr_thread_pool_t *thread_pool, file_info_t *info,
     if (status != APR_SUCCESS) {
         log_trace("push_task: Failed to push task to thread pool for cid %s",
                   info->cids[cid_index]);
-        free(download_info->cid);
         exit(-1);
     }
     log_trace("push_task: end %s", info->cids[cid_index]);
@@ -382,7 +366,6 @@ static void delete_failed_file(file_info_t *info, config_t *config) {
             if (remove(cid_path) != 0) {
                 log_trace("delete_failed_file: Failed to delete file %s",
                           cid_path);
-                free(cid_path);
                 exit(-1);
             }
             log_trace("delete_failed_file: Deleted file %s", cid_path);
@@ -506,7 +489,6 @@ static void append_cid_output(char *filename, char *cid, FILE *outfile,
     FILE *infile = fopen(cid_path, "rb");
     if (!infile) {
         log_trace("append_cid_output: Failed to open file %s", cid_path);
-        free(cid_path);
         exit(-1);
     }
 
@@ -514,8 +496,6 @@ static void append_cid_output(char *filename, char *cid, FILE *outfile,
     while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, infile)) > 0) {
         if (fwrite(buffer, 1, bytes_read, outfile) != bytes_read) {
             log_trace("append_cid_output: Failed to write to output file");
-            fclose(infile);
-            free(cid_path);
             exit(-1);
         }
     }
@@ -525,7 +505,6 @@ static void append_cid_output(char *filename, char *cid, FILE *outfile,
 
     if (remove(cid_path) != 0) {
         log_trace("append_cid_output: Failed to delete file %s", cid_path);
-        free(cid_path);
         exit(-1);
     }
 
@@ -548,7 +527,6 @@ static void assemble_multiple_cids(file_info_t *info, char *file_path,
     char *buffer = (char *)malloc(BUFFER_SIZE);
     if (!buffer) {
         log_trace("assemble_multiple_cids: Memory allocation failed");
-        fclose(outfile);
         exit(-1);
     }
 
@@ -600,7 +578,6 @@ static void move_single_file(file_info_t *info, char *file_path,
     if (rename(cid_path, file_path) != 0) {
         log_trace("move_single_file: Failed to move file %s to %s",
                   info->cids[0], info->filename);
-        free(cid_path);
         exit(-1);
     }
 
