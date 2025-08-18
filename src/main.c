@@ -140,8 +140,8 @@ static apr_status_t push_task_to_queue(apr_queue_t *q, file_task_t *task) {
         // Attempt to clean up the file if it exists
         if (task->file_path && access(task->file_path, F_OK) == 0) {
             if (remove(task->file_path) != 0) {
-                log_trace("push_task_to_queue: Failed to delete %s: errno %d",
-                          task->file_path, errno);
+                log_trace("push_task_to_queue: Failed to delete %s",
+                          task->file_path);
             } else {
                 log_trace("push_task_to_queue: Cleaned up file %s",
                           task->file_path);
@@ -338,8 +338,7 @@ static void consume_files(apr_queue_t *queue) {
         // Clean up the temporary file
         if (access(task->file_path, F_OK) == 0) {
             if (remove(task->file_path) != 0) {
-                log_trace("main: Failed to delete file %s: errno %d",
-                          task->file_path, errno);
+                log_trace("main: Failed to delete file %s", task->file_path);
                 util_error_exit("main: Failed to delete file");
             } else
                 log_trace("main: Successfully deleted file %s",
