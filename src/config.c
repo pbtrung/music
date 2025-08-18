@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "log.h"
+#include "utils.h"
 
 apr_status_t config_free(void *data) {
     log_trace("config_free: start");
@@ -21,9 +22,8 @@ apr_status_t config_free(void *data) {
     free(config->cosmos_db_name);
     free(config->cosmos_container);
 
-    for (int i = 0; i < config->num_gateways; ++i) {
+    for (int i = 0; i < config->num_gateways; ++i)
         free(config->gateways[i]);
-    }
     free(config->gateways);
 
     log_trace("config_free: finish");
@@ -37,9 +37,8 @@ static char *safe_string_duplicate(const char *src) {
     }
 
     char *copy = strdup(src);
-    if (!copy) {
+    if (!copy)
         log_trace("safe_string_duplicate: failed to duplicate string");
-    }
 
     return copy;
 }
@@ -173,9 +172,8 @@ static bool load_gateway_array(config_t *config, json_t *root) {
             log_trace("load_gateway_array: Invalid gateway format at index %zu",
                       i);
 
-            for (size_t j = 0; j < i; j++) {
+            for (size_t j = 0; j < i; j++)
                 free(config->gateways[j]);
-            }
             free(config->gateways);
             config->gateways = NULL;
             return false;
@@ -188,9 +186,8 @@ static bool load_gateway_array(config_t *config, json_t *root) {
                 "load_gateway_array: Failed to duplicate gateway string at index %zu",
                 i);
 
-            for (size_t j = 0; j < i; j++) {
+            for (size_t j = 0; j < i; j++)
                 free(config->gateways[j]);
-            }
             free(config->gateways);
             config->gateways = NULL;
             return false;
@@ -203,35 +200,9 @@ static bool load_gateway_array(config_t *config, json_t *root) {
     return true;
 }
 
-static void cleanup_config_on_error(config_t *config) {
-    log_trace("cleanup_config_on_error: Cleaning up partially loaded config");
-
-    free(config->db);
-    free(config->output);
-    free(config->log);
-    free(config->pipe_name);
-    free(config->n_gateway);
-    free(config->i_gateway);
-    free(config->cosmos_uri);
-    free(config->cosmos_key);
-    free(config->cosmos_db_name);
-    free(config->cosmos_container);
-
-    if (config->gateways) {
-        for (int i = 0; i < config->num_gateways; i++) {
-            free(config->gateways[i]);
-        }
-        free(config->gateways);
-    }
-
-    memset(config, 0, sizeof(config_t));
-}
-
 void config_read(const char *config_file, config_t *config) {
-    if (!config_file || !config) {
-        log_trace("config_read: Invalid parameters");
-        exit(-1);
-    }
+    if (!config_file || !config)
+        util_error_exit("config_read: Invalid parameters");
 
     log_trace("config_read: Reading config file: %s", config_file);
 
@@ -240,31 +211,22 @@ void config_read(const char *config_file, config_t *config) {
 
     if (!root) {
         log_trace("config_read: Failed to parse JSON config: %s", error.text);
-        exit(-1);
+        util_error_exit("config_read: Failed to parse JSON config");
     }
 
-    if (!validate_json_fields(root)) {
-        json_decref(root);
-        exit(-1);
-    }
+    if (!validate_json_fields(root))
+        util_error_exit("config_read: Failed to validate JSON fields");
 
     memset(config, 0, sizeof(config_t));
 
-    if (!load_string_fields(config, root)) {
-        cleanup_config_on_error(config);
-        json_decref(root);
-        exit(-1);
-    }
+    if (!load_string_fields(config, root))
+        util_error_exit("config_read: Failed to load string fields");
 
     load_integer_fields(config, root);
 
-    if (!load_gateway_array(config, root)) {
-        cleanup_config_on_error(config);
-        json_decref(root);
-        exit(-1);
-    }
+    if (!load_gateway_array(config, root))
+        util_error_exit("config_read: Failed to load gateway array");
 
     json_decref(root);
-
     log_trace("config_read: Configuration loaded successfully");
 }

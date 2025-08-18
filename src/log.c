@@ -43,15 +43,13 @@ static void file_callback(log_event *ev) {
 }
 
 static void lock(void) {
-    if (L.mutex) {
+    if (L.mutex)
         apr_thread_mutex_lock(L.mutex);
-    }
 }
 
 static void unlock(void) {
-    if (L.mutex) {
+    if (L.mutex)
         apr_thread_mutex_unlock(L.mutex);
-    }
 }
 
 const char *log_level_string(int level) {
@@ -122,9 +120,8 @@ int log_init(apr_pool_t *pool) {
     L.pool = pool;
     L.level = LOG_TRACE;
     L.quiet = false;
-    for (int i = 0; i < MAX_CALLBACKS; i++) {
+    for (int i = 0; i < MAX_CALLBACKS; i++)
         L.callbacks[i].fn = NULL;
-    }
     if (apr_thread_mutex_create(&L.mutex, APR_THREAD_MUTEX_DEFAULT, pool) !=
         APR_SUCCESS) {
         return -1;

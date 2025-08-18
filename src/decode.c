@@ -46,11 +46,9 @@ static int64_t decode_duration(AVFormatContext *fmt_ctx, int stream_index) {
 }
 
 static int decode_find_audio_stream(AVFormatContext *fmt_ctx) {
-    for (int i = 0; i < fmt_ctx->nb_streams; i++) {
-        if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+    for (int i = 0; i < fmt_ctx->nb_streams; i++)
+        if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
             return i;
-        }
-    }
     return -1;
 }
 
@@ -225,9 +223,8 @@ static int decode_process_frame(AVFormatContext *fmt_ctx,
 }
 
 static void ffmpeg_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
-    if (level <= av_log_get_level()) {
+    if (level <= av_log_get_level())
         log_trace(fmt, vl);
-    }
 }
 
 static void log_duration(apr_time_t start) {
@@ -267,19 +264,16 @@ static int decode_init(AVFormatContext **fmt_ctx, AVCodecContext **codec_ctx,
     }
 
     *codec_ctx = decode_open_codec(*fmt_ctx, *stream_index);
-    if (!*codec_ctx) {
+    if (!*codec_ctx)
         return -1;
-    }
 
     *swr_ctx = decode_initialize_resampler(*codec_ctx);
-    if (!*swr_ctx) {
+    if (!*swr_ctx)
         return -1;
-    }
 
     *output_fp = decode_open_output_pipe(pipe_name);
-    if (!*output_fp) {
+    if (!*output_fp)
         return -1;
-    }
 
     *pkt = av_packet_alloc();
     if (!*pkt) {
@@ -327,9 +321,8 @@ void decode_audio(char *pipe_name, char *filename, char *file_path) {
         if (pkt->stream_index == stream_index) {
             ret = decode_process_frame(fmt_ctx, codec_ctx, swr_ctx, frame, pkt,
                                        output_fp, dur_str, stream_index);
-            if (ret < 0) {
+            if (ret < 0)
                 break;
-            }
         }
         av_packet_unref(pkt);
     }

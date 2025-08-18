@@ -1,5 +1,4 @@
 #include <ctype.h>
-#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,20 +7,12 @@
 #include <apr_lib.h>
 #include <apr_random.h>
 
+#include "const.h"
 #include "log.h"
 #include "utils.h"
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
-
-// Security constants
-#define MAX_PATH_LENGTH 4096
-#define MAX_FILENAME_LENGTH 255
-#define MAX_EXTENSION_LENGTH 10
-#define MAX_TIME_STRING_LENGTH 32
-#define MIN_RANDOM_STRING_LENGTH 1
-#define MAX_RANDOM_STRING_LENGTH 256
-#define DEFAULT_FILENAME_LENGTH 25
 
 // Input validation functions
 static bool validate_str(const char *str, size_t max_len) {
@@ -54,9 +45,8 @@ static bool validate_path(const char *component) {
 }
 
 static bool validate_filename(const char *filename) {
-    if (!validate_str(filename, MAX_FILENAME_LENGTH)) {
+    if (!validate_str(filename, MAX_FILENAME_LENGTH))
         return false;
-    }
 
     // Check for invalid filename characters
     const char *invalid_chars = "<>:\"|?*";
@@ -98,9 +88,8 @@ void util_trim_spaces(char *str) {
     }
 
     // Remove trailing space if present
-    if (j > 0 && str[j - 1] == ' ') {
+    if (j > 0 && str[j - 1] == ' ')
         j--;
-    }
 
     // Null-terminate the string
     str[j] = '\0';
@@ -162,10 +151,8 @@ char *util_make_path(char *output, char *filename) {
 
     size_t path_length = output_len + filename_len + 1; // +1 for "/"
     char *path = (char *)malloc(path_length + 1); // +1 for null terminator
-    if (!path) {
-        log_trace("util_make_path: Memory allocation failed");
-        exit(-1);
-    }
+    if (!path)
+        util_error_exit("util_make_path: Memory allocation failed");
 
     snprintf(path, path_length + 1, "%s/%s", output, filename);
     return path;
@@ -177,9 +164,8 @@ void util_to_lower(char *str) {
         return;
     }
 
-    for (; *str; ++str) {
+    for (; *str; ++str)
         *str = apr_tolower((unsigned char)*str);
-    }
 }
 
 char *util_get_ext(const char *text) {
@@ -249,10 +235,8 @@ char *util_get_ext(const char *text) {
         }
 
         ext = (char *)malloc(ext_len + 1);
-        if (!ext) {
-            log_trace("util_get_ext: Memory allocation failed");
-            exit(-1);
-        }
+        if (!ext)
+            util_error_exit("util_get_ext: Memory allocation failed");
 
         memcpy(ext, text + ovector[4], ext_len);
         ext[ext_len] = '\0'; // Null-terminate the string
@@ -300,12 +284,8 @@ char *util_gen_filename(char *text) {
     }
 
     char *filename = (char *)malloc(filename_len + 1);
-    if (!filename) {
-        log_trace("util_gen_filename: Memory allocation failed");
-        free(fn);
-        free(ext);
-        exit(-1);
-    }
+    if (!filename)
+        util_error_exit("util_gen_filename: Memory allocation failed");
 
     snprintf(filename, filename_len + 1, "%s.%s", fn, ext);
     free(fn);
@@ -346,10 +326,8 @@ int *util_rand_ints(int count, int min_val, int max_val) {
     }
 
     int *unique_ints = malloc(count * sizeof(int));
-    if (!unique_ints) {
-        log_trace("util_rand_ints: Memory allocation failed");
-        exit(-1);
-    }
+    if (!unique_ints)
+        util_error_exit("util_rand_ints: Memory allocation failed");
 
     int generated = 0;
     int max_attempts = count * 10; // Prevent infinite loops
@@ -359,11 +337,8 @@ int *util_rand_ints(int count, int min_val, int max_val) {
         unsigned long random_byte;
         apr_status_t status = apr_generate_random_bytes(
             (unsigned char *)&random_byte, sizeof(random_byte));
-        if (status != APR_SUCCESS) {
-            log_trace("util_rand_ints: Failed to generate random bytes");
-            free(unique_ints);
-            return NULL;
-        }
+        if (status != APR_SUCCESS)
+            util_error_exit("util_rand_ints: Failed to generate random bytes");
 
         // Use modulo safely for range mapping
         int rand_int = (int)((random_byte % range) + min_val);
@@ -377,20 +352,15 @@ int *util_rand_ints(int count, int min_val, int max_val) {
             }
         }
 
-        if (!exists) {
+        if (!exists)
             unique_ints[generated++] = rand_int;
-        }
 
         attempts++;
     }
 
     // If we couldn't generate enough unique numbers
-    if (generated < count) {
-        log_trace("util_rand_ints: Failed to generate %d unique numbers",
-                  count);
-        free(unique_ints);
-        return NULL;
-    }
+    if (generated < count)
+        util_error_exit("util_rand_ints: Failed to generate unique numbers");
 
     return unique_ints;
 }
@@ -414,20 +384,15 @@ char *util_rand_str(int length) {
     }
 
     char *result = malloc((length + 1) * sizeof(char));
-    if (!result) {
-        log_trace("util_rand_str: Memory allocation failed");
-        exit(-1);
-    }
+    if (!result)
+        util_error_exit("util_rand_str: Memory allocation failed");
 
     for (int i = 0; i < length; ++i) {
         unsigned long random_byte;
         apr_status_t status = apr_generate_random_bytes(
             (unsigned char *)&random_byte, sizeof(random_byte));
-        if (status != APR_SUCCESS) {
-            log_trace("util_rand_str: Failed to generate random bytes");
-            free(result);
-            return NULL;
-        }
+        if (status != APR_SUCCESS)
+            util_error_exit("util_rand_str: Failed to generate random bytes");
 
         result[i] = alphabet[random_byte % alphabet_size];
     }
@@ -476,4 +441,34 @@ char *util_format_commas(long num, char *buf, size_t bufsize) {
     }
 
     return buf;
+}
+
+char *util_safe_strdup(const char *str, const char *context) {
+    if (!str) {
+        log_trace("safe_strdup: NULL string in %s", context);
+        return NULL;
+    }
+
+    size_t len = strlen(str);
+    if (len > MAX_TASK_FIELD_LENGTH) {
+        log_trace("safe_strdup: String too long in %s: %zu", context, len);
+        return NULL;
+    }
+
+    char *dup = malloc(len + 1);
+    if (!dup) {
+        log_trace("safe_strdup: Memory allocation failed in %s", context);
+        return NULL;
+    }
+
+    strcpy(dup, str);
+    return dup;
+}
+
+void util_error_exit(const char *msg) {
+    if (msg) {
+        fprintf(stderr, "Error: %s\n", msg);
+        log_trace("Error: %s", msg);
+    }
+    exit(-1);
 }

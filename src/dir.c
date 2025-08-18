@@ -2,6 +2,7 @@
 
 #include "dir.h"
 #include "log.h"
+#include "utils.h"
 
 int dir_delete(apr_pool_t *pool, const char *path) {
     apr_status_t rv;
@@ -13,22 +14,21 @@ int dir_delete(apr_pool_t *pool, const char *path) {
     rv = apr_stat(&finfo, path, APR_FINFO_TYPE, pool);
     if (rv != APR_SUCCESS || finfo.filetype != APR_DIR) {
         log_trace("dir_delete: Invalid path or not a directory: %s", path);
-        exit(-1);
+        util_error_exit("dir_delete: Invalid path or not a directory");
     }
 
     // Open the directory
     rv = apr_dir_open(&dir, path, pool);
     if (rv != APR_SUCCESS) {
         log_trace("dir_delete: Failed to open directory: %s", path);
-        exit(-1);
+        util_error_exit("dir_delete: Failed to open directory");
     }
 
     // Iterate over directory entries
     while (apr_dir_read(&finfo, APR_FINFO_DIRENT | APR_FINFO_TYPE, dir) ==
            APR_SUCCESS) {
-        if (strcmp(finfo.name, ".") == 0 || strcmp(finfo.name, "..") == 0) {
+        if (strcmp(finfo.name, ".") == 0 || strcmp(finfo.name, "..") == 0)
             continue; // Skip "." and ".."
-        }
 
         filepath = apr_pstrcat(pool, path, "/", finfo.name, NULL);
 
@@ -45,8 +45,7 @@ int dir_delete(apr_pool_t *pool, const char *path) {
             rv = apr_file_remove(filepath, pool);
             if (rv != APR_SUCCESS) {
                 log_trace("dir_delete: Failed to delete file: %s", filepath);
-                apr_dir_close(dir);
-                exit(-1);
+                util_error_exit("dir_delete: Failed to delete file");
             }
         }
     }
@@ -57,7 +56,7 @@ int dir_delete(apr_pool_t *pool, const char *path) {
     rv = apr_dir_remove(path, pool);
     if (rv != APR_SUCCESS) {
         log_trace("dir_delete: Failed to remove directory: %s", path);
-        exit(-1);
+        util_error_exit("dir_delete: Failed to remove directory");
     }
 
     return 0;
@@ -69,6 +68,6 @@ void dir_create(apr_pool_t *pool, const char *path) {
     rv = apr_dir_make(path, APR_UREAD | APR_UWRITE | APR_UEXECUTE, pool);
     if (rv != APR_SUCCESS) {
         log_trace("dir_create: Failed to create directory: %s", path);
-        exit(-1);
+        util_error_exit("dir_create: Failed to create directory");
     }
 }

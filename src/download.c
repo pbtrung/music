@@ -12,13 +12,7 @@
 #include "const.h"
 #include "download.h"
 #include "log.h"
-
-// Security constants
-#define MAX_CID_LENGTH 128
-#define MAX_GATEWAY_LENGTH 256
-#define MAX_URL_LENGTH 512
-#define BUFFER_SIZE 4096
-#define CID_LENGTH 59
+#include "utils.h"
 
 typedef struct {
     char *cid;
@@ -89,9 +83,8 @@ apr_status_t file_info_free(void *data) {
     free(info->extension);
 
     if (info->cids) {
-        for (int j = 0; j < info->num_cids; ++j) {
+        for (int j = 0; j < info->num_cids; ++j)
             free(info->cids[j]);
-        }
         free(info->cids);
     }
     free(info->cid_download_status);
@@ -100,15 +93,13 @@ apr_status_t file_info_free(void *data) {
 }
 
 static FILE *open_file_write(const char *file_path) {
-    if (!file_path) {
-        log_trace("open_file_write: NULL file_path");
-        exit(-1);
-    }
+    if (!file_path)
+        util_error_exit("open_file_write: NULL file_path");
 
     FILE *fp = fopen(file_path, "wb");
     if (!fp) {
-        log_trace("Failed to open file %s", file_path);
-        exit(-1);
+        log_trace("open_file_write: Failed to open file %s", file_path);
+        util_error_exit("open_file_write: NULL file_path");
     }
     return fp;
 }
@@ -128,16 +119,13 @@ static char *build_safe_url(const char *base, const char *cid,
     }
 
     char *url = malloc(url_len);
-    if (!url) {
-        log_trace("build_safe_url: Memory allocation failed");
-        exit(-1);
-    }
+    if (!url)
+        util_error_exit("build_safe_url: Memory allocation failed");
 
-    if (is_subdomain) {
+    if (is_subdomain)
         snprintf(url, url_len, "https://%s.%s", cid, base);
-    } else {
+    else
         snprintf(url, url_len, "https://%s/%s", base, cid);
-    }
 
     return url;
 }
@@ -145,10 +133,8 @@ static char *build_safe_url(const char *base, const char *cid,
 static void set_curl_opts(CURL *curl, download_info_t *download_info,
                           int retries) {
     if (!curl || !download_info || !download_info->cid ||
-        !download_info->config) {
-        log_trace("set_curl_opts: Invalid parameters");
-        exit(-1);
-    }
+        !download_info->config)
+        util_error_exit("set_curl_opts: Invalid parameters");
 
     char *url = NULL;
 
@@ -164,10 +150,10 @@ static void set_curl_opts(CURL *curl, download_info_t *download_info,
         } else {
             int *random_index =
                 util_rand_ints(1, 0, download_info->config->num_gateways - 1);
-            if (!random_index) {
-                log_trace("set_curl_opts: Failed to generate random index");
-                exit(-1);
-            }
+            if (!random_index)
+                util_error_exit(
+                    "set_curl_opts: Failed to generate random index");
+
             gateway = download_info->config->gateways[*random_index];
             free(random_index);
         }
@@ -175,10 +161,8 @@ static void set_curl_opts(CURL *curl, download_info_t *download_info,
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, download_info->config->timeout);
     }
 
-    if (!url) {
-        log_trace("set_curl_opts: Failed to build URL");
-        exit(-1);
-    }
+    if (!url)
+        util_error_exit("set_curl_opts: Failed to build URL");
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
     log_trace("download_cid: downloading from %s", url);
@@ -194,10 +178,8 @@ static size_t write_callback(void *ptr, size_t size, size_t nmemb,
 
 static void perform_curl_download(CURL *curl, FILE *fp,
                                   download_info_t *download_info) {
-    if (!curl || !fp || !download_info) {
-        log_trace("perform_curl_download: Invalid parameters");
-        exit(-1);
-    }
+    if (!curl || !fp || !download_info)
+        util_error_exit("perform_curl_download: Invalid parameters");
 
     int retries = 0;
     CURLcode res;
@@ -230,10 +212,9 @@ static void perform_curl_download(CURL *curl, FILE *fp,
         log_trace("download_cid: Retry to download %s (attempt %d)",
                   download_info->cid, retries + 1);
         retries++;
-        if (fseek(fp, 0, SEEK_SET) != 0) {
-            log_trace("perform_curl_download: Failed to rewind file");
-            exit(-1);
-        }
+        if (fseek(fp, 0, SEEK_SET) != 0)
+            util_error_exit("perform_curl_download: Failed to rewind file");
+
     } while (retries < download_info->config->max_retries);
 
     if (res != CURLE_OK || response_code != 200) {
@@ -254,18 +235,13 @@ static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
     fflush(stdout);
 
     CURL *curl = curl_easy_init();
-    if (!curl) {
-        log_trace("download_cid: Failed to create curl handle");
-        exit(-1);
-    }
+    if (!curl)
+        util_error_exit("download_cid: Failed to create curl handle");
 
     char *file_path =
         util_make_path(download_info->config->output, download_info->cid);
-    if (!file_path) {
-        log_trace("download_cid: Failed to get file path");
-        curl_easy_cleanup(curl);
-        exit(-1);
-    }
+    if (!file_path)
+        util_error_exit("download_cid: Failed to get file path");
 
     FILE *fp = open_file_write(file_path);
     perform_curl_download(curl, fp, download_info);
@@ -278,37 +254,29 @@ static void *APR_THREAD_FUNC download_cid(apr_thread_t *thd, void *data) {
 }
 
 static apr_thread_pool_t *create_pool(apr_pool_t *pool, config_t *config) {
-    if (!pool || !config) {
-        log_trace("create_pool: Invalid parameters");
-        exit(-1);
-    }
+    if (!pool || !config)
+        util_error_exit("create_pool: Invalid parameters");
 
     apr_thread_pool_t *thread_pool;
     apr_status_t status;
 
     status = apr_thread_pool_create(&thread_pool, config->num_files,
                                     config->mul_factor * config->ncores, pool);
-    if (status != APR_SUCCESS) {
-        log_trace("Failed to create thread pool");
-        exit(-1);
-    }
+    if (status != APR_SUCCESS)
+        util_error_exit("create_pool: Failed to create thread pool");
 
     return thread_pool;
 }
 
 static void push_task(apr_thread_pool_t *thread_pool, file_info_t *info,
                       int cid_index, apr_pool_t *pool) {
-    if (!thread_pool || !info || cid_index < 0 || cid_index >= info->num_cids) {
-        log_trace("push_task: Invalid parameters");
-        exit(-1);
-    }
+    if (!thread_pool || !info || cid_index < 0 || cid_index >= info->num_cids)
+        util_error_exit("push_task: Invalid parameters");
 
     log_trace("push_task: start %s", info->cids[cid_index]);
     download_info_t *download_info = apr_palloc(pool, sizeof(download_info_t));
-    if (!download_info) {
-        log_trace("push_task: Memory allocation failed");
-        exit(-1);
-    }
+    if (!download_info)
+        util_error_exit("push_task: Memory allocation failed");
 
     download_info->cid = info->cids[cid_index];
     download_info->cid_download_status =
@@ -320,7 +288,7 @@ static void push_task(apr_thread_pool_t *thread_pool, file_info_t *info,
     if (status != APR_SUCCESS) {
         log_trace("push_task: Failed to push task to thread pool for cid %s",
                   info->cids[cid_index]);
-        exit(-1);
+        util_error_exit("push_task: Failed to push task to thread pool");
     }
     log_trace("push_task: end %s", info->cids[cid_index]);
 }
@@ -366,7 +334,7 @@ static void delete_failed_file(file_info_t *info, config_t *config) {
             if (remove(cid_path) != 0) {
                 log_trace("delete_failed_file: Failed to delete file %s",
                           cid_path);
-                exit(-1);
+                util_error_exit("delete_failed_file: Failed to delete file");
             }
             log_trace("delete_failed_file: Deleted file %s", cid_path);
         } else {
@@ -392,51 +360,43 @@ static void wait_tasks(file_info_t *info) {
                 break;
             }
         }
-        if (completed) {
+        if (completed)
             break;
-        }
         apr_sleep(apr_time_from_sec(1));
     }
 }
 
 void download_assemble_file(apr_pool_t *pool, config_t *config,
                             file_info_t *info) {
-    if (!pool || !config || !info) {
-        log_trace("download_assemble_file: Invalid parameters");
-        exit(-1);
-    }
+    if (!pool || !config || !info)
+        util_error_exit("download_assemble_file: Invalid parameters");
 
     log_trace("download_assemble_file: start");
 
     apr_pool_t *subpool;
     apr_status_t status = apr_pool_create(&subpool, pool);
-    if (status != APR_SUCCESS) {
-        log_trace("download_assemble_file: Failed to create subpool");
-        exit(-1);
-    }
+    if (status != APR_SUCCESS)
+        util_error_exit("download_assemble_file: Failed to create subpool");
 
     apr_thread_pool_t *thread_pool = create_pool(subpool, config);
     apr_time_t start = apr_time_now();
 
     log_trace("download_assemble_file: downloading %d cid(s)", info->num_cids);
-    for (int j = 0; j < info->num_cids; ++j) {
+    for (int j = 0; j < info->num_cids; ++j)
         push_task(thread_pool, info, j, subpool);
-    }
 
     wait_tasks(info);
     log_duration(start);
 
     status = apr_thread_pool_destroy(thread_pool);
-    if (status != APR_SUCCESS) {
-        log_trace(
-            "download_assemble_file: Warning - failed to destroy thread pool");
-    }
+    if (status != APR_SUCCESS)
+        util_error_exit(
+            "download_assemble_file: Failed to destroy thread pool");
 
-    if (is_download_successful(info)) {
+    if (is_download_successful(info))
         assemble_file(info, config);
-    } else {
+    else
         delete_failed_file(info, config);
-    }
 
     apr_pool_destroy(subpool);
     log_trace("download_assemble_file: finish");
@@ -444,28 +404,25 @@ void download_assemble_file(apr_pool_t *pool, config_t *config,
 
 static void append_cid_output(char *filename, char *cid, FILE *outfile,
                               char *buffer, config_t *config) {
-    if (!filename || !cid || !outfile || !buffer || !config) {
-        log_trace("append_cid_output: Invalid parameters");
-        exit(-1);
-    }
+    if (!filename || !cid || !outfile || !buffer || !config)
+        util_error_exit("append_cid_output: Invalid parameters");
 
     char *cid_path = util_make_path(config->output, cid);
-    if (!cid_path) {
-        log_trace("append_cid_output: Failed to get file path");
-        exit(-1);
-    }
+    if (!cid_path)
+        util_error_exit("append_cid_output: Failed to get file path");
 
     FILE *infile = fopen(cid_path, "rb");
     if (!infile) {
         log_trace("append_cid_output: Failed to open file %s", cid_path);
-        exit(-1);
+        util_error_exit("append_cid_output: Failed to get file path");
     }
 
     size_t bytes_read;
     while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, infile)) > 0) {
         if (fwrite(buffer, 1, bytes_read, outfile) != bytes_read) {
             log_trace("append_cid_output: Failed to write to output file");
-            exit(-1);
+            util_error_exit(
+                "append_cid_output: Failed to write to output file");
         }
     }
 
@@ -474,7 +431,7 @@ static void append_cid_output(char *filename, char *cid, FILE *outfile,
 
     if (remove(cid_path) != 0) {
         log_trace("append_cid_output: Failed to delete file %s", cid_path);
-        exit(-1);
+        util_error_exit("append_cid_output: Failed to delete file");
     }
 
     free(cid_path);
@@ -482,22 +439,18 @@ static void append_cid_output(char *filename, char *cid, FILE *outfile,
 
 static void assemble_multiple_cids(file_info_t *info, char *file_path,
                                    config_t *config) {
-    if (!info || !file_path || !config) {
-        log_trace("assemble_multiple_cids: Invalid parameters");
-        exit(-1);
-    }
+    if (!info || !file_path || !config)
+        util_error_exit("assemble_multiple_cids: Invalid parameters");
 
     FILE *outfile = fopen(file_path, "wb");
     if (!outfile) {
         log_trace("assemble_multiple_cids: Failed to open file %s", file_path);
-        exit(-1);
+        util_error_exit("assemble_multiple_cids: Failed to open file");
     }
 
     char *buffer = (char *)malloc(BUFFER_SIZE);
-    if (!buffer) {
-        log_trace("assemble_multiple_cids: Memory allocation failed");
-        exit(-1);
-    }
+    if (!buffer)
+        util_error_exit("assemble_multiple_cids: Memory allocation failed");
 
     for (int j = 0; j < info->num_cids; j++) {
         append_cid_output(info->filename, info->cids[j], outfile, buffer,
@@ -533,21 +486,17 @@ static void log_assembly(file_info_t *info) {
 
 static void move_single_file(file_info_t *info, char *file_path,
                              config_t *config) {
-    if (!info || !file_path || !config || !info->cids[0]) {
-        log_trace("move_single_file: Invalid parameters");
-        exit(-1);
-    }
+    if (!info || !file_path || !config || !info->cids[0])
+        util_error_exit("move_single_file: Invalid parameters");
 
     char *cid_path = util_make_path(config->output, info->cids[0]);
-    if (!cid_path) {
-        log_trace("move_single_file: Failed to get CID path");
-        exit(-1);
-    }
+    if (!cid_path)
+        util_error_exit("move_single_file: Failed to get CID path");
 
     if (rename(cid_path, file_path) != 0) {
         log_trace("move_single_file: Failed to move file %s to %s",
                   info->cids[0], info->filename);
-        exit(-1);
+        util_error_exit("move_single_file: Failed to move file");
     }
 
     log_trace("move_single_file: %s -> %s", info->cids[0], info->filename);
@@ -555,26 +504,21 @@ static void move_single_file(file_info_t *info, char *file_path,
 }
 
 static void assemble_file(file_info_t *info, config_t *config) {
-    if (!info || !config) {
-        log_trace("assemble_file: Invalid parameters");
-        exit(-1);
-    }
+    if (!info || !config)
+        util_error_exit("assemble_file: Invalid parameters");
 
     log_trace("assemble_file: start assembling %s",
               info->filename ? info->filename : "NULL");
     log_assembly(info);
 
     char *file_path = util_make_path(config->output, info->filename);
-    if (!file_path) {
-        log_trace("assemble_file: Failed to get file path");
-        exit(-1);
-    }
+    if (!file_path)
+        util_error_exit("assemble_file: Failed to get file path");
 
-    if (info->num_cids == 1) {
+    if (info->num_cids == 1)
         move_single_file(info, file_path, config);
-    } else {
+    else
         assemble_multiple_cids(info, file_path, config);
-    }
 
     free(file_path);
     log_trace("assemble: finish assembling %s",

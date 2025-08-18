@@ -12,5 +12,7 @@ char *util_rand_str(int length);
 void util_format_time(int seconds, char *time_str, size_t time_str_size);
 void util_trim_spaces(char *str);
 char *util_format_commas(long num, char *buf, size_t bufsize);
+char *util_safe_strdup(const char *str, const char *context);
+void util_error_exit(const char *msg);
 
 #endif // UTILS_H

@@ -1,5 +1,3 @@
-#include <errno.h>
-#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,13 +16,6 @@
 #include "download.h"
 #include "log.h"
 #include "utils.h"
-
-// Security constants
-#define MAX_CONFIG_PATH_LENGTH 4096
-#define MAX_TASK_FIELD_LENGTH 512
-#define MAX_QUEUE_SIZE_LIMIT 10000
-#define MIN_QUEUE_SIZE 1
-#define MAX_FORMATTED_NUMBER_LENGTH 32
 
 typedef struct {
     char *filename;
@@ -89,47 +80,16 @@ static bool validate_task_field(const char *field, const char *field_name) {
     return true;
 }
 
-static char *safe_strdup(const char *str, const char *context) {
-    if (!str) {
-        log_trace("safe_strdup: NULL string in %s", context);
-        return NULL;
-    }
-
-    size_t len = strlen(str);
-    if (len > MAX_TASK_FIELD_LENGTH) {
-        log_trace("safe_strdup: String too long in %s: %zu", context, len);
-        return NULL;
-    }
-
-    char *dup = malloc(len + 1);
-    if (!dup) {
-        log_trace("safe_strdup: Memory allocation failed in %s", context);
-        return NULL;
-    }
-
-    strcpy(dup, str);
-    return dup;
-}
-
-static void exit_on_error(const char *msg) {
-    if (msg) {
-        fprintf(stderr, "Error: %s\n", msg);
-        log_trace("Fatal error: %s", msg);
-    }
-    exit(-1);
-}
-
 static void initialize_pool(apr_pool_t **pool) {
-    if (!pool) {
-        exit_on_error("initialize_pool: NULL pool pointer");
-    }
+    if (!pool)
+        util_error_exit("initialize_pool: NULL pool pointer");
 
     apr_status_t status = apr_initialize();
     if (status != APR_SUCCESS) {
         char errbuf[256];
         apr_strerror(status, errbuf, sizeof(errbuf));
         log_trace("initialize_pool: APR initialization failed: %s", errbuf);
-        exit_on_error("Failed to init APR");
+        util_error_exit("initialize_pool: Failed to init APR");
     }
 
     status = apr_pool_create(pool, NULL);
@@ -137,19 +97,17 @@ static void initialize_pool(apr_pool_t **pool) {
         char errbuf[256];
         apr_strerror(status, errbuf, sizeof(errbuf));
         log_trace("initialize_pool: Pool creation failed: %s", errbuf);
-        exit_on_error("Failed to create APR pool");
+        util_error_exit("initialize_pool: Failed to create APR pool");
     }
 }
 
 static config_t *load_config(const char *config_file) {
-    if (!validate_config_path(config_file)) {
-        exit_on_error("Invalid config file path");
-    }
+    if (!validate_config_path(config_file))
+        util_error_exit("load_config: Invalid config file path");
 
     config_t *cfg = malloc(sizeof(config_t));
-    if (!cfg) {
-        exit_on_error("Memory allocation failed for config");
-    }
+    if (!cfg)
+        util_error_exit("load_config: Memory allocation failed for config");
 
     // Initialize config structure to prevent use of uninitialized values
     memset(cfg, 0, sizeof(config_t));
@@ -159,47 +117,42 @@ static config_t *load_config(const char *config_file) {
     // Validate critical config values
     if (!cfg->output || strlen(cfg->output) == 0) {
         log_trace("load_config: Invalid output directory in config");
-        exit_on_error("Invalid output directory in config");
+        util_error_exit("load_config: Invalid output directory in config");
     }
 
     if (!cfg->log || strlen(cfg->log) == 0) {
         log_trace("load_config: Invalid log path in config");
-        exit_on_error("Invalid log path in config");
+        util_error_exit("load_config: Invalid log path in config");
     }
 
     if (cfg->num_files <= 0 || cfg->num_files > MAX_QUEUE_SIZE_LIMIT) {
         log_trace("load_config: Invalid num_files: %d", cfg->num_files);
-        exit_on_error("Invalid num_files in config");
+        util_error_exit("load_config: Invalid num_files in config");
     }
 
     return cfg;
 }
 
 static FILE *open_log_file(const char *path) {
-    if (!path || strlen(path) == 0) {
-        exit_on_error("Invalid log file path");
-    }
+    if (!path || strlen(path) == 0)
+        util_error_exit("open_log_file: Invalid log file path");
 
     FILE *fp = fopen(path, "w");
     if (!fp) {
-        char error_msg[512];
-        snprintf(error_msg, sizeof(error_msg),
-                 "Failed to open log file: %s (errno: %d)", path, errno);
-        exit_on_error(error_msg);
+        log_trace("open_log_file: Failed to open log file: %s", path);
+        util_error_exit("open_log_file: Failed to open log file");
     }
 
-    if (log_add_fp(fp, LOG_TRACE) != 0) {
-        exit_on_error("Failed to configure logging");
-    }
+    if (log_add_fp(fp, LOG_TRACE) != 0)
+        util_error_exit("open_log_file: Failed to configure logging");
 
     log_set_quiet(true);
     return fp;
 }
 
 static void free_file_task(file_task_t *task) {
-    if (!task) {
+    if (!task)
         return;
-    }
 
     free(task->filename);
     free(task->pipe_name);
@@ -273,12 +226,11 @@ static file_task_t *create_file_task(const file_info_t *info,
     // Initialize all fields to NULL first
     memset(task, 0, sizeof(file_task_t));
 
-    // Use safe_strdup for all string fields
-    task->filename = safe_strdup(info->filename, "filename");
-    task->pipe_name = safe_strdup(cfg->pipe_name, "pipe_name");
-    task->album_path = safe_strdup(info->album_path, "album_path");
-    task->track_name = safe_strdup(info->track_name, "track_name");
-    task->cid = safe_strdup(info->cids[0], "cid");
+    task->filename = util_safe_strdup(info->filename, "filename");
+    task->pipe_name = util_safe_strdup(cfg->pipe_name, "pipe_name");
+    task->album_path = util_safe_strdup(info->album_path, "album_path");
+    task->track_name = util_safe_strdup(info->track_name, "track_name");
+    task->cid = util_safe_strdup(info->cids[0], "cid");
 
     // Get file path safely
     task->file_path = util_make_path(cfg->output, info->filename);
@@ -352,15 +304,11 @@ static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
     }
 
     file_task_t *task = create_file_task(info, cfg);
-    if (!task) {
-        log_trace("process_file: Failed to create file task");
-        exit(-1);
-    }
+    if (!task)
+        util_error_exit("process_file: Failed to create file task");
 
-    if (push_task_to_queue(q, task) != APR_SUCCESS) {
-        free_file_task(task);
-        exit(-1);
-    }
+    if (push_task_to_queue(q, task) != APR_SUCCESS)
+        util_error_exit("process_file: Failed to push task to queue");
 
     log_trace("process_file: queued %s", task->filename);
 }
@@ -436,15 +384,13 @@ static void safe_print_task_info(const file_task_t *task) {
 
     // Safe formatting with bounds checking
     if (util_format_commas(task->track_id, track_id_str,
-                           sizeof(track_id_str)) == NULL) {
+                           sizeof(track_id_str)) == NULL)
         snprintf(track_id_str, sizeof(track_id_str), "%d", task->track_id);
-    }
 
     if (util_format_commas(task->num_tracks, num_tracks_str,
-                           sizeof(num_tracks_str)) == NULL) {
+                           sizeof(num_tracks_str)) == NULL)
         snprintf(num_tracks_str, sizeof(num_tracks_str), "%d",
                  task->num_tracks);
-    }
 
     fprintf(stdout, "PLAYING: %s\n",
             task->filename ? task->filename : "UNKNOWN");
@@ -455,14 +401,13 @@ static void safe_print_task_info(const file_task_t *task) {
     fprintf(stdout, "  %-*s: %s\n", WIDTH, "filename",
             task->track_name ? task->track_name : "UNKNOWN");
 
-    if (task->num_cids == 1) {
+    if (task->num_cids == 1)
         fprintf(stdout, "  %-*s: %s -> %s\n", WIDTH, "info",
                 task->cid ? task->cid : "UNKNOWN",
                 task->filename ? task->filename : "UNKNOWN");
-    } else {
+    else
         fprintf(stdout, "  %-*s: %d CIDs -> %s\n", WIDTH, "info",
                 task->num_cids, task->filename ? task->filename : "UNKNOWN");
-    }
 
     fflush(stdout);
 }
@@ -521,11 +466,10 @@ static void consume_files(apr_queue_t *queue) {
             if (remove(task->file_path) != 0) {
                 log_trace("main: Failed to delete file %s: errno %d",
                           task->file_path, errno);
-                exit(-1);
-            } else {
+                util_error_exit("main: Failed to delete file");
+            } else
                 log_trace("main: Successfully deleted file %s",
                           task->file_path);
-            }
         }
 
         free_file_task(task);
@@ -557,13 +501,11 @@ static apr_queue_t *create_safe_queue(apr_pool_t *pool, int capacity) {
 
 int main(int argc, const char *argv[]) {
     // Input validation
-    if (argc != 2) {
-        exit_on_error("Usage: <program> <config_file>");
-    }
+    if (argc != 2)
+        util_error_exit("Usage: <program> <config_file>");
 
-    if (!argv[1]) {
-        exit_on_error("Config file argument is NULL");
-    }
+    if (!argv[1])
+        util_error_exit("Config file argument is NULL");
 
     apr_pool_t *pool = NULL;
     FILE *fp = NULL;
@@ -572,7 +514,7 @@ int main(int argc, const char *argv[]) {
     initialize_pool(&pool);
 
     if (log_init(pool) != 0)
-        exit_on_error("main: Failed to init logger");
+        util_error_exit("main: Failed to init logger");
 
     cfg = load_config(argv[1]);
     fp = open_log_file(cfg->log);
@@ -584,7 +526,7 @@ int main(int argc, const char *argv[]) {
 
     apr_queue_t *queue = create_safe_queue(pool, cfg->num_files);
     if (!queue)
-        exit_on_error("main: Failed to create APR queue");
+        util_error_exit("main: Failed to create APR queue");
 
     // Clean up initial config since it will be reloaded in thread
     config_free(cfg);
@@ -599,7 +541,7 @@ int main(int argc, const char *argv[]) {
         char errbuf[256];
         apr_strerror(status, errbuf, sizeof(errbuf));
         log_trace("main: Failed to create thread attributes: %s", errbuf);
-        exit_on_error("Failed to create thread attributes");
+        util_error_exit("main: Failed to create thread attributes");
     }
 
     downloader_args_t dl_args = {
@@ -612,7 +554,7 @@ int main(int argc, const char *argv[]) {
         char errbuf[256];
         apr_strerror(status, errbuf, sizeof(errbuf));
         log_trace("main: Failed to create downloader thread: %s", errbuf);
-        exit_on_error("Failed to create downloader thread");
+        util_error_exit("Failed to create downloader thread");
     }
 
     log_trace("main: start consume_files");

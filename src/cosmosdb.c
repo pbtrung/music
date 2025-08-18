@@ -11,15 +11,10 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
+#include "const.h"
 #include "cosmosdb.h"
 #include "log.h"
 #include "utils.h"
-
-#define COSMOS_API_VERSION "2018-12-31"
-#define RFC1123_BUFFER_SIZE 64
-#define MAX_MAC_SIZE EVP_MAX_MD_SIZE
-#define HTTP_STATUS_OK 200
-#define HTTP_STATUS_NOT_FOUND 404
 
 typedef struct {
     char *data;
@@ -51,9 +46,8 @@ static void string_to_lowercase(char *s) {
     if (!s)
         return;
 
-    for (char *p = s; *p; ++p) {
+    for (char *p = s; *p; ++p)
         *p = (char)tolower((unsigned char)*p);
-    }
 }
 
 static void http_response_init(http_response_t *resp) {
@@ -552,9 +546,8 @@ static void initialize_cid_array(file_info_t *info, json_t *cids_array) {
 
     for (int i = 0; i < info->num_cids; i++) {
         json_t *cid_element = json_array_get(cids_array, i);
-        if (cid_element) {
+        if (cid_element)
             extract_string_field(&info->cids[i], cid_element, "cid");
-        }
         info->cid_download_status[i] = DOWNLOAD_PENDING;
     }
 }
