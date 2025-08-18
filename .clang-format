@@ -20,3 +20,4 @@ AllowAllParametersOfDeclarationOnNextLine: false
 # Other
 ReflowComments: true
 SortIncludes: true
+RemoveBracesLLVM: true
