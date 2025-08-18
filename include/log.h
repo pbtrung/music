@@ -29,12 +29,18 @@ static inline const char *get_filename(const char *path) {
     return last_slash ? last_slash + 1 : path;
 }
 
-#define log_trace(...) log_log(LOG_TRACE, get_filename(__FILE__), __LINE__, __VA_ARGS__)
-#define log_debug(...) log_log(LOG_DEBUG, get_filename(__FILE__), __LINE__, __VA_ARGS__)
-#define log_info(...)  log_log(LOG_INFO,  get_filename(__FILE__), __LINE__, __VA_ARGS__)
-#define log_warn(...)  log_log(LOG_WARN,  get_filename(__FILE__), __LINE__, __VA_ARGS__)
-#define log_error(...) log_log(LOG_ERROR, get_filename(__FILE__), __LINE__, __VA_ARGS__)
-#define log_fatal(...) log_log(LOG_FATAL, get_filename(__FILE__), __LINE__, __VA_ARGS__)
+#define log_trace(...)                                                         \
+    log_log(LOG_TRACE, get_filename(__FILE__), __LINE__, __VA_ARGS__)
+#define log_debug(...)                                                         \
+    log_log(LOG_DEBUG, get_filename(__FILE__), __LINE__, __VA_ARGS__)
+#define log_info(...)                                                          \
+    log_log(LOG_INFO, get_filename(__FILE__), __LINE__, __VA_ARGS__)
+#define log_warn(...)                                                          \
+    log_log(LOG_WARN, get_filename(__FILE__), __LINE__, __VA_ARGS__)
+#define log_error(...)                                                         \
+    log_log(LOG_ERROR, get_filename(__FILE__), __LINE__, __VA_ARGS__)
+#define log_fatal(...)                                                         \
+    log_log(LOG_FATAL, get_filename(__FILE__), __LINE__, __VA_ARGS__)
 
 const char *log_level_string(int level);
 void log_set_level(int level);

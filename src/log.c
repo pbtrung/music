@@ -1,5 +1,5 @@
-#include <apr_time.h>
 #include <apr_pools.h>
+#include <apr_time.h>
 
 #include "log.h"
 
@@ -19,15 +19,14 @@ static struct {
     apr_pool_t *pool;
 } L;
 
-static const char *level_strings[] = {
-    "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"
-};
+static const char *level_strings[] = {"TRACE", "DEBUG", "INFO",
+                                      "WARN",  "ERROR", "FATAL"};
 
 static void stdout_callback(log_event *ev) {
     char buf[16];
     buf[strftime(buf, sizeof(buf), "%H:%M:%S", ev->time)] = '\0';
-    fprintf(ev->udata, "%s %-5s %s:%d: ", buf,
-            level_strings[ev->level], ev->file, ev->line);
+    fprintf(ev->udata, "%s %-5s %s:%d: ", buf, level_strings[ev->level],
+            ev->file, ev->line);
     vfprintf(ev->udata, ev->fmt, ev->ap);
     fprintf(ev->udata, "\n");
     fflush(ev->udata);
@@ -36,8 +35,8 @@ static void stdout_callback(log_event *ev) {
 static void file_callback(log_event *ev) {
     char buf[64];
     buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", ev->time)] = '\0';
-    fprintf(ev->udata, "%s %-5s %s:%d: ",
-            buf, level_strings[ev->level], ev->file, ev->line);
+    fprintf(ev->udata, "%s %-5s %s:%d: ", buf, level_strings[ev->level],
+            ev->file, ev->line);
     vfprintf(ev->udata, ev->fmt, ev->ap);
     fprintf(ev->udata, "\n");
     fflush(ev->udata);
@@ -126,7 +125,8 @@ int log_init(apr_pool_t *pool) {
     for (int i = 0; i < MAX_CALLBACKS; i++) {
         L.callbacks[i].fn = NULL;
     }
-    if (apr_thread_mutex_create(&L.mutex, APR_THREAD_MUTEX_DEFAULT, pool) != APR_SUCCESS) {
+    if (apr_thread_mutex_create(&L.mutex, APR_THREAD_MUTEX_DEFAULT, pool) !=
+        APR_SUCCESS) {
         return -1;
     }
     return 0;
