@@ -1,7 +1,10 @@
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "const.h"
 #include "file_task.h"
+#include "log.h"
 #include "utils.h"
 
 void file_task_free(file_task_t *task) {
@@ -20,8 +23,23 @@ void file_task_free(file_task_t *task) {
     free(task);
 }
 
-file_task_t *file_task_create(const file_info_t *info,
-                                     const config_t *cfg) {
+static bool validate_task_field(const char *field, const char *field_name) {
+    if (!field) {
+        log_trace("validate_task_field: NULL %s", field_name);
+        return false;
+    }
+
+    size_t len = strlen(field);
+    if (len == 0 || len > MAX_TASK_FIELD_LENGTH) {
+        log_trace("validate_task_field: Invalid %s length: %zu", field_name,
+                  len);
+        return false;
+    }
+
+    return true;
+}
+
+file_task_t *file_task_create(const file_info_t *info, const config_t *cfg) {
     if (!info || !cfg) {
         log_trace("file_task_create: Invalid parameters");
         return NULL;

@@ -1,6 +1,9 @@
 #ifndef FILE_TASK_H
 #define FILE_TASK_H
 
+#include "config.h"
+#include "download.h"
+
 typedef struct {
     char *filename;
     char *pipe_name;
@@ -13,8 +16,7 @@ typedef struct {
     int num_cids;
 } file_task_t;
 
-file_task_t *file_task_create(const file_info_t *info,
-                                     const config_t *cfg)
 void file_task_free(file_task_t *task);
+file_task_t *file_task_create(const file_info_t *info, const config_t *cfg);
 
 #endif // FILE_TASK_H

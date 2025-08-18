@@ -69,29 +69,6 @@ static bool validate_gateway(const char *gateway) {
     return true;
 }
 
-apr_status_t file_info_free(void *data) {
-    log_trace("file_info_free: start");
-    if (!data) {
-        log_trace("file_info_free: NULL data pointer");
-        return APR_SUCCESS;
-    }
-
-    file_info_t *info = (file_info_t *)data;
-    free(info->track_name);
-    free(info->album_path);
-    free(info->filename);
-    free(info->extension);
-
-    if (info->cids) {
-        for (int j = 0; j < info->num_cids; ++j)
-            free(info->cids[j]);
-        free(info->cids);
-    }
-    free(info->cid_download_status);
-    log_trace("file_info_free: finish");
-    return APR_SUCCESS;
-}
-
 static FILE *open_file_write(const char *file_path) {
     if (!file_path)
         util_error_exit("open_file_write: NULL file_path");

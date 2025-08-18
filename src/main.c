@@ -14,20 +14,10 @@
 #include "decode.h"
 #include "dir.h"
 #include "download.h"
+#include "file_info.h"
+#include "file_task.h"
 #include "log.h"
 #include "utils.h"
-
-typedef struct {
-    char *filename;
-    char *pipe_name;
-    char *file_path;
-    char *album_path;
-    char *track_name;
-    char *cid;
-    int track_id;
-    int num_tracks;
-    int num_cids;
-} file_task_t;
 
 typedef struct {
     apr_queue_t *queue;
@@ -58,22 +48,6 @@ static bool validate_config_path(const char *path) {
     // Check if file exists and is readable
     if (access(path, R_OK) != 0) {
         log_trace("validate_config_path: File not readable: %s", path);
-        return false;
-    }
-
-    return true;
-}
-
-static bool validate_task_field(const char *field, const char *field_name) {
-    if (!field) {
-        log_trace("validate_task_field: NULL %s", field_name);
-        return false;
-    }
-
-    size_t len = strlen(field);
-    if (len == 0 || len > MAX_TASK_FIELD_LENGTH) {
-        log_trace("validate_task_field: Invalid %s length: %zu", field_name,
-                  len);
         return false;
     }
 
@@ -150,113 +124,6 @@ static FILE *open_log_file(const char *path) {
     return fp;
 }
 
-static void free_file_task(file_task_t *task) {
-    if (!task)
-        return;
-
-    free(task->filename);
-    free(task->pipe_name);
-    free(task->file_path);
-    free(task->album_path);
-    free(task->track_name);
-    free(task->cid);
-
-    // Clear the structure to prevent use-after-free bugs
-    memset(task, 0, sizeof(file_task_t));
-    free(task);
-}
-
-static file_info_t *prepare_file_info(apr_pool_t *subpool, config_t *cfg) {
-    if (!subpool || !cfg) {
-        log_trace("prepare_file_info: Invalid parameters");
-        return NULL;
-    }
-
-    file_info_t *info = apr_palloc(subpool, sizeof(file_info_t));
-    if (!info) {
-        log_trace("prepare_file_info: Memory allocation failed");
-        return NULL;
-    }
-
-    // Initialize the structure
-    memset(info, 0, sizeof(file_info_t));
-
-    json_t *doc = cosmosdb_get_item(subpool, cfg);
-    if (!doc) {
-        log_trace("prepare_file_info: Failed to get CosmosDB item");
-        return NULL;
-    }
-
-    cosmosdb_file_info_init(info, doc, cfg);
-
-    json_decref(doc);
-    apr_pool_cleanup_register(subpool, info, file_info_free,
-                              apr_pool_cleanup_null);
-
-    return info;
-}
-
-static file_task_t *create_file_task(const file_info_t *info,
-                                     const config_t *cfg) {
-    if (!info || !cfg) {
-        log_trace("create_file_task: Invalid parameters");
-        return NULL;
-    }
-
-    // Validate required fields
-    if (!validate_task_field(info->filename, "filename") ||
-        !validate_task_field(cfg->pipe_name, "pipe_name") ||
-        !validate_task_field(info->album_path, "album_path") ||
-        !validate_task_field(info->track_name, "track_name")) {
-        log_trace("create_file_task: Invalid task fields");
-        return NULL;
-    }
-
-    if (!info->cids || info->num_cids <= 0 || !info->cids[0]) {
-        log_trace("create_file_task: Invalid CID data");
-        return NULL;
-    }
-
-    file_task_t *task = malloc(sizeof(file_task_t));
-    if (!task) {
-        log_trace("create_file_task: Failed malloc");
-        return NULL;
-    }
-
-    // Initialize all fields to NULL first
-    memset(task, 0, sizeof(file_task_t));
-
-    task->filename = util_safe_strdup(info->filename, "filename");
-    task->pipe_name = util_safe_strdup(cfg->pipe_name, "pipe_name");
-    task->album_path = util_safe_strdup(info->album_path, "album_path");
-    task->track_name = util_safe_strdup(info->track_name, "track_name");
-    task->cid = util_safe_strdup(info->cids[0], "cid");
-
-    // Get file path safely
-    task->file_path = util_make_path(cfg->output, info->filename);
-
-    // Validate integer fields
-    if (info->track_id < 0 || cfg->max_value < 0 || info->num_cids <= 0) {
-        log_trace("create_file_task: Invalid numeric values");
-        free_file_task(task);
-        return NULL;
-    }
-
-    task->track_id = info->track_id;
-    task->num_tracks = cfg->max_value;
-    task->num_cids = info->num_cids;
-
-    // Check if all string allocations succeeded
-    if (!task->filename || !task->pipe_name || !task->album_path ||
-        !task->track_name || !task->cid || !task->file_path) {
-        log_trace("create_file_task: Failed string allocation");
-        free_file_task(task);
-        return NULL;
-    }
-
-    return task;
-}
-
 static apr_status_t push_task_to_queue(apr_queue_t *q, file_task_t *task) {
     if (!q || !task) {
         log_trace("push_task_to_queue: Invalid parameters");
@@ -290,11 +157,18 @@ static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
         return;
     }
 
-    file_info_t *info = prepare_file_info(subpool, cfg);
+    json_t *doc = cosmosdb_get_item(subpool, cfg);
+    if (!doc) {
+        log_trace("cosmosdb_get_item: Failed to get CosmosDB item");
+        return;
+    }
+
+    file_info_t *info = file_info_create(subpool, cfg, doc);
     if (!info) {
         log_trace("process_file: Failed to prepare file info");
         return;
     }
+    json_decref(doc);
 
     download_assemble_file(subpool, cfg, info);
 
@@ -303,7 +177,7 @@ static void process_file(apr_pool_t *subpool, config_t *cfg, apr_queue_t *q) {
         return;
     }
 
-    file_task_t *task = create_file_task(info, cfg);
+    file_task_t *task = file_task_create(info, cfg);
     if (!task)
         util_error_exit("process_file: Failed to create file task");
 
@@ -441,7 +315,7 @@ static void consume_files(apr_queue_t *queue) {
 
         if (!task->file_path || !task->filename) {
             log_trace("consume_files: Invalid task data");
-            free_file_task(task);
+            file_task_free(task);
             continue;
         }
 
@@ -453,7 +327,7 @@ static void consume_files(apr_queue_t *queue) {
         // Validate required fields before calling decode_audio
         if (!task->pipe_name) {
             log_trace("consume_files: Missing pipe_name");
-            free_file_task(task);
+            file_task_free(task);
             continue;
         }
 
@@ -472,7 +346,7 @@ static void consume_files(apr_queue_t *queue) {
                           task->file_path);
         }
 
-        free_file_task(task);
+        file_task_free(task);
     }
 }
 

@@ -30,26 +30,6 @@ typedef struct {
     char *date_header;
 } cosmos_request_ctx_t;
 
-static char *safe_strdup(const char *s) {
-    if (!s)
-        return NULL;
-
-    size_t len = strlen(s);
-    char *copy = malloc(len + 1);
-    if (!copy)
-        return NULL;
-
-    return strcpy(copy, s);
-}
-
-static void string_to_lowercase(char *s) {
-    if (!s)
-        return;
-
-    for (char *p = s; *p; ++p)
-        *p = (char)tolower((unsigned char)*p);
-}
-
 static void http_response_init(http_response_t *resp) {
     if (!resp)
         return;
@@ -200,9 +180,9 @@ static char *build_signature_payload(apr_pool_t *pool, const char *http_verb,
         return NULL;
     }
 
-    string_to_lowercase(verb_lower);
-    string_to_lowercase(type_lower);
-    string_to_lowercase(date_lower);
+    util_to_lower(verb_lower);
+    util_to_lower(type_lower);
+    util_to_lower(date_lower);
 
     return apr_psprintf(pool, "%s\n%s\n%s\n%s\n\n", verb_lower, type_lower,
                         resource_link, date_lower);
@@ -502,93 +482,4 @@ json_t *cosmosdb_get_item(apr_pool_t *pool, const config_t *config) {
     }
 
     return result;
-}
-
-static void extract_string_field(char **destination, json_t *json_object,
-                                 const char *field_name) {
-    if (!destination || !json_object || !field_name)
-        return;
-
-    if (json_is_string(json_object)) {
-        *destination = safe_strdup(json_string_value(json_object));
-        log_trace("extract_string_field: Extracted field %s: %s", field_name,
-                  *destination ? *destination : "(null)");
-    }
-}
-
-static void initialize_cid_array(file_info_t *info, json_t *cids_array) {
-    if (!info || !json_is_array(cids_array)) {
-        log_trace("initialize_cid_array: Invalid CIDs array or info structure");
-        return;
-    }
-
-    info->num_cids = (int)json_array_size(cids_array);
-    if (info->num_cids <= 0) {
-        log_trace("initialize_cid_array: Empty CIDs array");
-        return;
-    }
-
-    log_trace("initialize_cid_array: Initializing %d CIDs", info->num_cids);
-
-    info->cids = calloc(info->num_cids, sizeof(char *));
-    info->cid_download_status =
-        calloc(info->num_cids, sizeof(enum download_status));
-
-    if (!info->cids || !info->cid_download_status) {
-        log_trace("initialize_cid_array: Failed to allocate memory for CIDs");
-        free(info->cids);
-        free(info->cid_download_status);
-        info->cids = NULL;
-        info->cid_download_status = NULL;
-        info->num_cids = 0;
-        return;
-    }
-
-    for (int i = 0; i < info->num_cids; i++) {
-        json_t *cid_element = json_array_get(cids_array, i);
-        if (cid_element)
-            extract_string_field(&info->cids[i], cid_element, "cid");
-        info->cid_download_status[i] = DOWNLOAD_PENDING;
-    }
-}
-
-void cosmosdb_file_info_init(file_info_t *info, json_t *document,
-                             config_t *config) {
-    if (!info || !document || !config) {
-        log_trace(
-            "cosmosdb_file_info_init: Invalid parameters for file info initialization");
-        return;
-    }
-
-    log_trace(
-        "cosmosdb_file_info_init: Initializing file info from CosmosDB document");
-
-    memset(info, 0, sizeof(file_info_t));
-    info->config = config;
-    info->file_download_status = DOWNLOAD_PENDING;
-
-    json_t *track_name_field = json_object_get(document, "track_name");
-    extract_string_field(&info->track_name, track_name_field, "track_name");
-
-    json_t *album_object = json_object_get(document, "album");
-    if (json_is_object(album_object)) {
-        json_t *album_path_field = json_object_get(album_object, "path");
-        extract_string_field(&info->album_path, album_path_field, "album_path");
-    }
-
-    json_t *track_id_field = json_object_get(document, "track_id");
-    if (json_is_integer(track_id_field)) {
-        info->track_id = (int)json_integer_value(track_id_field);
-        log_trace("cosmosdb_file_info_init: Track ID: %d", info->track_id);
-    }
-
-    if (info->track_name) {
-        info->extension = util_get_ext(info->track_name);
-        info->filename = util_gen_filename(info->track_name);
-    }
-
-    json_t *cids_field = json_object_get(document, "cids");
-    initialize_cid_array(info, cids_field);
-
-    log_trace("cosmosdb_file_info_init: File info initialization completed");
 }
