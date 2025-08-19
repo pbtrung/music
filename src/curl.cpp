@@ -62,28 +62,7 @@ template <typename T> T Curl::get_info(CURLINFO info) const {
 
 int Curl::perform() {
     response_data.clear();
-    return result = curl_easy_perform(curl_handle.get());
-    // if (result != CURLE_OK) {
-    //     // Get additional debugging info
-    //     long response_code = 0;
-    //     curl_easy_getinfo(curl_handle.get(), CURLINFO_RESPONSE_CODE,
-    //                       &response_code);
-
-    //     double total_time = 0;
-    //     curl_easy_getinfo(curl_handle.get(), CURLINFO_TOTAL_TIME,
-    //     &total_time);
-
-    //     char *effective_url = nullptr;
-    //     curl_easy_getinfo(curl_handle.get(), CURLINFO_EFFECTIVE_URL,
-    //                       &effective_url);
-
-    //     SPDLOG_TRACE(
-    //         "CURL failed: {} -- HTTP Status: {} -- Total time: {:.2f}s --
-    //         URL: {}", curl_easy_strerror(result), response_code, total_time,
-    //         effective_url ? effective_url : "unknown");
-    //     throw std::runtime_error("Failed to perform CURL: " +
-    //                              std::string(curl_easy_strerror(result)));
-    // }
+    return curl_easy_perform(curl_handle.get());
 }
 
 void Curl::set_header(std::string_view header) {
