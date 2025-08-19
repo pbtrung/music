@@ -50,7 +50,7 @@ void Downloader::download_cid(int cid_index) {
     // Use RAII for file management
     std::ofstream outfile(temp_path, std::ios::binary);
     if (!outfile.is_open()) {
-        spdlog::error("Failed to open file: {}", temp_path.string());
+        SPDLOG_TRACE("Failed to open file: {}", temp_path.string());
         cid_download_status[cid_index] = DownloadStatus::FAILED;
         return;
     }
@@ -66,19 +66,19 @@ void Downloader::download_cid(int cid_index) {
             // Atomic rename on success
             fs::rename(temp_path, file_path, ec);
             if (ec) {
-                spdlog::error("Failed to rename {} to {}: {}",
-                              temp_path.string(), file_path.string(),
-                              ec.message());
+                SPDLOG_TRACE("Failed to rename {} to {}: {}",
+                             temp_path.string(), file_path.string(),
+                             ec.message());
                 cid_download_status[cid_index] = DownloadStatus::FAILED;
             } else {
                 cid_download_status[cid_index] = DownloadStatus::SUCCEEDED;
-                spdlog::debug("Successfully downloaded: {}", current_cid);
+                SPDLOG_TRACE("Successfully downloaded: {}", current_cid);
             }
         } else {
             cid_download_status[cid_index] = DownloadStatus::FAILED;
         }
     } catch (const std::exception &e) {
-        spdlog::error("Download error for {}: {}", current_cid, e.what());
+        SPDLOG_TRACE("Download error for {}: {}", current_cid, e.what());
         cid_download_status[cid_index] = DownloadStatus::FAILED;
     }
 
@@ -96,7 +96,7 @@ bool Downloader::attempt_download(const std::string &cid,
 
     Curl curl;
     curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
-    curl.set_option(CURLOPT_WRITEDATA, &outfile);
+    curl.set_file_output(&outfile);
 
     for (int attempt = 0; attempt < max_retries; ++attempt) {
         const std::string url =
