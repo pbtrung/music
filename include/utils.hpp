@@ -2,33 +2,24 @@
 
 #include <concepts>
 #include <filesystem>
-#include <memory>
 #include <optional>
-#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
 
 class Utilities {
   private:
-    mutable std::random_device rd_;
-    mutable std::mt19937 gen_;
-
     static bool validate_string(std::string_view str, size_t max_len) noexcept;
     static bool validate_path(std::string_view component) noexcept;
     static bool validate_filename(std::string_view filename) noexcept;
 
   public:
-    Utilities();
-    explicit Utilities(uint32_t seed);
-
+    Utilities() = delete;
     Utilities(const Utilities &) = delete;
     Utilities &operator=(const Utilities &) = delete;
-
-    Utilities(Utilities &&) = default;
-    Utilities &operator=(Utilities &&) = default;
-
-    ~Utilities() = default;
+    Utilities(Utilities &&) = delete;
+    Utilities &operator=(Utilities &&) = delete;
+    ~Utilities() = delete;
 
     static void trim_spaces(std::string &str) noexcept;
     static std::string format_time(int seconds) noexcept;
@@ -37,16 +28,14 @@ class Utilities {
     static void to_lower(std::string &str) noexcept;
     static std::optional<std::string>
     get_extension(std::string_view filename) noexcept;
-    std::optional<std::string>
-    generate_filename(std::string_view original_filename) const noexcept;
-    std::optional<std::vector<int>>
-    generate_unique_ints(int count, int min_val, int max_val) const noexcept;
-    std::string generate_random_string(size_t length) const noexcept;
+    static std::optional<std::string>
+    generate_filename(std::string_view original_filename) noexcept;
+    static std::optional<std::vector<int>>
+    generate_unique_ints(int count, int min_val, int max_val) noexcept;
+    static std::string generate_random_string(size_t length) noexcept;
 
     template <std::integral T>
     static std::string format_with_commas(T num) noexcept;
-
-    static Utilities &get_instance() noexcept;
 
     static constexpr size_t max_path_length = 4096;
     static constexpr size_t max_filename_length = 255;
