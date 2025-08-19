@@ -1,3 +1,4 @@
+#include <fstream>
 #include <stdexcept>
 #include <string>
 
@@ -10,6 +11,7 @@ Curl::Curl() : curl_handle(curl_easy_init(), curl_deleter{}) {
         throw std::runtime_error("Failed to initialize CURL easy handle");
     }
 
+    // Set default write callback for string response
     curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEFUNCTION,
                      &Curl::write_callback);
     curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEDATA, this);
@@ -27,6 +29,15 @@ size_t Curl::write_callback(char *ptr, size_t size, size_t nmemb,
     size_t total = size * nmemb;
     self->response_data.append(ptr, total);
     return total;
+}
+
+// New static callback for file writing
+size_t Curl::file_write_callback(char *ptr, size_t size, size_t nmemb,
+                                 void *userdata) {
+    auto *file = static_cast<std::ofstream *>(userdata);
+    size_t total = size * nmemb;
+    file->write(ptr, total);
+    return file->good() ? total : 0;
 }
 
 template <typename T> void Curl::set_option(CURLoption option, T value) {
@@ -71,6 +82,20 @@ void Curl::set_header(std::string_view header) {
         throw std::runtime_error("Failed to append header");
     }
     curl_easy_setopt(curl_handle.get(), CURLOPT_HTTPHEADER, headers);
+}
+
+// Method to configure for file writing
+void Curl::set_file_output(std::ofstream *file) {
+    curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEFUNCTION,
+                     &Curl::file_write_callback);
+    curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEDATA, file);
+}
+
+// Method to reset to string output
+void Curl::reset_string_output() {
+    curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEFUNCTION,
+                     &Curl::write_callback);
+    curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEDATA, this);
 }
 
 // Explicit instantiations

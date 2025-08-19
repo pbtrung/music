@@ -35,6 +35,11 @@ class Curl {
         return curl_handle.get();
     }
 
+    static size_t file_write_callback(char *ptr, size_t size, size_t nmemb,
+                                      void *userdata);
+    void set_file_output(std::ofstream *file);
+    void reset_string_output();
+
   private:
     struct curl_deleter {
         void operator()(CURL *ptr) const noexcept {
