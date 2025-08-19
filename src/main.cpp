@@ -39,24 +39,24 @@ void setup_logging_to_file(const std::string &log_file) {
 }
 
 void producer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 4; ++i) {
         std::ifstream f(config_file);
         json config = json::parse(f);
 
         CosmosDB cosmos(config);
         auto track = cosmos.get_item();
-        queue.emplace(std::move(track.value()));
 
-        // Downloader downloader(config, track);
-        // downloader.download_file();
+        Downloader downloader(config, track);
+        downloader.download_file();
+
+        queue.emplace(std::move(track.value()));
     }
 }
 
 void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 8; ++i) {
         json track;
         queue.pop(track);
-        fmt::println("{}", track["track_id"].get<int>());
     }
 }
 
