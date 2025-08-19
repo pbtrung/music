@@ -1,6 +1,4 @@
-#include <cstdlib>
-#include <format>
-#include <iostream>
+#include <fstream>
 #include <string>
 
 #include <fmt/base.h>
@@ -9,7 +7,8 @@
 
 #include "atomic_queues.hpp"
 #include "json.hpp"
-#include "thread_pool.hpp"
+
+using json = nlohmann::json;
 
 [[noreturn]] static void exit_on_error(const std::string &msg) {
     if (!msg.empty()) {
@@ -26,7 +25,7 @@ void setup_logging_to_file(const std::string &log_file) {
     auto file_logger = spdlog::rotating_logger_mt("file_logger", log_file,
                                                   max_size, max_files);
 
-    file_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+    file_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%s:%#:%!] %v");
 
     file_logger->set_level(spdlog::level::trace);
     spdlog::set_level(spdlog::level::trace);
@@ -36,15 +35,14 @@ void setup_logging_to_file(const std::string &log_file) {
     spdlog::set_default_logger(file_logger);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
     if (argc != 2) {
         exit_on_error("Usage: <program> <config_file>");
     }
 
-    fmt::println("Hello, World!");
-
-    setup_logging_to_file(argv[1]);
-    spdlog::trace("Logging initialized successfully.");
+    std::ifstream config_file(argv[1]);
+    json config = json::parse(config_file);
+    setup_logging_to_file(config["log"].get<std::string>());
 
     return 0;
 }
