@@ -1,5 +1,6 @@
 #include <fstream>
 #include <string>
+#include <thread>
 
 #include <fmt/base.h>
 #include <spdlog/sinks/rotating_file_sink.h>
@@ -37,20 +38,47 @@ void setup_logging_to_file(const std::string &log_file) {
     spdlog::set_default_logger(file_logger);
 }
 
+void producer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
+    for (int i = 0; i < 8; ++i) {
+        std::ifstream f(config_file);
+        json config = json::parse(f);
+
+        CosmosDB cosmos(config);
+        auto track = cosmos.get_item();
+        queue.emplace(std::move(track.value()));
+
+        // Downloader downloader(config, track);
+        // downloader.download_file();
+    }
+}
+
+void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
+    for (int i = 0; i < 4; ++i) {
+        json track;
+        queue.pop(track);
+        fmt::println("{}", track["track_id"].get<int>());
+    }
+}
+
 int main(int argc, char *argv[]) {
+    int num_files = 4;
+
     if (argc != 2) {
         exit_on_error("Usage: <program> <config_file>");
+    } else {
+        std::ifstream config_file(argv[1]);
+        json config = json::parse(config_file);
+        setup_logging_to_file(config["log"].get<std::string>());
+        num_files = config["num_files"].get<int>();
     }
 
-    std::ifstream config_file(argv[1]);
-    json config = json::parse(config_file);
-    setup_logging_to_file(config["log"].get<std::string>());
+    std::string config_file(argv[1]);
+    jdz::SpscQueue<json> queue(num_files);
+    std::jthread p(producer, std::ref(queue), std::ref(config_file));
+    std::jthread c(consumer, std::ref(queue), std::ref(config_file));
 
-    CosmosDB cosmos(config);
-    auto track = cosmos.get_item();
-
-    Downloader downloader(config, track);
-    downloader.download_file();
+    p.join();
+    c.join();
 
     return 0;
 }
