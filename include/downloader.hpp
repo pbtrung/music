@@ -2,6 +2,8 @@
 
 #include "curl.hpp"
 #include "json.hpp"
+#include <optional>
+#include <string>
 
 enum class DownloadStatus { PENDING, SUCCEEDED, FAILED };
 
@@ -17,6 +19,8 @@ class Downloader {
     Downloader &operator=(Downloader &&) = default;
 
     void download_file();
+    bool succeeded() const;
+    std::optional<std::string> assemble_file();
 
   private:
     void download_cid(int cid_index);

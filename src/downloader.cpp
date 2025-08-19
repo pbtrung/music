@@ -32,6 +32,128 @@ void Downloader::download_file() {
     thread_pool.wait_for_tasks();
 }
 
+bool Downloader::succeeded() const {
+    for (const auto &status : cid_download_status) {
+        if (status != DownloadStatus::SUCCEEDED) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<std::string> Downloader::assemble_file() {
+    if (!succeeded()) {
+        SPDLOG_TRACE(
+            "Cannot assemble file: not all CIDs downloaded successfully");
+        return std::nullopt;
+    }
+
+    const auto &cids = track["cids"].get<std::vector<std::string>>();
+    const fs::path output_dir = config["output"].get<std::string>();
+
+    const std::string original_filename =
+        track["track_name"].get<std::string>();
+
+    const auto generated_filename =
+        Utilities::generate_filename(original_filename);
+    if (!generated_filename) {
+        SPDLOG_TRACE("Failed to generate filename for assembly");
+        return std::nullopt;
+    }
+
+    const fs::path assembled_file = output_dir / *generated_filename;
+
+    // Check if this is a special CID (only one CID with length 59)
+    if (cids.size() == 1 && cids[0].size() == 59) {
+        // For special CIDs, move the file to the generated filename
+        const fs::path existing_file = output_dir / cids[0];
+        if (fs::exists(existing_file)) {
+            std::error_code ec;
+            fs::rename(existing_file, assembled_file, ec);
+            if (ec) {
+                SPDLOG_TRACE("Failed to move special CID file {} to {}: {}",
+                             existing_file.string(), assembled_file.string(),
+                             ec.message());
+                return std::nullopt;
+            }
+            SPDLOG_TRACE("Successfully moved special CID file to: {}",
+                         *generated_filename);
+            return *generated_filename;
+        } else {
+            SPDLOG_TRACE("Special CID file not found: {}",
+                         existing_file.string());
+            return std::nullopt;
+        }
+    }
+
+    try {
+        std::ofstream output(assembled_file, std::ios::binary);
+        if (!output.is_open()) {
+            SPDLOG_TRACE("Failed to create assembled file: {}",
+                         assembled_file.string());
+            return std::nullopt;
+        }
+
+        // Assemble all CID files in order
+        for (const auto &cid : cids) {
+            const fs::path cid_file = output_dir / cid;
+
+            std::ifstream input(cid_file, std::ios::binary);
+            if (!input.is_open()) {
+                SPDLOG_TRACE("Failed to open CID file for assembly: {}",
+                             cid_file.string());
+                output.close();
+                fs::remove(assembled_file); // Clean up partial file
+                return std::nullopt;
+            }
+
+            // Copy data from CID file to assembled file
+            output << input.rdbuf();
+            input.close();
+
+            if (output.fail()) {
+                SPDLOG_TRACE("Error writing to assembled file during CID: {}",
+                             cid);
+                output.close();
+                fs::remove(assembled_file); // Clean up partial file
+                return std::nullopt;
+            }
+        }
+
+        output.close();
+
+        if (output.fail()) {
+            SPDLOG_TRACE("Error closing assembled file");
+            fs::remove(assembled_file); // Clean up
+            return std::nullopt;
+        }
+
+        // Remove all individual CID files after successful assembly
+        std::error_code ec;
+        for (const auto &cid : cids) {
+            const fs::path cid_file = output_dir / cid;
+            fs::remove(cid_file, ec);
+            if (ec) {
+                SPDLOG_TRACE("Warning: Failed to remove CID file {}: {}",
+                             cid_file.string(), ec.message());
+                // Continue with other files even if one fails to delete
+            } else {
+                SPDLOG_TRACE("Removed CID file: {}", cid);
+            }
+        }
+
+        SPDLOG_TRACE("Successfully assembled file: {}", *generated_filename);
+        return *generated_filename;
+
+    } catch (const std::exception &e) {
+        SPDLOG_TRACE("Exception during file assembly: {}", e.what());
+        // Clean up any partial file
+        std::error_code ec;
+        fs::remove(assembled_file, ec);
+        return std::nullopt;
+    }
+}
+
 void Downloader::download_cid(int cid_index) {
     const auto &gateways = config["gateways"].get<std::vector<std::string>>();
     const auto &cids = track["cids"].get<std::vector<std::string>>();
