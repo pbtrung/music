@@ -1,6 +1,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <spdlog/spdlog.h>
+
 #include "curl.hpp"
 
 Curl::Curl() : curl_handle(curl_easy_init(), curl_deleter{}) {
@@ -28,21 +30,25 @@ size_t Curl::write_callback(char *ptr, size_t size, size_t nmemb,
 }
 
 template <typename T> void Curl::set_option(CURLoption option, T value) {
-    if constexpr (std::is_same_v<T, std::string> ||
-                  std::is_same_v<T, const char *> ||
-                  std::is_same_v<T, char *>) {
-        if (curl_easy_setopt(curl_handle.get(), option, value) != CURLE_OK) {
-            throw std::runtime_error("Failed to set string option");
-        }
+    CURLcode result = CURLE_OK;
+
+    if constexpr (std::is_same_v<T, std::string>) {
+        result = curl_easy_setopt(curl_handle.get(), option, value.c_str());
+    } else if constexpr (std::is_same_v<T, const char *> ||
+                         std::is_same_v<T, char *>) {
+        result = curl_easy_setopt(curl_handle.get(), option, value);
     } else if constexpr (std::is_integral_v<T> || std::is_enum_v<T>) {
-        if (curl_easy_setopt(curl_handle.get(), option,
-                             static_cast<long>(value)) != CURLE_OK) {
-            throw std::runtime_error("Failed to set integer option");
-        }
+        result = curl_easy_setopt(curl_handle.get(), option,
+                                  static_cast<long>(value));
     } else {
-        if (curl_easy_setopt(curl_handle.get(), option, value) != CURLE_OK) {
-            throw std::runtime_error("Failed to set pointer option");
-        }
+        result = curl_easy_setopt(curl_handle.get(), option, value);
+    }
+
+    if (result != CURLE_OK) {
+        SPDLOG_TRACE("Failed to set CURL option {}: {}",
+                     static_cast<int>(option), curl_easy_strerror(result));
+        throw std::runtime_error("Failed to set CURL option: " +
+                                 std::string(curl_easy_strerror(result)));
     }
 }
 
@@ -56,8 +62,26 @@ template <typename T> T Curl::get_info(CURLINFO info) const {
 
 void Curl::perform() {
     response_data.clear();
-    if (curl_easy_perform(curl_handle.get()) != CURLE_OK) {
-        throw std::runtime_error("Failed to perform CURL");
+    CURLcode result = curl_easy_perform(curl_handle.get());
+    if (result != CURLE_OK) {
+        // Get additional debugging info
+        long response_code = 0;
+        curl_easy_getinfo(curl_handle.get(), CURLINFO_RESPONSE_CODE,
+                          &response_code);
+
+        double total_time = 0;
+        curl_easy_getinfo(curl_handle.get(), CURLINFO_TOTAL_TIME, &total_time);
+
+        char *effective_url = nullptr;
+        curl_easy_getinfo(curl_handle.get(), CURLINFO_EFFECTIVE_URL,
+                          &effective_url);
+
+        SPDLOG_TRACE(
+            "CURL failed: {} -- HTTP Status: {} -- Total time: {:.2f}s -- URL: {}",
+            curl_easy_strerror(result), response_code, total_time,
+            effective_url ? effective_url : "unknown");
+        throw std::runtime_error("Failed to perform CURL: " +
+                                 std::string(curl_easy_strerror(result)));
     }
 }
 
@@ -73,6 +97,7 @@ void Curl::set_header(std::string_view header) {
 template void Curl::set_option<long>(CURLoption, long);
 template void Curl::set_option<std::string>(CURLoption, std::string);
 template void Curl::set_option<const char *>(CURLoption, const char *);
+template void Curl::set_option<char *>(CURLoption, char *);
 template void Curl::set_option<void *>(CURLoption, void *);
 
 template double Curl::get_info<double>(CURLINFO) const;

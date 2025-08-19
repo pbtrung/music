@@ -10,17 +10,6 @@
 
 enum class DownloadStatus { PENDING, IN_PROGRESS, COMPLETED, FAILED };
 
-struct FileInfo {
-    std::string track_name;
-    std::string album_path;
-    std::string extension;
-    std::string filename;
-    int track_id = 0;
-    std::vector<std::string> cids;
-    std::vector<DownloadStatus> cid_download_status;
-    DownloadStatus file_download_status = DownloadStatus::PENDING;
-};
-
 class CosmosDB {
   public:
     explicit CosmosDB(const nlohmann::json &config);
@@ -32,10 +21,9 @@ class CosmosDB {
     CosmosDB &operator=(CosmosDB &&) = default;
 
     std::optional<nlohmann::json> get_item();
-    std::optional<FileInfo> create_file_info(const nlohmann::json &document);
 
   private:
-    nlohmann::json config_;
+    nlohmann::json config;
     std::string cosmos_api_version_ = "2018-12-31";
 
     std::string create_rfc1123_timestamp() const;
@@ -56,4 +44,5 @@ class CosmosDB {
     fetch_cosmos_item(const std::string &track_id) const;
     std::string generate_random_track_id() const;
     bool is_not_found_response(const nlohmann::json &document) const;
+    std::string url_encode(const std::string &value) const;
 };

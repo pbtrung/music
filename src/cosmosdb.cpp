@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -9,25 +10,26 @@
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <spdlog/spdlog.h>
 
 #include "cosmosdb.hpp"
 #include "utils.hpp"
 
-CosmosDB::CosmosDB(const nlohmann::json &config) : config_(config) {
+CosmosDB::CosmosDB(const nlohmann::json &config) : config(config) {
     // Validate required configuration
-    if (!config_.contains("cosmos_uri") || !config_["cosmos_uri"].is_string()) {
+    if (!config.contains("cosmos_uri") || !config["cosmos_uri"].is_string()) {
         throw std::invalid_argument("Missing or invalid cosmos_uri in config");
     }
-    if (!config_.contains("cosmos_key") || !config_["cosmos_key"].is_string()) {
+    if (!config.contains("cosmos_key") || !config["cosmos_key"].is_string()) {
         throw std::invalid_argument("Missing or invalid cosmos_key in config");
     }
-    if (!config_.contains("cosmos_db_name") ||
-        !config_["cosmos_db_name"].is_string()) {
+    if (!config.contains("cosmos_db_name") ||
+        !config["cosmos_db_name"].is_string()) {
         throw std::invalid_argument(
             "Missing or invalid cosmos_db_name in config");
     }
-    if (!config_.contains("cosmos_container") ||
-        !config_["cosmos_container"].is_string()) {
+    if (!config.contains("cosmos_container") ||
+        !config["cosmos_container"].is_string()) {
         throw std::invalid_argument(
             "Missing or invalid cosmos_container in config");
     }
@@ -112,23 +114,12 @@ std::string CosmosDB::create_auth_token(std::string &http_verb,
                                                   resource_link, timestamp);
 
     auto decoded_key =
-        decode_base64_key(config_["cosmos_key"].get<std::string>());
+        decode_base64_key(config["cosmos_key"].get<std::string>());
     std::string signature = create_hmac_signature(decoded_key, payload);
 
     std::string token_plain = "type=master&ver=1.0&sig=" + signature;
 
-    // URL encode the token
-    Curl curl;
-    char *encoded = curl_easy_escape(curl.handle(), token_plain.c_str(),
-                                     static_cast<int>(token_plain.length()));
-    if (!encoded) {
-        throw std::runtime_error("Failed to URL encode auth token");
-    }
-
-    std::string result(encoded);
-    curl_free(encoded);
-
-    return result;
+    return url_encode(token_plain);
 }
 
 std::optional<nlohmann::json>
@@ -136,8 +127,8 @@ CosmosDB::fetch_cosmos_item(const std::string &track_id) const {
     std::string timestamp = create_rfc1123_timestamp();
 
     std::string resource_link =
-        "dbs/" + config_["cosmos_db_name"].get<std::string>() + "/colls/" +
-        config_["cosmos_container"].get<std::string>() + "/docs/" + track_id;
+        "dbs/" + config["cosmos_db_name"].get<std::string>() + "/colls/" +
+        config["cosmos_container"].get<std::string>() + "/docs/" + track_id;
 
     std::string http_verb = "GET";
     std::string resource_type = "docs";
@@ -145,7 +136,7 @@ CosmosDB::fetch_cosmos_item(const std::string &track_id) const {
         create_auth_token(http_verb, resource_type, resource_link, timestamp);
 
     std::string url =
-        config_["cosmos_uri"].get<std::string>() + "/" + resource_link;
+        config["cosmos_uri"].get<std::string>() + "/" + resource_link;
 
     Curl curl;
 
@@ -183,7 +174,7 @@ CosmosDB::fetch_cosmos_item(const std::string &track_id) const {
         auto document = nlohmann::json::parse(response);
         return document;
 
-    } catch (const std::exception &e) {
+    } catch (const std::exception &) {
         throw;
     }
 }
@@ -192,7 +183,7 @@ std::string CosmosDB::generate_random_track_id() const {
     static std::random_device rd;
     static std::mt19937 gen(rd());
 
-    int max_value = config_.value("max_value", 1000000);
+    int max_value = config.value("max_value", 1000000);
     std::uniform_int_distribution<> dis(1, max_value);
 
     return std::to_string(dis(gen));
@@ -207,7 +198,7 @@ bool CosmosDB::is_not_found_response(const nlohmann::json &document) const {
 }
 
 std::optional<nlohmann::json> CosmosDB::get_item() {
-    int max_retries = config_.value("max_retries", 5);
+    int max_retries = config.value("max_retries", 5);
 
     for (int attempt = 1; attempt <= max_retries; ++attempt) {
         std::string track_id = generate_random_track_id();
@@ -225,7 +216,7 @@ std::optional<nlohmann::json> CosmosDB::get_item() {
 
             return document;
 
-        } catch (const std::exception &e) {
+        } catch (const std::exception &) {
             if (attempt == max_retries) {
                 throw; // Re-throw on last attempt
             }
@@ -236,74 +227,18 @@ std::optional<nlohmann::json> CosmosDB::get_item() {
     return std::nullopt;
 }
 
-std::optional<FileInfo>
-CosmosDB::create_file_info(const nlohmann::json &document) {
-    if (document.empty()) {
-        return std::nullopt;
-    }
+std::string CosmosDB::url_encode(const std::string &value) const {
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
 
-    FileInfo info;
-
-    // Extract track_name
-    if (document.contains("track_name") && document["track_name"].is_string()) {
-        info.track_name = document["track_name"].get<std::string>();
-    }
-
-    // Extract album path
-    if (document.contains("album") && document["album"].is_object()) {
-        const auto &album = document["album"];
-        if (album.contains("path") && album["path"].is_string()) {
-            info.album_path = album["path"].get<std::string>();
+    for (unsigned char c : value) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+        } else {
+            escaped << '%' << std::setw(2) << std::uppercase << int(c);
         }
     }
 
-    // Extract track_id
-    if (document.contains("track_id")) {
-        if (document["track_id"].is_number_integer()) {
-            info.track_id = document["track_id"].get<int>();
-        } else if (document["track_id"].is_string()) {
-            try {
-                info.track_id =
-                    std::stoi(document["track_id"].get<std::string>());
-            } catch (const std::exception &) {
-                info.track_id = 0;
-            }
-        }
-    }
-
-    // Generate extension and filename from track_name
-    if (!info.track_name.empty()) {
-        size_t dot_pos = info.track_name.find_last_of('.');
-        if (dot_pos != std::string::npos) {
-            info.extension = info.track_name.substr(dot_pos);
-        }
-
-        // Generate filename (remove extension and clean up)
-        info.filename = info.track_name;
-        if (dot_pos != std::string::npos) {
-            info.filename = info.filename.substr(0, dot_pos);
-        }
-
-        // Replace invalid filename characters
-        std::string invalid_chars = "\\/:*?\"<>|";
-        for (char c : invalid_chars) {
-            std::replace(info.filename.begin(), info.filename.end(), c, '_');
-        }
-    }
-
-    // Extract CIDs
-    if (document.contains("cids") && document["cids"].is_array()) {
-        const auto &cids_array = document["cids"];
-        info.cids.reserve(cids_array.size());
-        info.cid_download_status.reserve(cids_array.size());
-
-        for (const auto &cid_item : cids_array) {
-            if (cid_item.is_string()) {
-                info.cids.push_back(cid_item.get<std::string>());
-                info.cid_download_status.push_back(DownloadStatus::PENDING);
-            }
-        }
-    }
-
-    return info;
+    return escaped.str();
 }
