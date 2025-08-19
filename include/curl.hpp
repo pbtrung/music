@@ -23,7 +23,7 @@ class Curl {
 
     template <typename T> T get_info(CURLINFO info) const;
 
-    void perform();
+    int perform();
 
     void set_header(std::string_view header);
 

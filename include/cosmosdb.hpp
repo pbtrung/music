@@ -6,9 +6,8 @@
 #include <vector>
 
 #include "curl.hpp"
+#include "downloader.hpp"
 #include "json.hpp"
-
-enum class DownloadStatus { PENDING, IN_PROGRESS, COMPLETED, FAILED };
 
 class CosmosDB {
   public:
