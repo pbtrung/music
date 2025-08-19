@@ -42,6 +42,7 @@ void Downloader::download_cid(int cid_index) {
     }
 
     Curl curl;
+    curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
     try {
         long response_code = 0;
         int curl_perform = 0;
@@ -72,8 +73,12 @@ void Downloader::download_cid(int cid_index) {
             curl_perform = curl.perform();
             if (curl_perform == CURLE_OK) {
                 response_code = curl.get_info<long>(CURLINFO_RESPONSE_CODE);
-                std::string content_type(
-                    curl.get_info<char *>(CURLINFO_CONTENT_TYPE));
+
+                char *content_type_ptr =
+                    curl.get_info<char *>(CURLINFO_CONTENT_TYPE);
+                std::string content_type =
+                    content_type_ptr ? content_type_ptr : "";
+
                 if (response_code == 200 &&
                     (cids[cid_index].size() == 59 ||
                      (!content_type.empty() &&
