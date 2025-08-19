@@ -11,6 +11,7 @@ endif()
 # Set build flags for different build types
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wno-interference-size")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -Wno-interference-size")
+add_compile_definitions(SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
 find_package(PkgConfig REQUIRED)
 set(PKG_LIST
@@ -38,11 +39,18 @@ add_executable(music
     src/utils.cpp
     src/audio_decoder.cpp
     src/cosmosdb.cpp
+    src/downloader.cpp
 )
 add_executable(ex01
     examples/ex01.cpp
 )
-foreach(target music ex01)
+add_executable(ex02
+    examples/ex02.cpp
+    src/cosmosdb.cpp
+    src/utils.cpp
+    src/curl.cpp
+)
+foreach(target music ex01 ex02)
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
     target_link_directories(${target} PRIVATE ${COMMON_LINK_DIRS})
     target_link_libraries(${target} PRIVATE ${COMMON_LINK_LIBS})
