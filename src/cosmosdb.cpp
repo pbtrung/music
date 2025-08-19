@@ -2,7 +2,6 @@
 #include <chrono>
 #include <iomanip>
 #include <optional>
-#include <random>
 #include <sstream>
 #include <stdexcept>
 
@@ -180,13 +179,12 @@ CosmosDB::fetch_cosmos_item(const std::string &track_id) const {
 }
 
 std::string CosmosDB::generate_random_track_id() const {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
+    int min_value = config.value("min_value", 1);
+    int max_value = config.value("max_value", 2000000);
+    const auto rand_num =
+        Utilities::generate_unique_ints(1, min_value, max_value);
 
-    int max_value = config.value("max_value", 1000000);
-    std::uniform_int_distribution<> dis(1, max_value);
-
-    return std::to_string(dis(gen));
+    return std::to_string(rand_num->front());
 }
 
 bool CosmosDB::is_not_found_response(const nlohmann::json &document) const {

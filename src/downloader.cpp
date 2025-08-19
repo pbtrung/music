@@ -129,7 +129,7 @@ bool Downloader::attempt_download(const std::string &cid,
         reset_output_file(outfile);
     }
 
-    spdlog::warn("Download failed for {} after {} attempts", cid, max_retries);
+    SPDLOG_TRACE("Download failed for {} after {} attempts", cid, max_retries);
     return false;
 }
 
@@ -158,13 +158,12 @@ std::string Downloader::select_random_gateway(
         throw std::runtime_error("No gateways available");
     }
 
-    static thread_local Utilities util;
     const auto random_indices =
-        util.generate_unique_ints(1, 0, gateways.size() - 1);
+        Utilities::generate_unique_ints(1, 0, gateways.size() - 1);
 
     if (!random_indices || random_indices->empty()) {
         // Fallback to first gateway if random selection fails
-        spdlog::warn("Random gateway selection failed, using first gateway");
+        SPDLOG_TRACE("Random gateway selection failed, using first gateway");
         return gateways.front();
     }
 
