@@ -1,9 +1,11 @@
 #include <filesystem>
+#include <fstream>
 
 #include <fmt/base.h>
 #include <spdlog/spdlog.h>
 
 #include "downloader.hpp"
+#include "utils.hpp"
 
 namespace fs = std::filesystem;
 
@@ -15,6 +17,11 @@ Downloader::Downloader(const nlohmann::json &config,
 }
 
 void Downloader::download_cid(int cid_index) {
+    const std::vector<std::string> &gateways = config["gateways"];
+    const std::vector<std::string> &cids = track["cids"];
+    const int timeout = config["timeout"];
+    const int max_retries = config["max_retries"];
+
     fs::path file_path = fs::path(config["output"]) / cids[cid_index];
     std::ofstream outfile(file_path, std::ios::binary);
     if (!outfile.is_open()) {
@@ -28,11 +35,6 @@ void Downloader::download_cid(int cid_index) {
         long response_code = 0;
         int curl_perform = 0;
         std::string url;
-        const std::vector<std::string> &gateways = config["gateways"];
-        const std::vector<std::string> &cids = track["cids"];
-        const int timeout = config["timeout"];
-        const int max_retries = config["max_retries"];
-
         size_t count = 0;
 
         for (int retries = 0; retries < max_retries; ++retries) {
@@ -41,10 +43,19 @@ void Downloader::download_cid(int cid_index) {
                                   config["n_gateway"]);
                 curl.set_option(CURLOPT_TIMEOUT, 2 * timeout);
             } else {
-                auto randomIndex =
-                    Random::uniqueInts(1, 0, gateways.size() - 1)[0];
-                url = fmt::format("https://{}/{}", gateways[randomIndex],
-                                  cids[cid_index]);
+                std::string gateway;
+                if (retries == 3 || retries == 4) {
+                    gateway = config["i_gateway"];
+                } else {
+                    Utilities util;
+                    auto random_index =
+                        util.generate_unique_ints(
+                                1, config["min_value"].get<int>(),
+                                config["max_value"].get<int>())
+                            .value();
+                    gateway = gateways[random_index.front()];
+                }
+                url = fmt::format("https://{}/{}", gateway, cids[cid_index]);
                 curl.set_option(CURLOPT_TIMEOUT, timeout);
             }
             curl.set_option(CURLOPT_URL, url);
