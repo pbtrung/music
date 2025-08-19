@@ -44,12 +44,12 @@ void producer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
         json config = json::parse(f);
 
         CosmosDB cosmos(config);
-        auto track = cosmos.get_item();
+        json track = cosmos.get_item().value();
 
-        Downloader downloader(config, track);
-        downloader.download_file();
+        // Downloader downloader(config, track);
+        // downloader.download_file();
 
-        queue.emplace(std::move(track.value()));
+        queue.push(std::move(track));
     }
 }
 
