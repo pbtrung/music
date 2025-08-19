@@ -75,6 +75,7 @@ void Curl::set_header(std::string_view header) {
 
 // Explicit instantiations
 template void Curl::set_option<long>(CURLoption, long);
+template void Curl::set_option<int>(CURLoption, int);
 template void Curl::set_option<std::string>(CURLoption, std::string);
 template void Curl::set_option<const char *>(CURLoption, const char *);
 template void Curl::set_option<char *>(CURLoption, char *);

@@ -6,6 +6,8 @@
 #include <spdlog/spdlog.h>
 
 #include "atomic_queues.hpp"
+#include "cosmosdb.hpp"
+#include "downloader.hpp"
 #include "json.hpp"
 
 using json = nlohmann::json;
@@ -43,6 +45,12 @@ int main(int argc, char *argv[]) {
     std::ifstream config_file(argv[1]);
     json config = json::parse(config_file);
     setup_logging_to_file(config["log"].get<std::string>());
+
+    CosmosDB cosmos(config);
+    auto track = cosmos.get_item();
+
+    Downloader downloader(config, track);
+    downloader.download_file();
 
     return 0;
 }

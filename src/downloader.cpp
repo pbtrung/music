@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 
 #include "downloader.hpp"
+#include "thread_pool.hpp"
 #include "utils.hpp"
 
 namespace fs = std::filesystem;
@@ -14,6 +15,16 @@ Downloader::Downloader(const nlohmann::json &config,
     : config(config), track(track) {
     cid_download_status.resize(track["cids"].size(), DownloadStatus::PENDING);
     file_download_status = DownloadStatus::PENDING;
+}
+
+void Downloader::download_file() {
+    dp::ThreadPool thread_pool(config["ncores"].get<int>() *
+                               config["mul_factor"].get<int>());
+    for (size_t i = 0; i < track["cids"].size(); ++i) {
+        auto task = [this, i]() { this->download_cid(i); };
+        thread_pool.enqueue_detach(task);
+    }
+    thread_pool.wait_for_tasks();
 }
 
 void Downloader::download_cid(int cid_index) {
@@ -35,23 +46,20 @@ void Downloader::download_cid(int cid_index) {
         long response_code = 0;
         int curl_perform = 0;
         std::string url;
-        size_t count = 0;
 
         for (int retries = 0; retries < max_retries; ++retries) {
             if (cids[cid_index].size() == 59) {
                 url = fmt::format("https://{}.{}", cids[cid_index],
-                                  config["n_gateway"]);
+                                  config["n_gateway"].get<std::string>());
                 curl.set_option(CURLOPT_TIMEOUT, 2 * timeout);
             } else {
                 std::string gateway;
                 if (retries == 3 || retries == 4) {
-                    gateway = config["i_gateway"];
+                    gateway = config["i_gateway"].get<std::string>();
                 } else {
                     Utilities util;
                     auto random_index =
-                        util.generate_unique_ints(
-                                1, config["min_value"].get<int>(),
-                                config["max_value"].get<int>())
+                        util.generate_unique_ints(1, 0, gateways.size() - 1)
                             .value();
                     gateway = gateways[random_index.front()];
                 }
