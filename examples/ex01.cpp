@@ -2,33 +2,45 @@
 #include <iostream>
 #include <thread>
 
-#include "bounded_queue.hpp"
+#include "atomic_queues.hpp"
 
-void producer(BoundedQueue<int> &queue) {
+void producer(jdz::SpscQueue<int> &queue) {
     for (int i = 0; i < 6; ++i) {
         std::cout << "Producing " << i << "\n";
         queue.push(i);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    queue.stop();
+    // push sentinel values to signal consumers to stop
+    queue.push(-1);
+    queue.push(-1);
 }
 
-void consumer(BoundedQueue<int> &queue) {
+void consumer(jdz::SpscQueue<int> &queue, int id) {
+    int value;
     while (true) {
-        auto val_opt = queue.pop();
-        if (!val_opt.has_value()) {
-            std::cout << "Consumer stopped\n";
-            break;
+        if (queue.try_pop(value)) {
+            if (value == -1) {
+                std::cout << "Consumer " << id << " stopped\n";
+                break;
+            }
+            std::cout << "Consumer " << id << " consumed " << value << "\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        } else {
+            // avoid busy spinning
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-        std::cout << "Consuming " << *val_opt << "\n";
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
 }
 
 int main() {
-    BoundedQueue<int> bq(3);
+    // SPSC queue: capacity must be > 1
+    jdz::SpscQueue<int> queue(8);
 
-    std::jthread prod(producer, std::ref(bq));
-    std::jthread cons1(consumer, std::ref(bq));
-    std::jthread cons2(consumer, std::ref(bq));
+    std::jthread prod(producer, std::ref(queue));
+    std::jthread cons1(consumer, std::ref(queue), 1);
+    std::jthread cons2(consumer, std::ref(queue), 2);
+
+    prod.join();
+    cons1.join();
+    cons2.join();
 }

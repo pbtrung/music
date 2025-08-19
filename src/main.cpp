@@ -7,7 +7,9 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/spdlog.h>
 
+#include "atomic_queues.hpp"
 #include "json.hpp"
+#include "thread_pool.hpp"
 
 [[noreturn]] static void exit_on_error(const std::string &msg) {
     if (!msg.empty()) {
