@@ -18,19 +18,19 @@ AudioDecoder::AudioDecoder(std::string pipe_name, std::string filename,
 AudioDecoder::~AudioDecoder() = default;
 
 void AudioDecoder::decode() {
-    SPDLOG_TRACE("decode_audio: start decoding {}", filename);
+    SPDLOG_TRACE("Start decoding {}", filename);
     auto start = std::chrono::steady_clock::now();
 
     try {
         init();
     } catch (const std::runtime_error &e) {
-        SPDLOG_TRACE("decode_audio: init failed: {}", e.what());
+        SPDLOG_TRACE("init failed: {}", e.what());
         return;
     }
 
     log_duration(start);
 
-    SPDLOG_TRACE("decode_audio: start decode loop");
+    SPDLOG_TRACE("Start decode loop");
     while (av_read_frame(fmt_ctx.get(), pkt.get()) >= 0) {
         if (pkt->stream_index == stream_index) {
             process_frame();
@@ -38,8 +38,8 @@ void AudioDecoder::decode() {
         av_packet_unref(pkt.get());
     }
     fmt::print("\n\n");
-    SPDLOG_TRACE("decode_audio: finish decode loop");
-    SPDLOG_TRACE("decode_audio: end decoding {}", filename);
+    SPDLOG_TRACE("Finish decode loop");
+    SPDLOG_TRACE("End decoding {}", filename);
 }
 
 void AudioDecoder::init() {
