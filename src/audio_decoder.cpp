@@ -193,6 +193,15 @@ void AudioDecoder::print_audio_info() {
     fmt::print("  {0:<{1}}: {2}\n", "sample-fmt", width, fmt_str);
     fmt::print("  {0:<{1}}: {2}\n", "channels", width,
                codec_ctx->ch_layout.nb_channels);
+
+    if (codec_ctx->ch_layout.nb_channels != out_channels) {
+        fmt::print("  {:<{}}: {} -> {}\n", "resample-channels", width,
+                   codec_ctx->ch_layout.nb_channels, out_channels);
+    }
+    if (codec_ctx->sample_rate != out_samplerate) {
+        fmt::print("  {:<{}}: {} -> {}\n", "resample-rate", width,
+                   codec_ctx->sample_rate, out_samplerate);
+    }
 }
 
 void AudioDecoder::process_frame() {
