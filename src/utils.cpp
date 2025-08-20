@@ -250,35 +250,35 @@ std::string Utilities::format_commas(long num) noexcept {
     std::string str = std::to_string(num);
 
     // Handle negative numbers
-    int start = (str[0] == '-') ? 1 : 0;
+    bool negative = (str[0] == '-');
+    int start = negative ? 1 : 0;
 
-    // Calculate number of commas needed
-    int len = str.length() - start;
-    int commas = (len - 1) / 3;
+    // Get the numeric part
+    std::string digits = str.substr(start);
+    int len = digits.length();
 
-    if (commas == 0) {
-        // No commas needed
-        return str;
+    if (len <= 3) {
+        return str; // No commas needed
     }
 
-    // Create result string with space for commas
     std::string result;
-    result.reserve(str.length() + commas);
-
-    // Add negative sign if present
-    if (start == 1) {
+    if (negative) {
         result += '-';
     }
 
-    // Add digits with commas
-    int count = 0;
-    for (int i = start; i < str.length(); ++i) {
-        if (count == 3) {
-            result += ',';
-            count = 0;
-        }
-        result += str[i];
-        ++count;
+    // Calculate how many digits in the first group
+    int first_group_size = len % 3;
+    if (first_group_size == 0) {
+        first_group_size = 3;
+    }
+
+    // Add first group
+    result += digits.substr(0, first_group_size);
+
+    // Add remaining groups of 3 with commas
+    for (int i = first_group_size; i < len; i += 3) {
+        result += ',';
+        result += digits.substr(i, 3);
     }
 
     return result;

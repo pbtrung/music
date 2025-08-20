@@ -18,27 +18,28 @@ AudioDecoder::AudioDecoder(std::string pipe_name, std::string filename,
 AudioDecoder::~AudioDecoder() = default;
 
 void AudioDecoder::decode() {
-    spdlog::trace("decode_audio: start decoding {}", filename);
+    SPDLOG_TRACE("decode_audio: start decoding {}", filename);
     auto start = std::chrono::steady_clock::now();
 
     try {
         init();
     } catch (const std::runtime_error &e) {
-        spdlog::trace("decode_audio: init failed: {}", e.what());
+        SPDLOG_TRACE("decode_audio: init failed: {}", e.what());
         return;
     }
 
     log_duration(start);
 
-    spdlog::trace("decode_audio: start decode loop");
+    SPDLOG_TRACE("decode_audio: start decode loop");
     while (av_read_frame(fmt_ctx.get(), pkt.get()) >= 0) {
         if (pkt->stream_index == stream_index) {
             process_frame();
         }
         av_packet_unref(pkt.get());
     }
-    spdlog::trace("decode_audio: finish decode loop");
-    spdlog::trace("decode_audio: end decoding {}", filename);
+    fmt::print("\n\n");
+    SPDLOG_TRACE("decode_audio: finish decode loop");
+    SPDLOG_TRACE("decode_audio: end decoding {}", filename);
 }
 
 void AudioDecoder::init() {
@@ -244,7 +245,7 @@ void AudioDecoder::ffmpeg_log_cb(void *avcl, int level, const char *fmt_str,
     if (level <= av_log_get_level()) {
         char buffer[1024];
         vsnprintf(buffer, sizeof(buffer), fmt_str, vl);
-        spdlog::trace("{}", buffer);
+        SPDLOG_TRACE("{}", buffer);
     }
 }
 
