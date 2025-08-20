@@ -33,6 +33,7 @@ class Utilities {
     static std::optional<std::vector<int>>
     generate_unique_ints(int count, int min_val, int max_val) noexcept;
     static std::string generate_random_string(size_t length) noexcept;
+    static std::string format_commas(long num) noexcept;
 
     template <std::integral T>
     static std::string format_with_commas(T num) noexcept;
