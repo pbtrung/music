@@ -119,6 +119,10 @@ void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
     SPDLOG_TRACE("Start");
     while (true) {
         SPDLOG_TRACE("Start loop");
+
+        fs::path file_path;
+        bool file_path_valid = false;
+
         try {
             std::ifstream f(config_file);
             json config = json::parse(f);
@@ -128,16 +132,31 @@ void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
 
             const fs::path output_dir = config["output"].get<std::string>();
             const std::string filename = track["filename"].get<std::string>();
-            const fs::path file_path = output_dir / filename;
+            file_path = output_dir / filename;
+            file_path_valid = true;
 
             SPDLOG_TRACE("Pop: {}", filename);
             print_track_info(track);
-            AudioDecoder audio_decoder(config["pipe_name"].get<std::string>(),
-                                       filename, file_path.string());
+            // clang-format off
+            AudioDecoder audio_decoder(config["pipe_name"].get<std::string>(), filename, file_path.string());
+            // clang-format on
             audio_decoder.decode();
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
         }
+
+        // Always attempt to remove file if path was set
+        if (file_path_valid && fs::exists(file_path)) {
+            // clang-format off
+            try {
+                fs::remove(file_path);
+                SPDLOG_TRACE("File removed: {}", file_path.string());
+            } catch (const std::exception &e) {
+                SPDLOG_ERROR("Failed to remove file {}: {}", file_path.string(), e.what());
+            }
+            // clang-format on
+        }
+
         SPDLOG_TRACE("End loop");
     }
     SPDLOG_TRACE("End");
