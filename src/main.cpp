@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <stacktrace>
 #include <string>
 #include <thread>
 
@@ -18,9 +19,23 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+static void log_stacktrace() {
+    auto current_trace = std::stacktrace::current();
+    SPDLOG_TRACE("Stacktrace:");
+    for (const auto &entry : current_trace) {
+        SPDLOG_TRACE("  {}", std::to_string(entry));
+    }
+}
+
 [[noreturn]] static void exit_on_error(const std::string &msg) {
     if (!msg.empty()) {
         fmt::println("Error: {}", msg);
+
+        auto trace = std::stacktrace::current();
+        fmt::println("Stacktrace:");
+        for (const auto &entry : trace) {
+            fmt::println("  {}", std::to_string(entry));
+        }
     }
     std::exit(EXIT_FAILURE);
 }
@@ -70,6 +85,10 @@ void producer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
             }
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
+            log_stacktrace();
+        } catch (...) {
+            SPDLOG_TRACE("Unknown exception caught");
+            log_stacktrace();
         }
         SPDLOG_TRACE("End loop");
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -143,6 +162,10 @@ void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
             audio_decoder.decode();
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
+            log_stacktrace();
+        } catch (...) {
+            SPDLOG_TRACE("Unknown exception caught");
+            log_stacktrace();
         }
 
         // Always attempt to remove file if path was set
@@ -152,7 +175,8 @@ void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
                 fs::remove(file_path);
                 SPDLOG_TRACE("File removed: {}", file_path.string());
             } catch (const std::exception &e) {
-                SPDLOG_ERROR("Failed to remove file {}: {}", file_path.string(), e.what());
+                SPDLOG_TRACE("Failed to remove file {}: {}", file_path.string(), e.what());
+                log_stacktrace();
             }
             // clang-format on
         }

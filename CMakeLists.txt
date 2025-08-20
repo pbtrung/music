@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.50)
 project(music)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 # Set default build type to Release if not specified
 if(NOT CMAKE_BUILD_TYPE)
@@ -32,6 +32,8 @@ foreach(PKG ${PKG_LIST})
     list(APPEND COMMON_LINK_LIBS    ${${PKG}_LIBRARIES})
 endforeach()
 list(APPEND COMMON_INCLUDE_DIRS include)
+# stacktrace
+list(APPEND COMMON_LINK_LIBS stdc++exp)
 
 add_executable(music
     src/main.cpp
