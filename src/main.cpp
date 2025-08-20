@@ -61,7 +61,10 @@ void producer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
                 track["filename"] = downloader.assemble_file().value();
                 track["max_value"] = config["max_value"].get<int>();
                 SPDLOG_TRACE("Push: {}", track["filename"].get<std::string>());
-                queue.push(std::move(track));
+                while (!queue.try_push(std::move(track))) {
+                    std::this_thread::sleep_for(
+                        std::chrono::milliseconds(1000));
+                }
             } else {
                 SPDLOG_TRACE("Failed to download file");
             }
@@ -69,6 +72,7 @@ void producer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
             SPDLOG_TRACE("Error: {}", e.what());
         }
         SPDLOG_TRACE("End loop");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     SPDLOG_TRACE("End");
 }
