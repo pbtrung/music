@@ -35,9 +35,6 @@ class Utilities {
     static std::string generate_random_string(size_t length) noexcept;
     static std::string format_commas(long num) noexcept;
 
-    template <std::integral T>
-    static std::string format_with_commas(T num) noexcept;
-
     static constexpr size_t max_path_length = 4096;
     static constexpr size_t max_filename_length = 255;
     static constexpr size_t max_extension_length = 10;
@@ -46,23 +43,3 @@ class Utilities {
     static constexpr size_t max_random_string_length = 256;
     static constexpr size_t default_filename_length = 25;
 };
-
-template <std::integral T>
-std::string Utilities::format_with_commas(T num) noexcept {
-    std::string str = std::to_string(num);
-    std::string result;
-    result.reserve(str.length() + str.length() / 3);
-
-    int count = 0;
-    for (auto it = str.rbegin(); it != str.rend(); ++it) {
-        if (count == 3) {
-            result += ',';
-            count = 0;
-        }
-        result += *it;
-        ++count;
-    }
-
-    std::reverse(result.begin(), result.end());
-    return result;
-}
