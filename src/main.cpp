@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <thread>
 
@@ -12,6 +13,7 @@
 #include "cosmosdb.hpp"
 #include "downloader.hpp"
 #include "json.hpp"
+#include "utils.hpp"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -42,72 +44,67 @@ static void setup_logging_to_file(const std::string &log_file) {
 }
 
 void producer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
+    SPDLOG_TRACE("Start");
     while (true) {
-        std::ifstream f(config_file);
-        json config = json::parse(f);
+        SPDLOG_TRACE("Start loop");
+        try {
+            std::ifstream f(config_file);
+            json config = json::parse(f);
 
-        CosmosDB cosmos(config);
-        json track = cosmos.get_item().value();
+            CosmosDB cosmos(config);
+            json track = cosmos.get_item().value();
 
-        Downloader downloader(config, track);
-        downloader.download_file();
+            Downloader downloader(config, track);
+            downloader.download_file();
 
-        if (downloader.succeeded()) {
-            track["filename"] = downloader.assemble_file().value();
-            SPDLOG_TRACE("Push: {}", track["filename"].get<std::string>());
-            queue.push(std::move(track));
-        } else {
-            SPDLOG_TRACE("Failed to download file");
-            continue;
+            if (downloader.succeeded()) {
+                track["filename"] = downloader.assemble_file().value();
+                track["max_value"] = config["max_value"].get<int>();
+                SPDLOG_TRACE("Push: {}", track["filename"].get<std::string>());
+                queue.push(std::move(track));
+            } else {
+                SPDLOG_TRACE("Failed to download file");
+            }
+        } catch (const std::exception &e) {
+            SPDLOG_TRACE("Error: {}", e.what());
         }
+        SPDLOG_TRACE("End loop");
     }
+    SPDLOG_TRACE("End");
 }
 
-static void safe_print_task_info(const json &track) {
+static void print_track_info(const json &track) {
     if (track.empty()) {
-        SPDLOG_TRACE("safe_print_task_info: empty track");
+        SPDLOG_TRACE("Empty track");
         return;
     }
 
     // Extract values with safe defaults
     const std::string filename = track.value("filename", "UNKNOWN");
-    const std::string album_path = track.value("album_path", "UNKNOWN");
+    const std::string album_path = track["album"]["path"].get<std::string>();
     const std::string track_name = track.value("track_name", "UNKNOWN");
     const int track_id = track.value("track_id", 0);
-    const int num_tracks = track.value("num_tracks", 0);
+    const int num_tracks = track.value("max_value", 0);
     const int num_cids = track.contains("cids") ? track["cids"].size() : 0;
+    static constexpr size_t width = 1;
 
-    // Format numbers with commas, fallback to plain numbers on failure
-    std::string track_id_str;
-    std::string num_tracks_str;
-
-    // Assuming util_format_commas returns char* or similar
-    if (auto formatted = util_format_commas(track_id); formatted) {
-        track_id_str = formatted;
-    } else {
-        track_id_str = std::to_string(track_id);
-    }
-
-    if (auto formatted = util_format_commas(num_tracks); formatted) {
-        num_tracks_str = formatted;
-    } else {
-        num_tracks_str = std::to_string(num_tracks);
-    }
+    std::string track_id_str = Utilities::format_commas(track_id);
+    std::string num_tracks_str = Utilities::format_commas(num_tracks);
 
     // Print track information using fmt
     fmt::print("PLAYING: {}\n", filename);
-    fmt::print("  {:<{}}: {} / {}\n", "track", WIDTH, track_id_str,
+    fmt::print("  {:<{}}: {} / {}\n", "track", width, track_id_str,
                num_tracks_str);
-    fmt::print("  {:<{}}: {}\n", "album", WIDTH, album_path);
-    fmt::print("  {:<{}}: {}\n", "filename", WIDTH, track_name);
+    fmt::print("  {:<{}}: {}\n", "album", width, album_path);
+    fmt::print("  {:<{}}: {}\n", "filename", width, track_name);
 
     if (num_cids == 1) {
         const std::string cid = track.contains("cids") && !track["cids"].empty()
                                     ? track["cids"][0].get<std::string>()
                                     : "UNKNOWN";
-        fmt::print("  {:<{}}: {} -> {}\n", "info", WIDTH, cid, filename);
+        fmt::print("  {:<{}}: {} -> {}\n", "info", width, cid, filename);
     } else {
-        fmt::print("  {:<{}}: {} CIDs -> {}\n", "info", WIDTH, num_cids,
+        fmt::print("  {:<{}}: {} CIDs -> {}\n", "info", width, num_cids,
                    filename);
     }
 
@@ -115,35 +112,48 @@ static void safe_print_task_info(const json &track) {
 }
 
 void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
+    SPDLOG_TRACE("Start");
     while (true) {
-        std::ifstream f(config_file);
-        json config = json::parse(f);
+        SPDLOG_TRACE("Start loop");
+        try {
+            std::ifstream f(config_file);
+            json config = json::parse(f);
 
-        json track;
-        queue.pop(track);
+            json track;
+            queue.pop(track);
 
-        const fs::path output_dir = config["output"].get<std::string>();
-        const std::string filename = track["filename"].get<std::string>();
-        const fs::path file_path = output_dir / filename;
+            const fs::path output_dir = config["output"].get<std::string>();
+            const std::string filename = track["filename"].get<std::string>();
+            const fs::path file_path = output_dir / filename;
 
-        SPDLOG_TRACE("Pop: {}", filename);
-        AudioDecoder audio_decoder(config["pipe_name"].get<std::string>(),
-                                   filename, file_path.string());
-        audio_decoder.decode();
+            SPDLOG_TRACE("Pop: {}", filename);
+            print_track_info(track);
+            AudioDecoder audio_decoder(config["pipe_name"].get<std::string>(),
+                                       filename, file_path.string());
+            audio_decoder.decode();
+        } catch (const std::exception &e) {
+            SPDLOG_TRACE("Error: {}", e.what());
+        }
+        SPDLOG_TRACE("End loop");
     }
+    SPDLOG_TRACE("End");
 }
 
 int main(int argc, char *argv[]) {
     int num_files = 4;
 
+    SPDLOG_TRACE("Start");
     if (argc != 2) {
         exit_on_error("Usage: <program> <config_file>");
     } else {
         std::ifstream config_file(argv[1]);
         json config = json::parse(config_file);
+
         setup_logging_to_file(config["log"].get<std::string>());
         num_files = config["num_files"].get<int>();
+        fs::remove_all(config["output"].get<std::string>());
     }
+    SPDLOG_TRACE("Empty track");
 
     std::string config_file(argv[1]);
     jdz::SpscQueue<json> queue(num_files);
@@ -152,6 +162,8 @@ int main(int argc, char *argv[]) {
 
     p.join();
     c.join();
+
+    SPDLOG_TRACE("End");
 
     return 0;
 }
