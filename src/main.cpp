@@ -176,7 +176,6 @@ int main(int argc, char *argv[]) {
         num_files = config["num_files"].get<int>();
         fs::remove_all(config["output"].get<std::string>());
     }
-    SPDLOG_TRACE("Empty track");
 
     std::string config_file(argv[1]);
     jdz::SpscQueue<json> queue(num_files);
