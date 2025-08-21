@@ -26,6 +26,10 @@ class Curl {
     int perform();
 
     void set_header(std::string_view header);
+    
+    // New methods for better state management
+    void clear_headers();
+    void reset();
 
     const std::string &get_response() const noexcept {
         return response_data;

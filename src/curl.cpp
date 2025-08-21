@@ -98,6 +98,21 @@ void Curl::reset_string_output() {
     curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEDATA, this);
 }
 
+void Curl::clear_headers() {
+    if (headers) {
+        curl_slist_free_all(headers);
+        headers = nullptr;
+    }
+    curl_easy_setopt(curl_handle.get(), CURLOPT_HTTPHEADER, nullptr);
+}
+
+void Curl::reset() {
+    response_data.clear();
+    clear_headers();
+    // Reset to default string output callbacks
+    reset_string_output(); 
+}
+
 // Explicit instantiations
 template void Curl::set_option<long>(CURLoption, long);
 template void Curl::set_option<int>(CURLoption, int);
