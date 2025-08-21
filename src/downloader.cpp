@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 
 Downloader::Downloader(const nlohmann::json &config,
                        const nlohmann::json &track)
-    : config(config), track(track) {
+    : config(config), track(track), completed_cids(0) {
     const auto cid_count = track["cids"].size();
     cid_download_status.resize(cid_count, DownloadStatus::PENDING);
     file_download_status = DownloadStatus::PENDING;
@@ -188,9 +188,11 @@ void Downloader::download_cid(int cid_index) {
                 cid_download_status[cid_index] = DownloadStatus::FAILED;
             } else {
                 cid_download_status[cid_index] = DownloadStatus::SUCCEEDED;
-                SPDLOG_TRACE("Successfully downloaded: {} (cid {}/{})",
-                             current_cid, cid_index + 1,
-                             cid_download_status.size());
+                const int current_completed = completed_cids.fetch_add(1) + 1;
+                SPDLOG_TRACE(
+                    "Successfully downloaded: {} (cid {}/{}, finished {}/{})",
+                    current_cid, cid_index + 1, cid_download_status.size(),
+                    current_completed, cid_download_status.size());
             }
         } else {
             cid_download_status[cid_index] = DownloadStatus::FAILED;

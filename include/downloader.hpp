@@ -1,9 +1,11 @@
 #pragma once
 
-#include "curl.hpp"
-#include "json.hpp"
+#include <atomic>
 #include <optional>
 #include <string>
+
+#include "curl.hpp"
+#include "json.hpp"
 
 enum class DownloadStatus { PENDING, SUCCEEDED, FAILED };
 
@@ -40,4 +42,5 @@ class Downloader {
 
     std::vector<DownloadStatus> cid_download_status;
     DownloadStatus file_download_status;
+    std::atomic<int> completed_cids;
 };
