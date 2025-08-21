@@ -42,12 +42,6 @@ bool Downloader::succeeded() const {
 }
 
 std::optional<std::string> Downloader::assemble_file() {
-    if (!succeeded()) {
-        SPDLOG_TRACE(
-            "Cannot assemble file: not all CIDs downloaded successfully");
-        return std::nullopt;
-    }
-
     const auto &cids = track["cids"].get<std::vector<std::string>>();
     const fs::path output_dir = config["output"].get<std::string>();
 
