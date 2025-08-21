@@ -19,6 +19,8 @@ RUN git clone https://github.com/pbtrung/music && \
 
 FROM alpine:edge
 
+RUN echo "@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories
+
 RUN apk update && \
     apk --no-cache upgrade && \
     apk --no-cache add libcurl ffmpeg openssl fmt spdlog snapcast-server snapweb
