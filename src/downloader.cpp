@@ -224,8 +224,8 @@ bool Downloader::attempt_download(const std::string &cid,
         curl.set_option(CURLOPT_URL, url);
         curl.set_option(CURLOPT_TIMEOUT, current_timeout);
 
-        SPDLOG_TRACE("Downloading from {} (attempt {}/{})", cid, url,
-                     attempt + 1, max_retries);
+        SPDLOG_TRACE("Downloading from {} (attempt {}/{})", url, attempt + 1,
+                     max_retries);
 
         const int curl_result = curl.perform();
 
