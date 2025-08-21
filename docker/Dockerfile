@@ -23,7 +23,7 @@ RUN echo "@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/a
 
 RUN apk update && \
     apk --no-cache upgrade && \
-    apk --no-cache add libcurl ffmpeg openssl fmt spdlog snapcast-server snapweb
+    apk --no-cache add libcurl ffmpeg openssl fmt spdlog snapcast-server snapweb@testing
 
 COPY --from=build /root/gwsocket/gwsocket /usr/bin/
 COPY --from=build /root/music/build/release/music /usr/bin/
