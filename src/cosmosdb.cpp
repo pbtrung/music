@@ -142,7 +142,7 @@ CosmosDB::fetch_cosmos_item(const std::string &track_id) const {
     // Set headers using Curl::set_header
     curl.set_header("Accept: application/json");
     curl.set_header("x-ms-date: " + timestamp);
-    curl.set_header("x-ms-version: " + cosmos_api_version_);
+    curl.set_header("x-ms-version: " + cosmos_api_version);
     curl.set_header("authorization: " + auth_token);
     curl.set_header("x-ms-documentdb-partitionkey: [\"" + track_id + "\"]");
 

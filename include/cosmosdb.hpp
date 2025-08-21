@@ -23,7 +23,7 @@ class CosmosDB {
 
   private:
     nlohmann::json config;
-    std::string cosmos_api_version_ = "2018-12-31";
+    static constexpr std::string cosmos_api_version = "2018-12-31";
 
     std::string create_rfc1123_timestamp() const;
     std::vector<unsigned char>
