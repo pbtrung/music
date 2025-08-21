@@ -48,7 +48,7 @@ void AudioDecoder::init() {
         0) {
         throw std::runtime_error("Failed to open source file");
     }
-    fmt_ctx = AudioDecoderRAII::AVFormatContextPtr(tmp_fmt_ctx);
+    fmt_ctx = AudioDecoderUtils::AVFormatContextPtr(tmp_fmt_ctx);
 
     if (avformat_find_stream_info(fmt_ctx.get(), nullptr) < 0) {
         throw std::runtime_error("Failed to find stream information");
@@ -68,12 +68,12 @@ void AudioDecoder::init() {
     AVPacket *tmp_pkt = av_packet_alloc();
     if (!tmp_pkt)
         throw std::runtime_error("Failed to allocate packet");
-    pkt = AudioDecoderRAII::AVPacketPtr(tmp_pkt);
+    pkt = AudioDecoderUtils::AVPacketPtr(tmp_pkt);
 
     AVFrame *tmp_frame = av_frame_alloc();
     if (!tmp_frame)
         throw std::runtime_error("Failed to allocate frame");
-    frame = AudioDecoderRAII::AVFramePtr(tmp_frame);
+    frame = AudioDecoderUtils::AVFramePtr(tmp_frame);
 
     int64_t duration = get_duration();
     duration_str = Utilities::format_time(static_cast<int>(duration));
@@ -128,7 +128,7 @@ void AudioDecoder::open_codec() {
     AVCodecContext *tmp_codec_ctx = avcodec_alloc_context3(codec);
     if (!tmp_codec_ctx)
         throw std::runtime_error("Failed to allocate codec context");
-    codec_ctx = AudioDecoderRAII::AVCodecContextPtr(tmp_codec_ctx);
+    codec_ctx = AudioDecoderUtils::AVCodecContextPtr(tmp_codec_ctx);
 
     if (avcodec_parameters_to_context(
             codec_ctx.get(), fmt_ctx->streams[stream_index]->codecpar) < 0) {
@@ -145,7 +145,7 @@ void AudioDecoder::init_resampler() {
     SwrContext *tmp_swr = swr_alloc();
     if (!tmp_swr)
         throw std::runtime_error("Failed to allocate resampler");
-    swr_ctx = AudioDecoderRAII::SwrContextPtr(tmp_swr);
+    swr_ctx = AudioDecoderUtils::SwrContextPtr(tmp_swr);
 
     av_opt_set_chlayout(swr_ctx.get(), "in_chlayout", &codec_ctx->ch_layout, 0);
     av_opt_set_int(swr_ctx.get(), "in_sample_rate", codec_ctx->sample_rate, 0);
@@ -215,7 +215,7 @@ void AudioDecoder::process_frame() {
             av_rescale_rnd(frame->nb_samples, out_samplerate,
                            codec_ctx->sample_rate, AV_ROUND_UP);
 
-        AudioDecoderRAII::AVSampleBuffer output_buffer;
+        AudioDecoderUtils::AVSampleBuffer output_buffer;
         if (!output_buffer.allocate(out_channels, max_dst_nb_samples,
                                     out_samplefmt)) {
             throw std::runtime_error("Failed to allocate output buffer");

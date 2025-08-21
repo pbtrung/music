@@ -12,7 +12,7 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-namespace AudioDecoderRAII {
+namespace AudioDecoderUtils {
 
 struct AVFormatContextDeleter {
     void operator()(AVFormatContext *ctx) {
@@ -112,7 +112,7 @@ using SwrContextPtr = std::unique_ptr<SwrContext, SwrContextDeleter>;
 using AVPacketPtr = std::unique_ptr<AVPacket, AVPacketDeleter>;
 using AVFramePtr = std::unique_ptr<AVFrame, AVFrameDeleter>;
 
-} // namespace AudioDecoderRAII
+} // namespace AudioDecoderUtils
 
 class AudioDecoder {
   public:
@@ -126,11 +126,11 @@ class AudioDecoder {
     void decode();
 
   private:
-    AudioDecoderRAII::AVFormatContextPtr fmt_ctx;
-    AudioDecoderRAII::AVCodecContextPtr codec_ctx;
-    AudioDecoderRAII::SwrContextPtr swr_ctx;
-    AudioDecoderRAII::AVPacketPtr pkt;
-    AudioDecoderRAII::AVFramePtr frame;
+    AudioDecoderUtils::AVFormatContextPtr fmt_ctx;
+    AudioDecoderUtils::AVCodecContextPtr codec_ctx;
+    AudioDecoderUtils::SwrContextPtr swr_ctx;
+    AudioDecoderUtils::AVPacketPtr pkt;
+    AudioDecoderUtils::AVFramePtr frame;
 
     std::ofstream output_stream;
     std::string pipe_name;
