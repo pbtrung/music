@@ -110,7 +110,7 @@ void Curl::reset() {
     response_data.clear();
     clear_headers();
     // Reset to default string output callbacks
-    reset_string_output(); 
+    reset_string_output();
 }
 
 // Explicit instantiations

@@ -32,10 +32,17 @@ void AudioDecoder::decode() {
 
     SPDLOG_TRACE("Start decode loop");
     while (av_read_frame(fmt_ctx.get(), pkt.get()) >= 0) {
+        struct PacketGuard {
+            AVPacket *pkt;
+            PacketGuard(AVPacket *p) : pkt(p) {}
+            ~PacketGuard() {
+                av_packet_unref(pkt);
+            }
+        } guard(pkt.get());
+
         if (pkt->stream_index == stream_index) {
             process_frame();
         }
-        av_packet_unref(pkt.get());
     }
     fmt::print("\n\n");
     SPDLOG_TRACE("Finish decode loop");
