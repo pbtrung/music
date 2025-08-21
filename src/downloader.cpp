@@ -194,7 +194,9 @@ void Downloader::download_cid(int cid_index) {
                 cid_download_status[cid_index] = DownloadStatus::FAILED;
             } else {
                 cid_download_status[cid_index] = DownloadStatus::SUCCEEDED;
-                SPDLOG_TRACE("Successfully downloaded: {}", current_cid);
+                SPDLOG_TRACE("Successfully downloaded: {} (cid {}/{})",
+                             current_cid, cid_index + 1,
+                             cid_download_status.size());
             }
         } else {
             cid_download_status[cid_index] = DownloadStatus::FAILED;
@@ -228,7 +230,7 @@ bool Downloader::attempt_download(const std::string &cid,
         curl.set_option(CURLOPT_URL, url);
         curl.set_option(CURLOPT_TIMEOUT, current_timeout);
 
-        SPDLOG_TRACE("Downloading {} from {} (attempt {}/{})", cid, url,
+        SPDLOG_TRACE("Downloading from {} (attempt {}/{})", cid, url,
                      attempt + 1, max_retries);
 
         const int curl_result = curl.perform();
