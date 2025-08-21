@@ -28,3 +28,5 @@ COPY --from=build /root/music/build/release/music /usr/bin/
 
 WORKDIR /script
 COPY entrypoint.sh /script/
+
+ENTRYPOINT ["/script/entrypoint.sh"]
