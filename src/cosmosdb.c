@@ -270,7 +270,7 @@ static struct curl_slist *build_http_headers(cosmos_request_ctx_t *ctx,
     return headers;
 }
 
-static bool setup_curl_get_request(cosmos_request_ctx_t *ctx, const char *url,
+static struct curl_slist *setup_curl_get_request(cosmos_request_ctx_t *ctx, const char *url,
                                    const char *partition_key,
                                    http_response_t *response) {
     if (!ctx || !ctx->curl || !url || !partition_key || !response) {
@@ -295,7 +295,7 @@ static bool setup_curl_get_request(cosmos_request_ctx_t *ctx, const char *url,
     curl_easy_setopt(ctx->curl, CURLOPT_TIMEOUT, 30L);
     curl_easy_setopt(ctx->curl, CURLOPT_FOLLOWLOCATION, 1L);
 
-    return true;
+    return headers;
 }
 
 static json_t *fetch_cosmos_item(cosmos_request_ctx_t *ctx,
@@ -333,13 +333,15 @@ static json_t *fetch_cosmos_item(cosmos_request_ctx_t *ctx,
     http_response_t response;
     http_response_init(&response);
 
-    if (!setup_curl_get_request(ctx, url, track_id, &response)) {
+    struct curl_slist *headers = setup_curl_get_request(ctx, url, track_id, &response);
+    if (!headers) {
         log_trace("fetch_cosmos_item: Failed to setup CURL request");
         http_response_cleanup(&response);
         return NULL;
     }
 
     CURLcode curl_result = curl_easy_perform(ctx->curl);
+    curl_slist_free_all(headers);
     long http_status = 0;
     curl_easy_getinfo(ctx->curl, CURLINFO_RESPONSE_CODE, &http_status);
 
