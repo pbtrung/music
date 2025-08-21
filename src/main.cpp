@@ -64,7 +64,7 @@ void producer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
         SPDLOG_TRACE("Start loop");
         try {
             std::ifstream f(config_file);
-            json config = json::parse(f);
+            const json config = json::parse(f);
 
             CosmosDB cosmos(config);
             json track = cosmos.get_item().value();
@@ -144,7 +144,7 @@ void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
 
         try {
             std::ifstream f(config_file);
-            json config = json::parse(f);
+            const json config = json::parse(f);
 
             json track;
             queue.pop(track);
@@ -194,7 +194,7 @@ int main(int argc, char *argv[]) {
         exit_on_error("Usage: <program> <config_file>");
     } else {
         std::ifstream config_file(argv[1]);
-        json config = json::parse(config_file);
+        const json config = json::parse(config_file);
 
         setup_logging_to_file(config["log"].get<std::string>());
         num_files = config["num_files"].get<int>();
