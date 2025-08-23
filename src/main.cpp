@@ -147,7 +147,9 @@ void consumer(jdz::SpscQueue<json> &queue, const std::string &config_file) {
             const json config = json::parse(f);
 
             json track;
-            queue.pop(track);
+            while (!queue.try_pop(track)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            }
 
             const fs::path output_dir = config["output"].get<std::string>();
             const std::string filename = track["filename"].get<std::string>();
