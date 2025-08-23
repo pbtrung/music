@@ -12,4 +12,5 @@ gwsocket_pid=$!
 wait $music_pid
 # Kill gwsocket when music exits
 kill -TERM $gwsocket_pid 2>/dev/null
+wait $gwsocket_pid 2>/dev/null
 rm /tmp/music_pipe
