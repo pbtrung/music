@@ -42,6 +42,7 @@ add_executable(music
     src/audio_decoder.cpp
     src/cosmosdb.cpp
     src/downloader.cpp
+    src/gdr_downloader.cpp
 )
 add_executable(ex01
     examples/ex01.cpp
