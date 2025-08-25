@@ -254,6 +254,7 @@ std::string Downloader::get_fresh_token() {
 }
 
 std::string Downloader::request_new_token() {
+    const int max_retries = config["max_retries"].get<int>();
     const std::string url = "https://oauth2.googleapis.com/token";
     const std::string data = fmt::format(
         "client_id={}&client_secret={}&refresh_token={}&grant_type=refresh_token",
@@ -261,32 +262,69 @@ std::string Downloader::request_new_token() {
         config["client_secret"].get<std::string>(),
         config["refresh_token"].get<std::string>());
 
-    Curl curl;
-    curl.reset_string_output();
-    curl.set_option(CURLOPT_URL, url);
-    curl.set_option(CURLOPT_POSTFIELDS, data);
-    curl.set_option(CURLOPT_TIMEOUT, config["timeout"].get<int>());
-    curl.set_header("Content-Type: application/x-www-form-urlencoded");
+    for (int attempt = 0; attempt < max_retries; ++attempt) {
+        Curl curl;
+        curl.reset_string_output();
+        curl.set_option(CURLOPT_URL, url);
+        curl.set_option(CURLOPT_POSTFIELDS, data);
+        curl.set_option(CURLOPT_TIMEOUT, config["timeout"].get<int>());
+        curl.set_header("Content-Type: application/x-www-form-urlencoded");
 
-    if (curl.perform() != CURLE_OK) {
-        throw std::runtime_error("Token refresh request failed");
+        const int result = curl.perform();
+        if (result != CURLE_OK) {
+            SPDLOG_TRACE("Token refresh attempt {} failed with curl error: {}",
+                         attempt + 1, result);
+            if (attempt < max_retries - 1) {
+                std::this_thread::sleep_for(
+                    milliseconds(1000 * (1 << attempt)));
+                continue;
+            }
+            throw std::runtime_error("Token refresh request failed after " +
+                                     std::to_string(max_retries) + " attempts");
+        }
+
+        const auto response_code = curl.get_info<long>(CURLINFO_RESPONSE_CODE);
+        if (response_code != 200) {
+            SPDLOG_TRACE("Token refresh attempt {} failed with HTTP error: {}",
+                         attempt + 1, response_code);
+            if (attempt < max_retries - 1) {
+                std::this_thread::sleep_for(
+                    milliseconds(1000 * (1 << attempt)));
+                continue;
+            }
+            throw std::runtime_error(
+                "Token refresh HTTP error: " + std::to_string(response_code) +
+                " after " + std::to_string(max_retries) + " attempts");
+        }
+
+        // Success - parse and return the token
+        try {
+            const auto token_data = json::parse(curl.get_response());
+            const std::string access_token = token_data["access_token"];
+            const int expires_in = token_data.value("expires_in", 3600);
+            const auto expiry = system_clock::now() + seconds(expires_in - 30);
+
+            config["access_token"] = access_token;
+            config["expiry_iso"] = to_iso8601(expiry);
+
+            SPDLOG_TRACE("Token refresh succeeded on attempt {}", attempt + 1);
+            return access_token;
+        } catch (const json::exception &e) {
+            SPDLOG_TRACE("Token refresh attempt {} failed to parse JSON: {}",
+                         attempt + 1, e.what());
+            if (attempt < max_retries - 1) {
+                std::this_thread::sleep_for(
+                    milliseconds(1000 * (1 << attempt)));
+                continue;
+            }
+            throw std::runtime_error(
+                "Token refresh JSON parsing failed after " +
+                std::to_string(max_retries) + " attempts: " + e.what());
+        }
     }
 
-    const auto response_code = curl.get_info<long>(CURLINFO_RESPONSE_CODE);
-    if (response_code != 200) {
-        throw std::runtime_error("Token refresh HTTP error: " +
-                                 std::to_string(response_code));
-    }
-
-    const auto token_data = json::parse(curl.get_response());
-    const std::string access_token = token_data["access_token"];
-    const int expires_in = token_data.value("expires_in", 3600);
-    const auto expiry = system_clock::now() + seconds(expires_in - 30);
-
-    config["access_token"] = access_token;
-    config["expiry_iso"] = to_iso8601(expiry);
-
-    return access_token;
+    // This should never be reached due to the throw statements above
+    throw std::runtime_error("Token refresh failed unexpectedly");
 }
 
 bool Downloader::is_token_valid() const {
