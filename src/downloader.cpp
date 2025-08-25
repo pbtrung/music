@@ -80,11 +80,11 @@ bool Downloader::execute_download(const std::string &cid,
     const auto cid_type = get_cid_type(cid);
 
     switch (cid_type) {
-    case CidType::GOOGLE_DRIVE:
-        return download_via_google_drive(cid, outfile);
-    case CidType::IPFS_SPECIAL:
+    case CidType::GDR:
+        return download_via_gdr(cid, outfile);
+    case CidType::IPFS:
         return download_via_ipfs(cid, outfile, true);
-    case CidType::IPFS_NORMAL:
+    case CidType::ARW:
     default:
         return download_via_ipfs(cid, outfile, false);
     }
@@ -119,10 +119,10 @@ void Downloader::finalize_download(int cid_index, const std::string &cid,
 // CID type detection
 CidType Downloader::get_cid_type(const std::string &cid) const {
     if (cid.size() == 45)
-        return CidType::GOOGLE_DRIVE;
+        return CidType::GDR;
     if (cid.size() == 59)
-        return CidType::IPFS_SPECIAL;
-    return CidType::IPFS_NORMAL;
+        return CidType::IPFS;
+    return CidType::ARW;
 }
 
 // IPFS download methods
@@ -162,7 +162,7 @@ bool Downloader::try_ipfs_download(const std::string &cid,
     if (response_code != 200)
         return false;
 
-    const bool is_special = get_cid_type(cid) == CidType::IPFS_SPECIAL;
+    const bool is_special = get_cid_type(cid) == CidType::IPFS;
     return validate_ipfs_response(curl, is_special);
 }
 
@@ -205,8 +205,8 @@ bool Downloader::validate_ipfs_response(const Curl &curl,
 }
 
 // Google Drive download methods
-bool Downloader::download_via_google_drive(const std::string &file_id,
-                                           std::ofstream &outfile) {
+bool Downloader::download_via_gdr(const std::string &file_id,
+                                  std::ofstream &outfile) {
     const int max_retries = config["max_retries"].get<int>();
     const int timeout = config["timeout"].get<int>();
 
@@ -350,7 +350,7 @@ fs::path Downloader::get_final_path(const std::string &cid,
                                     CidType type) const {
     const fs::path output_dir = config["output"].get<std::string>();
 
-    if (type == CidType::GOOGLE_DRIVE || type == CidType::IPFS_SPECIAL) {
+    if (type == CidType::GDR || type == CidType::IPFS) {
         const auto filename = generate_output_filename();
         return filename.empty() ? output_dir / cid : output_dir / filename;
     }
@@ -389,8 +389,7 @@ std::optional<std::string> Downloader::handle_single_file() {
     const std::string &cid = cids[0];
     const auto cid_type = get_cid_type(cid);
 
-    if (cid_type == CidType::GOOGLE_DRIVE ||
-        cid_type == CidType::IPFS_SPECIAL) {
+    if (cid_type == CidType::GDR || cid_type == CidType::IPFS) {
         const auto filename = generate_output_filename();
         return filename.empty() ? std::nullopt : std::make_optional(filename);
     }

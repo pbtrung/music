@@ -10,7 +10,7 @@
 #include "json.hpp"
 
 enum class DownloadStatus { PENDING, SUCCEEDED, FAILED };
-enum class CidType { IPFS_NORMAL, IPFS_SPECIAL, GOOGLE_DRIVE };
+enum class CidType { ARW, IPFS, GDR };
 
 class Downloader {
   public:
@@ -49,8 +49,7 @@ class Downloader {
     bool validate_ipfs_response(const Curl &curl, bool is_special) const;
 
     // Google Drive download methods
-    bool download_via_google_drive(const std::string &file_id,
-                                   std::ofstream &outfile);
+    bool download_via_gdr(const std::string &file_id, std::ofstream &outfile);
     std::string get_fresh_token();
     std::string request_new_token();
     bool is_token_valid() const;
