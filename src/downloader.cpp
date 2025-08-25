@@ -119,11 +119,13 @@ void Downloader::finalize_download(int cid_index, const std::string &cid,
 
 // CID type detection
 CidType Downloader::get_cid_type(const std::string &cid) const {
-    if (cid.size() == 45)
-        return CidType::GDR;
-    if (cid.size() == 59)
-        return CidType::IPFS;
-    return CidType::ARW;
+    if (!track.contains("byte_range")) {
+        if (cid.size() == 43)
+            return CidType::ARW;
+        else
+            return CidType::IPFS;
+    }
+    return CidType::GDR;
 }
 
 // IPFS download methods
