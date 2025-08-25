@@ -223,6 +223,9 @@ bool Downloader::download_via_google_drive(const std::string &file_id,
             "https://www.googleapis.com/drive/v3/files/{}?alt=media", file_id);
         curl.set_option(CURLOPT_URL, url);
         curl.set_header(fmt::format("Authorization: Bearer {}", token));
+        curl.set_header(fmt::format("Range: bytes={}-{}",
+                                    track["byte_range"][0].get<int>(),
+                                    track["byte_range"][1].get<int>()));
 
         const int result = curl.perform();
         if (result != CURLE_OK) {
