@@ -52,7 +52,7 @@ add_executable(ex02
     src/utils.cpp
     src/curl.cpp
 )
-foreach(target music ex01 ex02)
+foreach(target music)
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
     target_link_directories(${target} PRIVATE ${COMMON_LINK_DIRS})
     target_link_libraries(${target} PRIVATE ${COMMON_LINK_LIBS})
