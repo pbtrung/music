@@ -209,6 +209,7 @@ bool Downloader::download_via_gdr(const std::string &file_id,
                                   std::ofstream &outfile) {
     const int max_retries = config["max_retries"].get<int>();
     const int timeout = config["timeout"].get<int>();
+    const auto &byte_range = track["byte_range"].get<std::vector<int>>();
 
     for (int attempt = 0; attempt < max_retries; ++attempt) {
         const auto token = get_fresh_token();
@@ -223,9 +224,8 @@ bool Downloader::download_via_gdr(const std::string &file_id,
             "https://www.googleapis.com/drive/v3/files/{}?alt=media", file_id);
         curl.set_option(CURLOPT_URL, url);
         curl.set_header(fmt::format("Authorization: Bearer {}", token));
-        curl.set_header(fmt::format("Range: bytes={}-{}",
-                                    track["byte_range"][0].get<int>(),
-                                    track["byte_range"][1].get<int>()));
+        curl.set_header(
+            fmt::format("Range: bytes={}-{}", byte_range[0], byte_range[1]));
 
         const int result = curl.perform();
         if (result != CURLE_OK) {
