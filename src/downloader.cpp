@@ -1,5 +1,6 @@
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -460,26 +461,20 @@ void Downloader::ensure_output_directory() const {
     fs::create_directories(output_dir, ec);
 }
 
-// Time utilities
+// Time utilities require C++23.
 std::string Downloader::to_iso8601(const system_clock::time_point &tp) {
-    const auto time_t = system_clock::to_time_t(tp);
-    std::tm tm{};
-    gmtime_r(&time_t, &tm);
-
-    return fmt::format("{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}+00:00",
-                       tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
-                       tm.tm_min, tm.tm_sec);
+    return std::format("{:%Y-%m-%dT%H:%M:%S}", tp);
 }
 
 system_clock::time_point
 Downloader::from_iso8601(const std::string &iso_string) {
-    std::tm tm{};
+    system_clock::time_point tp;
     std::istringstream ss(iso_string);
-    ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+    ss >> std::chrono::parse("%Y-%m-%dT%H:%M:%S", tp);
 
     if (ss.fail()) {
         throw std::runtime_error("Invalid ISO8601 format: " + iso_string);
     }
 
-    return system_clock::from_time_t(timegm(&tm));
+    return tp;
 }
