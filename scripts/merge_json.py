@@ -44,4 +44,7 @@ if __name__ == "__main__":
         print("Usage: python merge_with_id.py index.json file_id.json output.json")
         sys.exit(1)
 
+    # rclone lsjson gdr:folder/subfolder > raw_file_id.json
+    # jq --indent 4 . raw_file_id.json > file_id.json
+    # python merge_json.py index.json file_id.json output.json
     merge_ids(sys.argv[1], sys.argv[2], sys.argv[3])
