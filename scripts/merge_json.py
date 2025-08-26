@@ -3,7 +3,7 @@ import json
 import os
 
 
-def merge_ids(index_path, file_id_path, output_path):
+def merge_ids(index_path, file_id_path, email, output_path):
     # Check if output file already exists
     if os.path.exists(output_path):
         print(f"Error: output file '{output_path}' already exists. Aborting.")
@@ -22,6 +22,7 @@ def merge_ids(index_path, file_id_path, output_path):
 
     # Merge ID into index.json where merged_file.name matches Name
     for entry in index_data:
+        entry["email"] = email
         merged_name = entry.get("merged_file", {}).get("name")
         if merged_name:
             if merged_name in id_map:
@@ -40,11 +41,11 @@ def merge_ids(index_path, file_id_path, output_path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 5:
         print("Usage: python merge_with_id.py index.json file_id.json output.json")
         sys.exit(1)
 
     # rclone lsjson gdr:folder/subfolder > raw_file_id.json
     # jq --indent 4 . raw_file_id.json > file_id.json
-    # python merge_json.py index.json file_id.json output.json
-    merge_ids(sys.argv[1], sys.argv[2], sys.argv[3])
+    # python merge_json.py index.json file_id.json email@abc.com output.json
+    merge_ids(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
