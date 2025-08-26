@@ -485,9 +485,12 @@ def main():
         description="Audio Database Manager - Manage SQLite database of audio tracks with CIDs"
     )
 
-    parser.add_argument("nft_file", help="Path to NFT CSV file")
-    parser.add_argument("arw_file", help="Path to ARW file")
-    parser.add_argument("json_files", help="Comma-separated list of JSON files")
+    parser.add_argument("--nft-file", help="Path to NFT CSV file", default=None)
+    parser.add_argument("--arw-file", help="Path to ARW file", default=None)
+    parser.add_argument(
+        "--json-files", help="Comma-separated list of JSON files", default=""
+    )
+
     parser.add_argument("database", help="Path to SQLite database file")
 
     parser.add_argument(
@@ -515,16 +518,16 @@ def main():
 
     setup_logging(args.verbose)
 
-    # Validate input files
-    if not Path(args.nft_file).exists():
-        logging.error(f"NFT file not found: {args.nft_file}")
-        sys.exit(1)
+    if args.nft_file:
+        if not Path(args.nft_file).exists():
+            logging.error(f"NFT file not found: {args.nft_file}")
+            sys.exit(1)
 
-    if not Path(args.arw_file).exists():
-        logging.error(f"ARW file not found: {args.arw_file}")
-        sys.exit(1)
+    if args.arw_file:
+        if not Path(args.arw_file).exists():
+            logging.error(f"ARW file not found: {args.arw_file}")
+            sys.exit(1)
 
-    # Parse JSON files argument
     json_file_list = [f.strip() for f in args.json_files.split(",") if f.strip()]
     for json_file in json_file_list:
         if not Path(json_file).exists():
@@ -548,12 +551,23 @@ def main():
                 initial_stats = db_manager.get_stats()
                 logging.info(f"Initial database stats: {initial_stats}")
 
-            # Process files
-            nft_processed = db_manager.parse_nft_file(args.nft_file, args.incremental)
-            arw_processed = db_manager.parse_arw_file(args.arw_file, args.incremental)
+            nft_processed = 0
+            arw_processed = 0
+            json_processed = 0
+
+            # Process NFT file
+            if args.arw_file:
+                nft_processed = db_manager.parse_nft_file(
+                    args.nft_file, args.incremental
+                )
+
+            # Process ARW file
+            if args.arw_file:
+                arw_processed = db_manager.parse_arw_file(
+                    args.arw_file, args.incremental
+                )
 
             # Process JSON files
-            json_processed = 0
             if json_file_list:
                 json_processed = db_manager.parse_json_files(
                     json_file_list, args.incremental
@@ -582,19 +596,29 @@ def main():
 
 if __name__ == "__main__":
     """
-    # Full rebuild
-    python audio_db.py nft.csv arw.csv 001.json,002.json,003.json data.db --rebuild
+    # Full rebuild with all sources
+    python sqlite.py --nft-file nft.csv --arw-file arw.csv --json-files "001.json,002.json,003.json" data.db --rebuild
 
-    # Incremental update
-    python audio_db.py nft.csv arw.csv 001.json,002.json data.db --incremental
+    # Incremental update with NFT + ARW
+    python sqlite.py --nft-file nft.csv --arw-file arw.csv --json-files "001.json,002.json" data.db --incremental
+
+    # Incremental update with only NFT
+    python sqlite.py --nft-file nft.csv data.db --incremental
+
+    # Incremental update with only ARW
+    python sqlite.py --arw-file arw.csv data.db --incremental
+
+    # Incremental update with only JSON
+    python sqlite.py --json-files "001.json" data.db --incremental
 
     # Verbose logging
-    python audio_db.py nft.csv arw.csv 001.json data.db --incremental --verbose
+    python sqlite.py --nft-file nft.csv --arw-file arw.csv --json-files "001.json" data.db --incremental --verbose
 
     # Skip vacuum optimization
-    python audio_db.py nft.csv arw.csv 001.json data.db --no-vacuum
+    python sqlite.py --nft-file nft.csv --arw-file arw.csv --json-files "001.json" data.db --no-vacuum
 
-    # Without JSON files (empty list)
-    python audio_db.py nft.csv arw.csv "" data.db --incremental
+    # Without JSON files (empty list, still valid)
+    python sqlite.py --nft-file nft.csv --arw-file arw.csv --json-files "" data.db --incremental
     """
+
     main()
