@@ -22,11 +22,11 @@ def merge_ids(index_path, file_id_path, email, output_path):
 
     # Merge ID into index.json where merged_file.name matches Name
     for entry in index_data:
-        entry["email"] = email
         merged_name = entry.get("merged_file", {}).get("name")
         if merged_name:
             if merged_name in id_map:
                 entry["merged_file"]["file_id"] = id_map[merged_name]
+                entry["merged_file"]["email"] = email
             else:
                 print(
                     f"Error: no matching file_id found for '{merged_name}'. Aborting."
