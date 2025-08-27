@@ -380,11 +380,10 @@ std::optional<std::string> Downloader::assemble_multiple_files() {
     const fs::path output_dir = config["output"].get<std::string>();
     const fs::path assembled_path = output_dir / filename;
 
-    if (!combine_cid_files(assembled_path))
-        return std::nullopt;
-
-    cleanup_cid_files();
-    return filename;
+    const bool success = combine_cid_files(assembled_path);
+    cleanup_cid_files(); 
+    
+    return success ? std::make_optional(filename) : std::nullopt;
 }
 
 std::optional<std::string> Downloader::handle_single_file() {
