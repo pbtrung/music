@@ -13,7 +13,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Tuple, Set, Dict
 import argparse
 
 
@@ -24,6 +24,7 @@ class AudioDatabaseManager:
         self.db_path = Path(db_path)
         self.conn: Optional[sqlite3.Connection] = None
         self.cur: Optional[sqlite3.Cursor] = None
+        self.BATCH_SIZE = 10000
 
     def __enter__(self):
         self.connect()
@@ -38,9 +39,17 @@ class AudioDatabaseManager:
         logging.info(f"Connecting to database: {self.db_path}")
         self.conn = sqlite3.connect(self.db_path)
         self.cur = self.conn.cursor()
-        self.cur.execute("PRAGMA foreign_keys = ON")
 
-        # Log database file size
+        self.cur.execute("PRAGMA foreign_keys = ON")
+        # Write-Ahead Logging
+        self.cur.execute("PRAGMA journal_mode = WAL")
+        # Faster than FULL
+        self.cur.execute("PRAGMA synchronous = NORMAL")
+        # 64MB cache
+        self.cur.execute("PRAGMA cache_size = -64000")
+        # Use memory for temp tables
+        self.cur.execute("PRAGMA temp_store = MEMORY")
+
         if self.db_path.exists():
             file_size = self.db_path.stat().st_size
             logging.info(
@@ -52,53 +61,28 @@ class AudioDatabaseManager:
         logging.info("Creating database tables...")
         start_time = time.time()
 
-        self.cur.execute("BEGIN")
-
-        # Albums table
-        self.cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS albums (
+        tables = [
+            """CREATE TABLE IF NOT EXISTS albums (
                 album_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 path TEXT UNIQUE NOT NULL
-            )
-        """
-        )
-
-        # Tracks table
-        self.cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tracks (
+            )""",
+            """CREATE TABLE IF NOT EXISTS tracks (
                 track_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 album_id INTEGER,
                 track_name TEXT NOT NULL,
                 FOREIGN KEY (album_id) REFERENCES albums (album_id) ON DELETE CASCADE
-            )
-        """
-        )
-
-        self.cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS content_cid (
+            )""",
+            """CREATE TABLE IF NOT EXISTS content_cid (
                 content_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 track_id INTEGER NOT NULL,
                 cid TEXT NOT NULL,
                 FOREIGN KEY (track_id) REFERENCES tracks (track_id) ON DELETE CASCADE
-            )
-        """
-        )
-
-        self.cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS gdr_accounts (
+            )""",
+            """CREATE TABLE IF NOT EXISTS gdr_accounts (
                 gdr_account_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL
-            )
-        """
-        )
-
-        self.cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS content_gdr (
+            )""",
+            """CREATE TABLE IF NOT EXISTS content_gdr (
                 content_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 track_id INTEGER NOT NULL,
                 gdr_account_id INTEGER NOT NULL,
@@ -108,10 +92,12 @@ class AudioDatabaseManager:
                 CHECK (end_byte >= start_byte),
                 FOREIGN KEY (track_id) REFERENCES tracks (track_id) ON DELETE CASCADE,
                 FOREIGN KEY (gdr_account_id) REFERENCES gdr_accounts (gdr_account_id) ON DELETE CASCADE
-            )
-        """
-        )
+            )""",
+        ]
 
+        self.cur.execute("BEGIN")
+        for table_sql in tables:
+            self.cur.execute(table_sql)
         self.cur.execute("COMMIT")
 
         elapsed = time.time() - start_time
@@ -134,86 +120,174 @@ class AudioDatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_gdr_email ON gdr_accounts (email)",
         ]
 
-        for i, index_sql in enumerate(indexes, 1):
+        for index_sql in indexes:
             self.cur.execute(index_sql)
-            logging.debug(f"Created index {i}/{len(indexes)}")
 
         elapsed = time.time() - start_time
         logging.info(f"Database indexes created in {elapsed:.2f} seconds")
-
-    def get_or_create_album(self, album_path: str) -> int:
-        """Get existing album ID or create new album."""
-        self.cur.execute("SELECT album_id FROM albums WHERE path = ?", (album_path,))
-        row = self.cur.fetchone()
-
-        if row:
-            logging.debug(f"Found existing album: {album_path} (ID: {row[0]})")
-            return row[0]
-
-        self.cur.execute("INSERT INTO albums (path) VALUES (?)", (album_path,))
-        album_id = self.cur.lastrowid
-        logging.debug(f"Created new album: {album_path} (ID: {album_id})")
-        return album_id
-
-    def get_or_create_track(self, album_id: int, track_name: str) -> int:
-        """Get existing track ID or create new track."""
-        self.cur.execute(
-            "SELECT track_id FROM tracks WHERE album_id = ? AND track_name = ?",
-            (album_id, track_name),
-        )
-        row = self.cur.fetchone()
-
-        if row:
-            logging.debug(f"Found existing track: {track_name} (ID: {row[0]})")
-            return row[0]
-
-        self.cur.execute(
-            "INSERT INTO tracks (album_id, track_name) VALUES (?, ?)",
-            (album_id, track_name),
-        )
-        track_id = self.cur.lastrowid
-        logging.debug(f"Created new track: {track_name} (ID: {track_id})")
-        return track_id
-
-    def add_content(self, track_id: int, cid: str) -> bool:
-        """Add content CID for a track. Returns True if added, False if exists."""
-        try:
-            self.cur.execute(
-                "INSERT INTO content_cid (track_id, cid) VALUES (?, ?)", (track_id, cid)
-            )
-            logging.debug(f"Added content CID: {cid} for track {track_id}")
-            return True
-        except sqlite3.IntegrityError:
-            # CID already exists, skip
-            logging.debug(f"CID {cid} already exists for track {track_id}")
-            return False
-        except sqlite3.Error as error:
-            logging.error(f"Error inserting content: {error}")
-            logging.error(f"track_id: {track_id}, cid: {cid}")
-            raise
 
     def is_valid_audio_file(self, filename: str) -> bool:
         """Check if filename has valid audio extension."""
         return bool(re.search(r"\.(opus|mp3|m4a|m4b)$", filename, re.IGNORECASE))
 
+    def load_existing_data(self) -> Tuple[Dict, Dict, Dict]:
+        """Load existing albums, tracks, and accounts into cache."""
+        album_cache = {}
+        track_cache = {}
+        gdr_account_cache = {}
+
+        self.cur.execute("SELECT album_id, path FROM albums")
+        for album_id, path in self.cur.fetchall():
+            album_cache[path] = album_id
+
+        self.cur.execute("SELECT track_id, album_id, track_name FROM tracks")
+        for track_id, album_id, track_name in self.cur.fetchall():
+            track_cache[(album_id, track_name)] = track_id
+
+        self.cur.execute("SELECT gdr_account_id, email FROM gdr_accounts")
+        for gdr_account_id, email in self.cur.fetchall():
+            gdr_account_cache[email] = gdr_account_id
+
+        return album_cache, track_cache, gdr_account_cache
+
+    def get_existing_cids(self) -> Set[str]:
+        """Get all existing CIDs for incremental updates."""
+        self.cur.execute("SELECT cid FROM content_cid")
+        return {row[0] for row in self.cur.fetchall()}
+
+    def get_existing_gdr_content(self) -> Set[Tuple]:
+        """Get all existing GDR content combinations for incremental updates."""
+        self.cur.execute(
+            """
+            SELECT t.album_id, t.track_name, cg.gdr_account_id, cg.cid, cg.start_byte, cg.end_byte
+            FROM content_gdr cg
+            JOIN tracks t ON cg.track_id = t.track_id
+            JOIN albums a ON t.album_id = a.album_id
+        """
+        )
+        return {tuple(row) for row in self.cur.fetchall()}
+
+    def flush_batches(
+        self,
+        albums_batch,
+        tracks_batch,
+        gdr_accounts_batch,
+        content_batch,
+        gdr_content_batch,
+        album_cache,
+        track_cache,
+        gdr_account_cache,
+    ) -> int:
+        """Flush all pending batches to database and update caches."""
+        processed = 0
+
+        # Insert albums
+        if albums_batch:
+            self.cur.executemany(
+                "INSERT OR IGNORE INTO albums (path) VALUES (?)",
+                [(path,) for path in albums_batch],
+            )
+            self._update_album_cache(albums_batch, album_cache)
+            albums_batch.clear()
+
+        # Insert GDR accounts
+        if gdr_accounts_batch:
+            self.cur.executemany(
+                "INSERT OR IGNORE INTO gdr_accounts (email) VALUES (?)",
+                [(email,) for email in gdr_accounts_batch],
+            )
+            self._update_gdr_account_cache(gdr_accounts_batch, gdr_account_cache)
+            gdr_accounts_batch.clear()
+
+        # Insert tracks
+        if tracks_batch:
+            self.cur.executemany(
+                "INSERT OR IGNORE INTO tracks (album_id, track_name) VALUES (?, ?)",
+                tracks_batch,
+            )
+            self._update_track_cache(tracks_batch, track_cache)
+            tracks_batch.clear()
+
+        # Insert content
+        if content_batch:
+            self.cur.executemany(
+                "INSERT OR IGNORE INTO content_cid (track_id, cid) VALUES (?, ?)",
+                content_batch,
+            )
+            processed += len(content_batch)
+            content_batch.clear()
+
+        # Insert GDR content
+        if gdr_content_batch:
+            self.cur.executemany(
+                """
+                INSERT OR IGNORE INTO content_gdr 
+                (track_id, gdr_account_id, cid, start_byte, end_byte) 
+                VALUES (?, ?, ?, ?, ?)
+            """,
+                gdr_content_batch,
+            )
+            processed += len(gdr_content_batch)
+            gdr_content_batch.clear()
+
+        return processed
+
+    def _update_album_cache(self, albums_batch, album_cache):
+        """Update album cache with newly inserted albums."""
+        for path in albums_batch:
+            if path not in album_cache:
+                self.cur.execute("SELECT album_id FROM albums WHERE path = ?", (path,))
+                row = self.cur.fetchone()
+                if row:
+                    album_cache[path] = row[0]
+
+    def _update_track_cache(self, tracks_batch, track_cache):
+        """Update track cache with newly inserted tracks."""
+        for album_id, track_name in tracks_batch:
+            cache_key = (album_id, track_name)
+            if cache_key not in track_cache:
+                self.cur.execute(
+                    "SELECT track_id FROM tracks WHERE album_id = ? AND track_name = ?",
+                    (album_id, track_name),
+                )
+                row = self.cur.fetchone()
+                if row:
+                    track_cache[cache_key] = row[0]
+
+    def _update_gdr_account_cache(self, gdr_accounts_batch, gdr_account_cache):
+        """Update GDR account cache with newly inserted accounts."""
+        for email in gdr_accounts_batch:
+            if email not in gdr_account_cache:
+                self.cur.execute(
+                    "SELECT gdr_account_id FROM gdr_accounts WHERE email = ?", (email,)
+                )
+                row = self.cur.fetchone()
+                if row:
+                    gdr_account_cache[email] = row[0]
+
     def parse_nft_file(self, nft_path: str, incremental: bool = False) -> int:
-        """
-        Parse NFT CSV file and insert records.
-        Returns number of records processed.
-        """
+        """Parse NFT CSV file and insert records using batch processing."""
         logging.info(
             f"{'Incrementally parsing' if incremental else 'Parsing'} NFT file: {nft_path}"
         )
         start_time = time.time()
 
+        # Initialize counters and caches
         processed = 0
         skipped = 0
         invalid_rows = 0
         non_audio_files = 0
         total_rows = 0
 
-        self.cur.execute("BEGIN")
+        album_cache, track_cache, _ = self.load_existing_data()
+        existing_cids = self.get_existing_cids() if incremental else set()
 
+        # Initialize batches
+        albums_batch = []
+        tracks_batch = []
+        content_batch = []
+
+        self.cur.execute("BEGIN")
         try:
             with open(nft_path, "r") as nft_file:
                 nft_reader = csv.reader(nft_file, delimiter=",")
@@ -221,8 +295,18 @@ class AudioDatabaseManager:
                 for row_num, row in enumerate(nft_reader, 1):
                     total_rows += 1
 
-                    if row_num % 1000 == 0:
+                    if row_num % 20000 == 0:
                         logging.info(f"Processing NFT row {row_num:,}...")
+                        processed += self.flush_batches(
+                            albums_batch,
+                            tracks_batch,
+                            [],
+                            content_batch,
+                            [],
+                            album_cache,
+                            track_cache,
+                            {},
+                        )
 
                     if len(row) < 3:
                         logging.warning(f"Skipping invalid row {row_num}: {row}")
@@ -235,101 +319,191 @@ class AudioDatabaseManager:
                     track_name = str(path.name)
 
                     if not self.is_valid_audio_file(track_name):
-                        logging.debug(f"Skipping non-audio file: {track_name}")
                         non_audio_files += 1
                         continue
 
-                    # Check if CID already exists when doing incremental
-                    if incremental:
-                        self.cur.execute(
-                            "SELECT 1 FROM content_cid WHERE cid = ?", (cid,)
-                        )
-                        if self.cur.fetchone():
-                            skipped += 1
-                            continue
-
-                    album_id = self.get_or_create_album(album_path)
-                    track_id = self.get_or_create_track(album_id, track_name)
-
-                    if self.add_content(track_id, cid):
-                        processed += 1
-                    else:
+                    if incremental and cid in existing_cids:
                         skipped += 1
+                        continue
 
+                    album_id = self._ensure_album_id(
+                        album_path, albums_batch, album_cache
+                    )
+                    track_id = self._ensure_track_id(
+                        album_id, track_name, tracks_batch, track_cache
+                    )
+
+                    content_batch.append((track_id, cid))
+
+                    if len(content_batch) >= self.BATCH_SIZE:
+                        processed += self.flush_batches(
+                            albums_batch,
+                            tracks_batch,
+                            [],
+                            content_batch,
+                            [],
+                            album_cache,
+                            track_cache,
+                            {},
+                        )
+
+            # Final flush
+            processed += self.flush_batches(
+                albums_batch,
+                tracks_batch,
+                [],
+                content_batch,
+                [],
+                album_cache,
+                track_cache,
+                {},
+            )
             self.cur.execute("COMMIT")
-            elapsed = time.time() - start_time
-
-            logging.info(f"NFT file processing complete:")
-            logging.info(f"  - Total rows processed: {total_rows:,}")
-            logging.info(f"  - Records added: {processed:,}")
-            logging.info(f"  - Records skipped: {skipped:,}")
-            logging.info(f"  - Invalid rows: {invalid_rows:,}")
-            logging.info(f"  - Non-audio files: {non_audio_files:,}")
-            logging.info(f"  - Processing time: {elapsed:.2f} seconds")
-            logging.info(f"  - Processing rate: {total_rows / elapsed:.0f} rows/second")
 
         except Exception as e:
             self.cur.execute("ROLLBACK")
             logging.error(f"Error processing NFT file: {e}")
             raise
 
+        self._log_processing_stats(
+            "NFT",
+            start_time,
+            total_rows,
+            processed,
+            skipped,
+            invalid_rows,
+            non_audio_files,
+        )
         return processed
 
-    def get_or_create_gdr_account(self, email: str) -> int:
-        """Get existing GDR account ID or create new account."""
-        self.cur.execute(
-            "SELECT gdr_account_id FROM gdr_accounts WHERE email = ?", (email,)
+    def parse_arw_file(self, arw_path: str, incremental: bool = False) -> int:
+        """Parse ARW file and insert records using batch processing."""
+        logging.info(
+            f"{'Incrementally parsing' if incremental else 'Parsing'} ARW file: {arw_path}"
         )
-        row = self.cur.fetchone()
+        start_time = time.time()
 
-        if row:
-            logging.debug(f"Found existing GDR account: {email} (ID: {row[0]})")
-            return row[0]
+        # Initialize counters and caches
+        processed = 0
+        skipped = 0
+        invalid_lines = 0
+        invalid_audio_files = 0
+        total_lines = 0
 
-        self.cur.execute("INSERT INTO gdr_accounts (email) VALUES (?)", (email,))
-        account_id = self.cur.lastrowid
-        logging.debug(f"Created new GDR account: {email} (ID: {account_id})")
-        return account_id
+        album_cache, track_cache, _ = self.load_existing_data()
+        existing_cids = self.get_existing_cids() if incremental else set()
 
-    def add_gdr_content(
-        self,
-        track_id: int,
-        gdr_account_id: int,
-        cid: str,
-        start_byte: int,
-        end_byte: int,
-    ) -> bool:
-        """Add GDR content for a track. Returns True if added, False if exists."""
+        # Initialize batches
+        albums_batch = []
+        tracks_batch = []
+        content_batch = []
+
+        self.cur.execute("BEGIN")
         try:
-            self.cur.execute(
-                "INSERT INTO content_gdr (track_id, gdr_account_id, cid, start_byte, end_byte) VALUES (?, ?, ?, ?, ?)",
-                (track_id, gdr_account_id, cid, start_byte, end_byte),
+            with open(arw_path, "r") as arw_file:
+                for line_num, line in enumerate(arw_file, 1):
+                    total_lines += 1
+
+                    if line_num % 20000 == 0:
+                        logging.info(f"Processing ARW line {line_num:,}...")
+                        processed += self.flush_batches(
+                            albums_batch,
+                            tracks_batch,
+                            [],
+                            content_batch,
+                            [],
+                            album_cache,
+                            track_cache,
+                            {},
+                        )
+
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    parts = line.split(",", 1)
+                    if len(parts) < 2:
+                        invalid_lines += 1
+                        continue
+
+                    cid = parts[0].strip()
+                    path = Path(parts[1].strip())
+
+                    if incremental and cid in existing_cids:
+                        skipped += 1
+                        continue
+
+                    album_path = str(path.parent)
+                    if album_path.startswith("data/"):
+                        album_path = album_path[5:]
+
+                    filename = str(path.name)
+                    match = re.search(
+                        r"(.*)\.(opus|mp3|m4a|m4b)[.]?(\d*)$", filename, re.IGNORECASE
+                    )
+                    if not match:
+                        invalid_audio_files += 1
+                        continue
+
+                    orig_filename = f"{match.group(1)}.{match.group(2)}"
+
+                    album_id = self._ensure_album_id(
+                        album_path, albums_batch, album_cache
+                    )
+                    track_id = self._ensure_track_id(
+                        album_id, orig_filename, tracks_batch, track_cache
+                    )
+
+                    content_batch.append((track_id, cid))
+
+                    if len(content_batch) >= self.BATCH_SIZE:
+                        processed += self.flush_batches(
+                            albums_batch,
+                            tracks_batch,
+                            [],
+                            content_batch,
+                            [],
+                            album_cache,
+                            track_cache,
+                            {},
+                        )
+
+            # Final flush
+            processed += self.flush_batches(
+                albums_batch,
+                tracks_batch,
+                [],
+                content_batch,
+                [],
+                album_cache,
+                track_cache,
+                {},
             )
-            logging.debug(
-                f"Added GDR content: CID {cid} for track {track_id}, bytes {start_byte}-{end_byte}"
-            )
-            return True
-        except sqlite3.IntegrityError:
-            # Content already exists, skip
-            logging.debug(f"GDR content already exists for track {track_id}, CID {cid}")
-            return False
-        except sqlite3.Error as error:
-            logging.error(f"Error inserting GDR content: {error}")
-            logging.error(
-                f"track_id: {track_id}, gdr_account_id: {gdr_account_id}, cid: {cid}"
-            )
+            self.cur.execute("COMMIT")
+
+        except Exception as e:
+            self.cur.execute("ROLLBACK")
+            logging.error(f"Error processing ARW file: {e}")
             raise
 
-    def parse_json_files(self, json_files: list, incremental: bool = False) -> int:
-        """
-        Parse JSON files and insert GDR records.
-        Returns number of records processed.
-        """
+        self._log_arw_stats(
+            start_time,
+            total_lines,
+            processed,
+            skipped,
+            invalid_lines,
+            invalid_audio_files,
+        )
+        return processed
+
+    def parse_json_files(self, json_files: List[str], incremental: bool = False) -> int:
+        """Parse JSON files and insert GDR records using batch processing."""
         logging.info(
             f"{'Incrementally parsing' if incremental else 'Parsing'} {len(json_files)} JSON files"
         )
         start_time = time.time()
 
+        # Initialize counters and caches
         processed = 0
         skipped = 0
         invalid_records = 0
@@ -338,289 +512,313 @@ class AudioDatabaseManager:
         total_records = 0
         total_files_in_records = 0
 
-        self.cur.execute("BEGIN")
+        album_cache, track_cache, gdr_account_cache = self.load_existing_data()
+        existing_gdr_content = self.get_existing_gdr_content() if incremental else set()
 
+        # Initialize batches
+        albums_batch = []
+        tracks_batch = []
+        gdr_accounts_batch = []
+        gdr_content_batch = []
+
+        self.cur.execute("BEGIN")
         try:
             for file_num, json_file_path in enumerate(json_files, 1):
-                if not Path(json_file_path).exists():
-                    logging.warning(f"JSON file not found: {json_file_path}")
-                    continue
-
                 logging.info(
                     f"Processing JSON file {file_num}/{len(json_files)}: {json_file_path}"
                 )
-                file_start_time = time.time()
 
                 with open(json_file_path, "r", encoding="utf-8") as json_file:
                     try:
                         data = json.load(json_file)
-                        logging.info(
-                            f"  - Loaded {len(data):,} records from {Path(json_file_path).name}"
-                        )
                     except json.JSONDecodeError as e:
-                        logging.error(f"  - Invalid JSON in {json_file_path}: {e}")
+                        logging.error(f"Invalid JSON in {json_file_path}: {e}")
                         continue
-
-                file_processed = 0
-                file_skipped = 0
 
                 for record_num, record in enumerate(data, 1):
                     total_records += 1
 
-                    if record_num % 100 == 0:
-                        logging.debug(
-                            f"    Processing record {record_num:,}/{len(data):,}..."
+                    if record_num % 1000 == 0:
+                        processed += self.flush_batches(
+                            albums_batch,
+                            tracks_batch,
+                            gdr_accounts_batch,
+                            [],
+                            gdr_content_batch,
+                            album_cache,
+                            track_cache,
+                            gdr_account_cache,
                         )
 
-                    if not isinstance(record, dict):
-                        logging.warning(
-                            f"Skipping invalid record {record_num}: {record}"
-                        )
+                    if not self._is_valid_json_record(record):
                         invalid_records += 1
                         continue
 
-                    # Extract required fields
-                    subfolder = record.get("subfolder", "").strip()
-                    merged_file = record.get("merged_file", {})
-                    files = record.get("files", [])
+                    result = self._process_json_record(
+                        record,
+                        albums_batch,
+                        tracks_batch,
+                        gdr_accounts_batch,
+                        gdr_content_batch,
+                        album_cache,
+                        track_cache,
+                        gdr_account_cache,
+                        existing_gdr_content,
+                        incremental,
+                    )
 
-                    if not subfolder or not merged_file or not files:
-                        logging.debug(
-                            f"Skipping incomplete record {record_num}: missing subfolder, merged_file, or files"
+                    if result == "skipped":
+                        skipped += 1
+                    elif result == "invalid_file":
+                        invalid_files += 1
+                    elif result == "non_audio":
+                        non_audio_files += 1
+
+                    total_files_in_records += 1
+
+                    if len(gdr_content_batch) >= self.BATCH_SIZE:
+                        processed += self.flush_batches(
+                            albums_batch,
+                            tracks_batch,
+                            gdr_accounts_batch,
+                            [],
+                            gdr_content_batch,
+                            album_cache,
+                            track_cache,
+                            gdr_account_cache,
                         )
-                        invalid_records += 1
-                        continue
 
-                    # Get merged file info
-                    file_id = merged_file.get("file_id", "").strip()
-                    email = merged_file.get("email", "").strip()
-
-                    if not file_id or not email:
-                        logging.debug(
-                            f"Skipping record {record_num}: missing file_id or email in merged_file"
-                        )
-                        invalid_records += 1
-                        continue
-
-                    # Get or create GDR account
-                    gdr_account_id = self.get_or_create_gdr_account(email)
-
-                    # Process each file in the record
-                    for file_info in files:
-                        total_files_in_records += 1
-
-                        if not isinstance(file_info, dict):
-                            invalid_files += 1
-                            continue
-
-                        file_name = file_info.get("file_name", "").strip()
-                        byte_range = file_info.get("byte_range", [])
-
-                        if not file_name or len(byte_range) != 2:
-                            logging.debug(f"Skipping invalid file info: {file_info}")
-                            invalid_files += 1
-                            continue
-
-                        # Validate that it's an audio file
-                        if not self.is_valid_audio_file(file_name):
-                            logging.debug(f"Skipping non-audio file: {file_name}")
-                            non_audio_files += 1
-                            continue
-
-                        start_byte, end_byte = byte_range[0], byte_range[1]
-
-                        # Check if GDR content already exists when doing incremental
-                        if incremental:
-                            self.cur.execute(
-                                "SELECT 1 FROM content_gdr WHERE track_id IN "
-                                "(SELECT track_id FROM tracks WHERE album_id IN "
-                                "(SELECT album_id FROM albums WHERE path = ?) AND track_name = ?) "
-                                "AND gdr_account_id = ? AND cid = ? AND start_byte = ? AND end_byte = ?",
-                                (
-                                    subfolder,
-                                    file_name,
-                                    gdr_account_id,
-                                    file_id,
-                                    start_byte,
-                                    end_byte,
-                                ),
-                            )
-                            if self.cur.fetchone():
-                                skipped += 1
-                                file_skipped += 1
-                                continue
-
-                        # Get or create album and track
-                        album_id = self.get_or_create_album(subfolder)
-                        track_id = self.get_or_create_track(album_id, file_name)
-
-                        # Add GDR content
-                        if self.add_gdr_content(
-                            track_id, gdr_account_id, file_id, start_byte, end_byte
-                        ):
-                            processed += 1
-                            file_processed += 1
-                        else:
-                            skipped += 1
-                            file_skipped += 1
-
-                file_elapsed = time.time() - file_start_time
-                logging.info(
-                    f"  - File completed: {file_processed:,} added, {file_skipped:,} skipped in {file_elapsed:.2f}s"
-                )
-
+            # Final flush
+            processed += self.flush_batches(
+                albums_batch,
+                tracks_batch,
+                gdr_accounts_batch,
+                [],
+                gdr_content_batch,
+                album_cache,
+                track_cache,
+                gdr_account_cache,
+            )
             self.cur.execute("COMMIT")
-            elapsed = time.time() - start_time
-
-            logging.info(f"JSON files processing complete:")
-            logging.info(f"  - Total JSON files: {len(json_files)}")
-            logging.info(f"  - Total records processed: {total_records:,}")
-            logging.info(f"  - Total files in records: {total_files_in_records:,}")
-            logging.info(f"  - GDR content added: {processed:,}")
-            logging.info(f"  - GDR content skipped: {skipped:,}")
-            logging.info(f"  - Invalid records: {invalid_records:,}")
-            logging.info(f"  - Invalid files: {invalid_files:,}")
-            logging.info(f"  - Non-audio files: {non_audio_files:,}")
-            logging.info(f"  - Processing time: {elapsed:.2f} seconds")
-            if total_records > 0:
-                logging.info(
-                    f"  - Processing rate: {total_records / elapsed:.0f} records/second"
-                )
 
         except Exception as e:
             self.cur.execute("ROLLBACK")
             logging.error(f"Error processing JSON files: {e}")
             raise
 
+        self._log_json_stats(
+            start_time,
+            len(json_files),
+            total_records,
+            total_files_in_records,
+            processed,
+            skipped,
+            invalid_records,
+            invalid_files,
+            non_audio_files,
+        )
         return processed
 
-    def parse_arw_file(self, arw_path: str, incremental: bool = False) -> int:
-        """
-        Parse ARW file and insert records.
-        Returns number of records processed.
-        """
-        logging.info(
-            f"{'Incrementally parsing' if incremental else 'Parsing'} ARW file: {arw_path}"
-        )
-        start_time = time.time()
+    def _ensure_album_id(
+        self, album_path: str, albums_batch: List, album_cache: Dict
+    ) -> int:
+        """Ensure album exists and return its ID."""
+        if album_path not in album_cache:
+            if album_path not in albums_batch:
+                albums_batch.append(album_path)
+            return None  # Will be resolved after batch flush
+        return album_cache[album_path]
 
-        processed = 0
-        skipped = 0
-        invalid_lines = 0
-        invalid_audio_files = 0
-        total_lines = 0
+    def _ensure_track_id(
+        self, album_id: int, track_name: str, tracks_batch: List, track_cache: Dict
+    ) -> int:
+        """Ensure track exists and return its ID."""
+        cache_key = (album_id, track_name)
+        if cache_key not in track_cache:
+            if (album_id, track_name) not in tracks_batch:
+                tracks_batch.append((album_id, track_name))
+            return None  # Will be resolved after batch flush
+        return track_cache[cache_key]
 
-        self.cur.execute("BEGIN")
+    def _is_valid_json_record(self, record) -> bool:
+        """Check if JSON record has required fields."""
+        if not isinstance(record, dict):
+            return False
 
-        try:
-            with open(arw_path, "r") as arw_file:
-                for line_num, line in enumerate(arw_file, 1):
-                    total_lines += 1
+        subfolder = record.get("subfolder", "").strip()
+        merged_file = record.get("merged_file", {})
+        files = record.get("files", [])
 
-                    if line_num % 1000 == 0:
-                        logging.info(f"Processing ARW line {line_num:,}...")
+        return bool(subfolder and merged_file and files)
 
-                    line = line.strip()
-                    if not line:
-                        continue
+    def _process_json_record(
+        self,
+        record,
+        albums_batch,
+        tracks_batch,
+        gdr_accounts_batch,
+        gdr_content_batch,
+        album_cache,
+        track_cache,
+        gdr_account_cache,
+        existing_gdr_content,
+        incremental,
+    ) -> str:
+        """Process a single JSON record. Returns status: 'processed', 'skipped', 'invalid_file', or 'non_audio'."""
+        subfolder = record["subfolder"].strip()
+        merged_file = record["merged_file"]
+        files = record["files"]
 
-                    parts = line.split(",", 1)
-                    if len(parts) < 2:
-                        logging.warning(f"Invalid line {line_num}: {line}")
-                        invalid_lines += 1
-                        continue
+        file_id = merged_file.get("file_id", "").strip()
+        email = merged_file.get("email", "").strip()
 
-                    cid = parts[0].strip()
-                    path = Path(parts[1].strip())
+        if not file_id or not email:
+            return "invalid_file"
 
-                    # Remove "data/" prefix if present
-                    album_path = str(path.parent)
-                    if album_path.startswith("data/"):
-                        album_path = album_path[5:]
+        # Ensure GDR account and album exist
+        if email not in gdr_account_cache and email not in gdr_accounts_batch:
+            gdr_accounts_batch.append(email)
 
-                    filename = str(path.name)
+        if subfolder not in album_cache and subfolder not in albums_batch:
+            albums_batch.append(subfolder)
 
-                    # Parse filename with optional numbering
-                    match = re.search(
-                        r"(.*)\.(opus|mp3|m4a|m4b)[.]?(\d*)$", filename, re.IGNORECASE
+        for file_info in files:
+            if not isinstance(file_info, dict):
+                return "invalid_file"
+
+            file_name = file_info.get("file_name", "").strip()
+            byte_range = file_info.get("byte_range", [])
+
+            if not file_name or len(byte_range) != 2:
+                return "invalid_file"
+
+            if not self.is_valid_audio_file(file_name):
+                return "non_audio"
+
+            start_byte, end_byte = byte_range[0], byte_range[1]
+
+            # Check for existing content in incremental mode
+            if incremental:
+                album_id = album_cache.get(subfolder)
+                gdr_account_id = gdr_account_cache.get(email)
+                if album_id and gdr_account_id:
+                    content_key = (
+                        album_id,
+                        file_name,
+                        gdr_account_id,
+                        file_id,
+                        start_byte,
+                        end_byte,
                     )
-                    if not match:
-                        logging.debug(f"Invalid audio file: {filename}")
-                        invalid_audio_files += 1
-                        continue
+                    if content_key in existing_gdr_content:
+                        return "skipped"
 
-                    orig_filename = f"{match.group(1)}.{match.group(2)}"
+            # Ensure track exists
+            album_id = album_cache.get(subfolder)
+            if not album_id:
+                return "processed"  # Will be handled in batch processing
 
-                    # Check if CID already exists when doing incremental
-                    if incremental:
-                        self.cur.execute(
-                            "SELECT 1 FROM content_cid WHERE cid = ?", (cid,)
-                        )
-                        if self.cur.fetchone():
-                            skipped += 1
-                            continue
+            track_cache_key = (album_id, file_name)
+            if track_cache_key not in track_cache:
+                if (album_id, file_name) not in tracks_batch:
+                    tracks_batch.append((album_id, file_name))
 
-                    album_id = self.get_or_create_album(album_path)
-                    track_id = self.get_or_create_track(album_id, orig_filename)
-
-                    if self.add_content(track_id, cid):
-                        processed += 1
-                    else:
-                        skipped += 1
-
-            self.cur.execute("COMMIT")
-            elapsed = time.time() - start_time
-
-            logging.info(f"ARW file processing complete:")
-            logging.info(f"  - Total lines processed: {total_lines:,}")
-            logging.info(f"  - Records added: {processed:,}")
-            logging.info(f"  - Records skipped: {skipped:,}")
-            logging.info(f"  - Invalid lines: {invalid_lines:,}")
-            logging.info(f"  - Invalid audio files: {invalid_audio_files:,}")
-            logging.info(f"  - Processing time: {elapsed:.2f} seconds")
-            logging.info(
-                f"  - Processing rate: {total_lines / elapsed:.0f} lines/second"
+            # Add to GDR content batch - IDs will be resolved during flush
+            gdr_content_batch.append(
+                (None, None, file_id, start_byte, end_byte, subfolder, file_name, email)
             )
 
-        except Exception as e:
-            self.cur.execute("ROLLBACK")
-            logging.error(f"Error processing ARW file: {e}")
-            raise
+        return "processed"
 
-        return processed
+    def _log_processing_stats(
+        self,
+        file_type: str,
+        start_time: float,
+        total_rows: int,
+        processed: int,
+        skipped: int,
+        invalid_rows: int,
+        non_audio_files: int,
+    ):
+        """Log processing statistics."""
+        elapsed = time.time() - start_time
+        logging.info(f"{file_type} file processing complete:")
+        logging.info(f"  - Total rows processed: {total_rows:,}")
+        logging.info(f"  - Records added: {processed:,}")
+        logging.info(f"  - Records skipped: {skipped:,}")
+        logging.info(f"  - Invalid rows: {invalid_rows:,}")
+        logging.info(f"  - Non-audio files: {non_audio_files:,}")
+        logging.info(f"  - Processing time: {elapsed:.2f} seconds")
+        logging.info(f"  - Processing rate: {total_rows / elapsed:.0f} rows/second")
+
+    def _log_arw_stats(
+        self,
+        start_time: float,
+        total_lines: int,
+        processed: int,
+        skipped: int,
+        invalid_lines: int,
+        invalid_audio_files: int,
+    ):
+        """Log ARW processing statistics."""
+        elapsed = time.time() - start_time
+        logging.info(f"ARW file processing complete:")
+        logging.info(f"  - Total lines processed: {total_lines:,}")
+        logging.info(f"  - Records added: {processed:,}")
+        logging.info(f"  - Records skipped: {skipped:,}")
+        logging.info(f"  - Invalid lines: {invalid_lines:,}")
+        logging.info(f"  - Invalid audio files: {invalid_audio_files:,}")
+        logging.info(f"  - Processing time: {elapsed:.2f} seconds")
+        logging.info(f"  - Processing rate: {total_lines / elapsed:.0f} lines/second")
+
+    def _log_json_stats(
+        self,
+        start_time: float,
+        file_count: int,
+        total_records: int,
+        total_files: int,
+        processed: int,
+        skipped: int,
+        invalid_records: int,
+        invalid_files: int,
+        non_audio_files: int,
+    ):
+        """Log JSON processing statistics."""
+        elapsed = time.time() - start_time
+        logging.info(f"JSON files processing complete:")
+        logging.info(f"  - Total JSON files: {file_count}")
+        logging.info(f"  - Total records processed: {total_records:,}")
+        logging.info(f"  - Total files in records: {total_files:,}")
+        logging.info(f"  - GDR content added: {processed:,}")
+        logging.info(f"  - GDR content skipped: {skipped:,}")
+        logging.info(f"  - Invalid records: {invalid_records:,}")
+        logging.info(f"  - Invalid files: {invalid_files:,}")
+        logging.info(f"  - Non-audio files: {non_audio_files:,}")
+        logging.info(f"  - Processing time: {elapsed:.2f} seconds")
 
     def vacuum(self):
         """Optimize database by running VACUUM."""
         logging.info("Running VACUUM to optimize database...")
         start_time = time.time()
 
-        # Get database size before vacuum
         file_size_before = self.db_path.stat().st_size if self.db_path.exists() else 0
-
         self.conn.execute("VACUUM")
         self.conn.commit()
-
-        # Get database size after vacuum
         file_size_after = self.db_path.stat().st_size if self.db_path.exists() else 0
-        size_diff = file_size_before - file_size_after
 
         elapsed = time.time() - start_time
+        size_diff = file_size_before - file_size_after
+
         logging.info(f"VACUUM completed in {elapsed:.2f} seconds")
         logging.info(f"Database size: {file_size_before:,} → {file_size_after:,} bytes")
-        if size_diff > 0:
+        if size_diff != 0:
             logging.info(
-                f"Space reclaimed: {size_diff:,} bytes ({size_diff / 1024 / 1024:.2f} MB)"
-            )
-        elif size_diff < 0:
-            logging.info(
-                f"Database grew by: {-size_diff:,} bytes ({-size_diff / 1024 / 1024:.2f} MB)"
+                f"Size change: {size_diff:,} bytes ({size_diff / 1024 / 1024:.2f} MB)"
             )
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> Dict:
         """Get database statistics."""
-        logging.debug("Gathering database statistics...")
         stats = {}
-
         queries = [
             ("albums", "SELECT COUNT(*) FROM albums"),
             ("tracks", "SELECT COUNT(*) FROM tracks"),
@@ -633,47 +831,10 @@ class AudioDatabaseManager:
             self.cur.execute(query)
             stats[name] = self.cur.fetchone()[0]
 
-        # Get additional useful stats
-        try:
-            # Top 5 albums by track count
-            self.cur.execute(
-                """
-                SELECT a.path, COUNT(t.track_id) as track_count
-                FROM albums a
-                LEFT JOIN tracks t ON a.album_id = t.album_id
-                GROUP BY a.album_id, a.path
-                ORDER BY track_count DESC
-                LIMIT 5
-            """
-            )
-            top_albums = self.cur.fetchall()
-            if top_albums:
-                logging.info("Top 5 albums by track count:")
-                for album_path, track_count in top_albums:
-                    logging.info(f"  - {album_path}: {track_count:,} tracks")
-
-            # GDR accounts summary
-            self.cur.execute(
-                """
-                SELECT COUNT(DISTINCT gdr_account_id) as account_count,
-                       COUNT(*) as total_gdr_content
-                FROM content_gdr
-            """
-            )
-            gdr_stats = self.cur.fetchone()
-            if gdr_stats and gdr_stats[0] > 0:
-                logging.info(
-                    f"GDR: {gdr_stats[0]:,} accounts with {gdr_stats[1]:,} content entries"
-                )
-
-            # Database file size
-            if self.db_path.exists():
-                file_size = self.db_path.stat().st_size
-                stats["file_size_bytes"] = file_size
-                stats["file_size_mb"] = file_size / 1024 / 1024
-
-        except sqlite3.Error as e:
-            logging.warning(f"Error getting extendestats: {e}")
+        if self.db_path.exists():
+            file_size = self.db_path.stat().st_size
+            stats["file_size_bytes"] = file_size
+            stats["file_size_mb"] = file_size / 1024 / 1024
 
         return stats
 
@@ -699,24 +860,19 @@ def main():
     parser.add_argument(
         "--json-files", help="Comma-separated list of JSON files", default=""
     )
-
     parser.add_argument("database", help="Path to SQLite database file")
-
     parser.add_argument(
         "-i",
         "--incremental",
         action="store_true",
         help="Perform incremental update (skip existing CIDs)",
     )
-
     parser.add_argument(
         "--no-vacuum", action="store_true", help="Skip database VACUUM optimization"
     )
-
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose logging"
     )
-
     parser.add_argument(
         "--rebuild",
         action="store_true",
@@ -724,18 +880,16 @@ def main():
     )
 
     args = parser.parse_args()
-
     setup_logging(args.verbose)
 
-    if args.nft_file:
-        if not Path(args.nft_file).exists():
-            logging.error(f"NFT file not found: {args.nft_file}")
-            sys.exit(1)
+    # Validate input files
+    if args.nft_file and not Path(args.nft_file).exists():
+        logging.error(f"NFT file not found: {args.nft_file}")
+        sys.exit(1)
 
-    if args.arw_file:
-        if not Path(args.arw_file).exists():
-            logging.error(f"ARW file not found: {args.arw_file}")
-            sys.exit(1)
+    if args.arw_file and not Path(args.arw_file).exists():
+        logging.error(f"ARW file not found: {args.arw_file}")
+        sys.exit(1)
 
     json_file_list = [f.strip() for f in args.json_files.split(",") if f.strip()]
     for json_file in json_file_list:
@@ -752,44 +906,34 @@ def main():
     # Process files
     try:
         with AudioDatabaseManager(str(db_path)) as db_manager:
-            # Create tables and indexes
             db_manager.create_tables()
 
-            # Show initial stats
             if args.incremental and db_path.exists():
                 initial_stats = db_manager.get_stats()
                 logging.info(f"Initial database stats: {initial_stats}")
 
-            nft_processed = 0
-            arw_processed = 0
-            json_processed = 0
+            nft_processed = arw_processed = json_processed = 0
 
-            # Process NFT file
-            if args.arw_file:
+            if args.nft_file:
                 nft_processed = db_manager.parse_nft_file(
                     args.nft_file, args.incremental
                 )
 
-            # Process ARW file
             if args.arw_file:
                 arw_processed = db_manager.parse_arw_file(
                     args.arw_file, args.incremental
                 )
 
-            # Process JSON files
             if json_file_list:
                 json_processed = db_manager.parse_json_files(
                     json_file_list, args.incremental
                 )
 
-            # Create indexes
             db_manager.create_indexes()
 
-            # Optimize database
             if not args.no_vacuum:
                 db_manager.vacuum()
 
-            # Show final stats
             final_stats = db_manager.get_stats()
             logging.info(f"Final database stats: {final_stats}")
             logging.info(
