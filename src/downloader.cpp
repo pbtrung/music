@@ -381,8 +381,8 @@ std::optional<std::string> Downloader::assemble_multiple_files() {
     const fs::path assembled_path = output_dir / filename;
 
     const bool success = combine_cid_files(assembled_path);
-    cleanup_cid_files(); 
-    
+    cleanup_cid_files();
+
     return success ? std::make_optional(filename) : std::nullopt;
 }
 
