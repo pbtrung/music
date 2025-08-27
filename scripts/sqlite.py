@@ -377,7 +377,7 @@ class AudioDatabaseManager:
         return processed
 
     def parse_arw_file(self, arw_path: str, incremental: bool = False) -> int:
-        """Parse ARW file and insert records using batch processing."""
+        """Parse ARW file and insert records using batch processing with sorted structure optimization."""
         logging.info(
             f"{'Incrementally parsing' if incremental else 'Parsing'} ARW file: {arw_path}"
         )
@@ -398,6 +398,12 @@ class AudioDatabaseManager:
         tracks_batch = []
         content_batch = []
 
+        # Track grouping optimization
+        current_track = None
+        current_album_id = None
+        current_track_id = None
+        track_chunks = []  # Store chunks for current track
+
         self.cur.execute("BEGIN")
         try:
             with open(arw_path, "r") as arw_file:
@@ -406,6 +412,23 @@ class AudioDatabaseManager:
 
                     if line_num % 20000 == 0:
                         logging.info(f"Processing ARW line {line_num:,}...")
+                        # Flush current track chunks before batch flush
+                        if track_chunks:
+                            self._process_track_chunks(
+                                track_chunks,
+                                current_track_id,
+                                content_batch,
+                                existing_cids,
+                                incremental,
+                            )
+                            track_chunks.clear()
+                            processed_chunks = (
+                                len([c for c in track_chunks if c not in existing_cids])
+                                if incremental
+                                else len(track_chunks)
+                            )
+                            processed += processed_chunks
+
                         processed += self.flush_batches(
                             albums_batch,
                             tracks_batch,
@@ -429,10 +452,6 @@ class AudioDatabaseManager:
                     cid = parts[0].strip()
                     path = Path(parts[1].strip())
 
-                    if incremental and cid in existing_cids:
-                        skipped += 1
-                        continue
-
                     album_path = str(path.parent)
                     if album_path.startswith("data/"):
                         album_path = album_path[5:]
@@ -445,17 +464,58 @@ class AudioDatabaseManager:
                         invalid_audio_files += 1
                         continue
 
-                    orig_filename = f"{match.group(1)}.{match.group(2)}"
+                    base_name = match.group(1)
+                    extension = match.group(2)
+                    chunk_num = match.group(3)
+                    orig_filename = f"{base_name}.{extension}"
 
-                    album_id = self._ensure_album_id(
-                        album_path, albums_batch, album_cache
+                    # Create track identifier (album_path + orig_filename)
+                    track_identifier = (album_path, orig_filename)
+
+                    # Check if we're starting a new track
+                    if current_track != track_identifier:
+                        # Process previous track's chunks if any
+                        if track_chunks and current_track_id is not None:
+                            chunk_results = self._process_track_chunks(
+                                track_chunks,
+                                current_track_id,
+                                content_batch,
+                                existing_cids,
+                                incremental,
+                            )
+                            processed += chunk_results["processed"]
+                            skipped += chunk_results["skipped"]
+
+                        # Start new track
+                        current_track = track_identifier
+                        track_chunks = []
+
+                        # Ensure album exists
+                        album_id = self._ensure_album_id(
+                            album_path, albums_batch, album_cache
+                        )
+                        if album_id is None:
+                            # Album not in cache, will be resolved after flush
+                            current_album_id = None
+                            current_track_id = None
+                        else:
+                            current_album_id = album_id
+                            # Ensure track exists
+                            current_track_id = self._ensure_track_id(
+                                album_id, orig_filename, tracks_batch, track_cache
+                            )
+
+                    # Add chunk to current track
+                    track_chunks.append(
+                        {
+                            "cid": cid,
+                            "chunk_num": chunk_num,
+                            "album_path": album_path,
+                            "orig_filename": orig_filename,
+                        }
                     )
-                    track_id = self._ensure_track_id(
-                        album_id, orig_filename, tracks_batch, track_cache
-                    )
 
-                    content_batch.append((track_id, cid))
-
+                    # If content batch gets too large, flush it
                     if len(content_batch) >= self.BATCH_SIZE:
                         processed += self.flush_batches(
                             albums_batch,
@@ -468,18 +528,30 @@ class AudioDatabaseManager:
                             {},
                         )
 
-            # Final flush
-            processed += self.flush_batches(
-                albums_batch,
-                tracks_batch,
-                [],
-                content_batch,
-                [],
-                album_cache,
-                track_cache,
-                {},
-            )
-            self.cur.execute("COMMIT")
+                # Process final track's chunks
+                if track_chunks and current_track_id is not None:
+                    chunk_results = self._process_track_chunks(
+                        track_chunks,
+                        current_track_id,
+                        content_batch,
+                        existing_cids,
+                        incremental,
+                    )
+                    processed += chunk_results["processed"]
+                    skipped += chunk_results["skipped"]
+
+                # Final flush
+                processed += self.flush_batches(
+                    albums_batch,
+                    tracks_batch,
+                    [],
+                    content_batch,
+                    [],
+                    album_cache,
+                    track_cache,
+                    {},
+                )
+                self.cur.execute("COMMIT")
 
         except Exception as e:
             self.cur.execute("ROLLBACK")
@@ -495,6 +567,39 @@ class AudioDatabaseManager:
             invalid_audio_files,
         )
         return processed
+
+    def _process_track_chunks(
+        self, track_chunks, track_id, content_batch, existing_cids, incremental
+    ):
+        """Process all chunks for a single track, taking advantage of sorted structure."""
+        if not track_chunks or track_id is None:
+            return {"processed": 0, "skipped": 0}
+
+        processed_count = 0
+        skipped_count = 0
+
+        # Sort chunks by chunk number to ensure proper ordering
+        track_chunks.sort(
+            key=lambda x: int(x["chunk_num"]) if x["chunk_num"].isdigit() else 0
+        )
+
+        for chunk in track_chunks:
+            cid = chunk["cid"]
+
+            if incremental and cid in existing_cids:
+                skipped_count += 1
+                continue
+
+            content_batch.append((track_id, cid))
+            processed_count += 1
+
+        # Log track completion for large tracks
+        if len(track_chunks) > 10:
+            logging.debug(
+                f"Processed track '{track_chunks[0]['orig_filename']}' with {len(track_chunks)} chunks"
+            )
+
+        return {"processed": processed_count, "skipped": skipped_count}
 
     def parse_json_files(self, json_files: List[str], incremental: bool = False) -> int:
         """Parse JSON files and insert GDR records using batch processing."""
