@@ -258,12 +258,21 @@ std::string Downloader::get_fresh_token() {
 
 std::string Downloader::request_new_token() {
     const int max_retries = config["max_retries"].get<int>();
+    const int gdr_account_id = track["gdr_account_id"].get<int>() - 1;
+
+    const std::string &client_id =
+        config["gdr_accounts"][gdr_account_id]["client_id"].get<std::string>();
+    const std::string &client_secret =
+        config["gdr_accounts"][gdr_account_id]["client_secret"]
+            .get<std::string>();
+    const std::string &refresh_token =
+        config["gdr_accounts"][gdr_account_id]["refresh_token"]
+            .get<std::string>();
+
     const std::string url = "https://oauth2.googleapis.com/token";
     const std::string data = fmt::format(
         "client_id={}&client_secret={}&refresh_token={}&grant_type=refresh_token",
-        config["client_id"].get<std::string>(),
-        config["client_secret"].get<std::string>(),
-        config["refresh_token"].get<std::string>());
+        client_id, client_secret, refresh_token);
 
     for (int attempt = 0; attempt < max_retries; ++attempt) {
         Curl curl;
