@@ -107,6 +107,8 @@ class AudioDatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_gdr_track_id ON content_gdr (track_id)",
             "CREATE INDEX IF NOT EXISTS idx_gdr_account_id ON content_gdr (gdr_account_id)",
             "CREATE INDEX IF NOT EXISTS idx_gdr_email ON gdr_accounts (email)",
+            "CREATE INDEX IF NOT EXISTS idx_content_cid_track_content ON content_cid (track_id, content_id)",
+            "CREATE INDEX IF NOT EXISTS idx_content_gdr_track_content ON content_gdr (track_id, content_id)",
         ]
 
         for index_sql in indexes:
