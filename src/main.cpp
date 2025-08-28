@@ -1,7 +1,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <mutex>
 #include <stacktrace>
 #include <string>
 #include <thread>
@@ -51,42 +50,6 @@ static void init_log(const std::string &file) {
     logger->flush_on(spdlog::level::trace);
     spdlog::set_level(spdlog::level::trace);
     spdlog::set_default_logger(logger);
-}
-
-static void write_cfg(const std::string &file, const json &config,
-                      std::mutex &mutex) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    try {
-        const std::string tmp = file + ".tmp";
-        std::ofstream stream(tmp);
-        if (!stream.is_open()) {
-            throw std::runtime_error("Failed to open temp config file");
-        }
-
-        stream << config.dump(4) << std::endl;
-        stream.close();
-        fs::rename(tmp, file);
-        SPDLOG_TRACE("Config written: {}", file);
-    } catch (const std::exception &e) {
-        SPDLOG_ERROR("Write config failed {}: {}", file, e.what());
-        throw;
-    }
-}
-
-static json read_cfg(const std::string &file, std::mutex &mutex) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    try {
-        std::ifstream f(file);
-        if (!f.is_open()) {
-            throw std::runtime_error("Failed to open config file");
-        }
-        return json::parse(f);
-    } catch (const std::exception &e) {
-        SPDLOG_ERROR("Read config failed {}: {}", file, e.what());
-        throw;
-    }
 }
 
 static json get_track(const json &config) {
@@ -160,13 +123,11 @@ static void cleanup_file(const fs::path &path) {
     }
 }
 
-void producer(jdz::SpscQueue<json> &queue, const std::string &cfg_file,
-              std::mutex &config_mutex) {
+void producer(jdz::SpscQueue<json> &queue, json &config) {
     SPDLOG_TRACE("Start");
     while (true) {
         SPDLOG_TRACE("Loop starts");
         try {
-            json config = read_cfg(cfg_file, config_mutex);
             json track = get_track(config);
 
             std::string filename = download_track(config, track);
@@ -175,11 +136,6 @@ void producer(jdz::SpscQueue<json> &queue, const std::string &cfg_file,
                 track["max_value"] = config["max_value"].get<int>();
                 SPDLOG_TRACE("Push: {}", filename);
                 push_track(queue, std::move(track));
-
-                if (track.contains("byte_range")) {
-                    SPDLOG_TRACE("Update config with byte_range");
-                    write_cfg(cfg_file, config, config_mutex);
-                }
             } else {
                 SPDLOG_TRACE("Download failed");
             }
@@ -195,8 +151,7 @@ void producer(jdz::SpscQueue<json> &queue, const std::string &cfg_file,
     }
 }
 
-void consumer(jdz::SpscQueue<json> &queue, const std::string &cfg_file,
-              std::mutex &config_mutex) {
+void consumer(jdz::SpscQueue<json> &queue, const json &config) {
     SPDLOG_TRACE("Start");
     while (true) {
         SPDLOG_TRACE("Loop starts");
@@ -204,7 +159,6 @@ void consumer(jdz::SpscQueue<json> &queue, const std::string &cfg_file,
         bool valid_path = false;
 
         try {
-            const json config = read_cfg(cfg_file, config_mutex);
             json track = pop_track(queue);
 
             const fs::path output_dir = config["output"].get<std::string>();
@@ -239,21 +193,19 @@ int main(int argc, char *argv[]) {
     int num_files = 4;
     if (argc != 2) {
         die("Usage: <program> <config_file>");
-    } else {
-        std::ifstream cfg_stream(argv[1]);
-        const json config = json::parse(cfg_stream);
-        init_log(config["log"].get<std::string>());
-        num_files = config["num_files"].get<int>();
-        fs::remove_all(config["output"].get<std::string>());
     }
 
-    std::string cfg_file(argv[1]);
-    std::mutex config_file_mutex;
+    std::ifstream cfg_stream(argv[1]);
+    json config = json::parse(cfg_stream);
+    cfg_stream.close();
+
+    init_log(config["log"].get<std::string>());
+    num_files = config["num_files"].get<int>();
+    fs::remove_all(config["output"].get<std::string>());
+
     jdz::SpscQueue<json> queue(num_files);
-    std::jthread p(producer, std::ref(queue), std::ref(cfg_file),
-                   std::ref(config_file_mutex));
-    std::jthread c(consumer, std::ref(queue), std::ref(cfg_file),
-                   std::ref(config_file_mutex));
+    std::jthread p(producer, std::ref(queue), std::ref(config));
+    std::jthread c(consumer, std::ref(queue), std::ref(config));
 
     p.join();
     c.join();
