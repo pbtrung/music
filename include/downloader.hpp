@@ -71,6 +71,7 @@ class Downloader {
     std::string generate_output_filename() const;
     void log_download_progress(int cid_index, const std::string &cid);
     void ensure_output_directory() const;
+    std::string cid_type_to_string(CidType type) const;
 
     // Time utilities
     static std::string
