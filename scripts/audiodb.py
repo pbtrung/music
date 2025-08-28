@@ -59,7 +59,7 @@ class AudioDatabaseManager:
             )""",
             """CREATE TABLE IF NOT EXISTS tracks (
                 track_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                album_id INTEGER,
+                album_id INTEGER NOT NULL,
                 track_name TEXT NOT NULL,
                 FOREIGN KEY (album_id) REFERENCES albums (album_id) ON DELETE CASCADE
             )""",
@@ -104,9 +104,7 @@ class AudioDatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_album_id ON tracks (album_id)",
             "CREATE INDEX IF NOT EXISTS idx_track_name ON tracks (track_name)",
             "CREATE INDEX IF NOT EXISTS idx_track_id ON content_cid (track_id)",
-            "CREATE INDEX IF NOT EXISTS idx_cid ON content_cid (cid)",
             "CREATE INDEX IF NOT EXISTS idx_gdr_track_id ON content_gdr (track_id)",
-            "CREATE INDEX IF NOT EXISTS idx_gdr_cid ON content_gdr (cid)",
             "CREATE INDEX IF NOT EXISTS idx_gdr_account_id ON content_gdr (gdr_account_id)",
             "CREATE INDEX IF NOT EXISTS idx_gdr_email ON gdr_accounts (email)",
         ]
