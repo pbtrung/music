@@ -435,15 +435,13 @@ std::string Downloader::get_fresh_token() {
 std::string Downloader::request_new_token() {
     const int max_retries = config["max_retries"].get<int>();
     const int gdr_account_id = track["gdr_account_id"].get<int>() - 1;
+    auto &gdr_account = config["gdr_accounts"][gdr_account_id];
 
-    const std::string &client_id =
-        config["gdr_accounts"][gdr_account_id]["client_id"].get<std::string>();
+    const std::string &client_id = gdr_account["client_id"].get<std::string>();
     const std::string &client_secret =
-        config["gdr_accounts"][gdr_account_id]["client_secret"]
-            .get<std::string>();
+        gdr_account["client_secret"].get<std::string>();
     const std::string &refresh_token =
-        config["gdr_accounts"][gdr_account_id]["refresh_token"]
-            .get<std::string>();
+        gdr_account["refresh_token"].get<std::string>();
 
     SPDLOG_TRACE(
         "Requesting new token: gdr_account_id={}, max_retries={}, client_id_length={}",
@@ -506,8 +504,8 @@ std::string Downloader::request_new_token() {
             const int expires_in = token_data.value("expires_in", 3600);
             const auto expiry = system_clock::now() + seconds(expires_in - 30);
 
-            config["access_token"] = access_token;
-            config["expiry_iso"] = to_iso8601(expiry);
+            gdr_account["access_token"] = access_token;
+            gdr_account["expiry_iso"] = to_iso8601(expiry);
 
             SPDLOG_TRACE(
                 "Token refresh succeeded on attempt {}: token_length={}, expires_in={}s",
@@ -534,14 +532,18 @@ std::string Downloader::request_new_token() {
 }
 
 bool Downloader::is_token_valid() const {
-    if (!config.contains("access_token") || !config.contains("expiry_iso")) {
+    const int gdr_account_id = track["gdr_account_id"].get<int>() - 1;
+    const auto &gdr_account = config["gdr_accounts"][gdr_account_id];
+
+    if (!gdr_account.contains("access_token") ||
+        !gdr_account.contains("expiry_iso")) {
         SPDLOG_TRACE(
             "Token validation failed: missing access_token or expiry_iso");
         return false;
     }
 
     try {
-        const auto expiry = from_iso8601(config["expiry_iso"]);
+        const auto expiry = from_iso8601(gdr_account["expiry_iso"]);
         const auto now = system_clock::now();
         const bool is_valid = expiry > now + minutes(1);
 
