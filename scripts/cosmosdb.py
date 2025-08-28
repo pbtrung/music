@@ -97,6 +97,14 @@ class CosmosDBMigrator:
         log_format = "%(asctime)s - %(levelname)s - %(message)s"
         Path("logs").mkdir(exist_ok=True)
 
+        # Configure Azure SDK logging to reduce verbosity
+        azure_logger = logging.getLogger('azure')
+        azure_logger.setLevel(logging.WARNING)
+        
+        # Configure requests logging to reduce verbosity
+        requests_logger = logging.getLogger('urllib3')
+        requests_logger.setLevel(logging.WARNING)
+
         logging.basicConfig(
             level=logging.INFO,
             format=log_format,
@@ -108,6 +116,7 @@ class CosmosDBMigrator:
             ],
         )
 
+    @asynccontextmanager
     async def get_cosmos_container(self):
         client = None
         try:
