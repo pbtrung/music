@@ -98,11 +98,11 @@ class CosmosDBMigrator:
         Path("logs").mkdir(exist_ok=True)
 
         # Configure Azure SDK logging to reduce verbosity
-        azure_logger = logging.getLogger('azure')
+        azure_logger = logging.getLogger("azure")
         azure_logger.setLevel(logging.WARNING)
-        
+
         # Configure requests logging to reduce verbosity
-        requests_logger = logging.getLogger('urllib3')
+        requests_logger = logging.getLogger("urllib3")
         requests_logger.setLevel(logging.WARNING)
 
         logging.basicConfig(
@@ -167,16 +167,28 @@ class CosmosDBMigrator:
                     delay = min(delay * 2, 10) + random.uniform(0, 0.5)
 
                 elif e.status_code == 413:
-                    logging.error(f"Document {doc.get('id')} too large: {e}")
-                    return False
+                    logging.warning(
+                        f"Document {doc.get('id')} too large (413). Retrying "
+                        f"(attempt {attempt + 1}/{self.config.max_retries}): {e}"
+                    )
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 10) + random.uniform(0, 0.5)
 
                 else:
-                    logging.error(f"Cosmos DB error for doc {doc.get('id')}: {e}")
-                    return False
+                    logging.warning(
+                        f"Cosmos DB error (status {e.status_code}) for doc {doc.get('id')}. Retrying "
+                        f"(attempt {attempt + 1}/{self.config.max_retries}): {e}"
+                    )
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 10) + random.uniform(0, 0.5)
 
             except Exception as e:
-                logging.error(f"Unexpected error upserting doc {doc.get('id')}: {e}")
-                return False
+                logging.warning(
+                    f"Unexpected error upserting doc {doc.get('id')}. Retrying "
+                    f"(attempt {attempt + 1}/{self.config.max_retries}): {e}"
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 10) + random.uniform(0, 0.5)
 
         logging.error(
             f"Failed to upsert doc {doc.get('id')} after {self.config.max_retries} retries"
