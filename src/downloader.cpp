@@ -634,23 +634,6 @@ std::optional<std::string> Downloader::assemble_multiple_files() {
 std::optional<std::string> Downloader::handle_single_file() {
     const auto &cids = track["cids"].get<std::vector<std::string>>();
     const std::string &cid = cids[0];
-    const auto cid_type = get_cid_type(cid);
-
-    SPDLOG_TRACE("Handling single file: CID='{}', type={}", cid,
-                 cid_type_to_string(cid_type));
-
-    if (cid_type == CidType::GDR || cid_type == CidType::IPFS) {
-        const auto filename = generate_output_filename();
-        if (filename.empty()) {
-            SPDLOG_TRACE(
-                "Single file handling failed: empty filename generated for CID '{}'",
-                cid);
-            return std::nullopt;
-        }
-        SPDLOG_TRACE("Single file (GDR/IPFS) handling succeeded: filename='{}'",
-                     filename);
-        return std::make_optional(filename);
-    }
 
     const auto filename = generate_output_filename();
     if (filename.empty()) {
