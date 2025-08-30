@@ -612,12 +612,11 @@ std::optional<std::string> Downloader::assemble_multiple_files() {
 
     const bool success = combine_cid_files(assembled_path);
     if (success) {
-        SPDLOG_TRACE(
-            "Multiple file assembly succeeded, cleaning up individual CID files");
-        cleanup_cid_files();
+        SPDLOG_TRACE("Multiple file assembly succeeded");
     } else {
         SPDLOG_TRACE("Multiple file assembly failed");
     }
+    cleanup_cid_files();
 
     return success ? std::make_optional(filename) : std::nullopt;
 }
