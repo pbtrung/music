@@ -570,16 +570,7 @@ fs::path Downloader::get_temp_path(const std::string &cid) const {
 fs::path Downloader::get_final_path(const std::string &cid,
                                     CidType type) const {
     const fs::path output_dir = config["output"].get<std::string>();
-    fs::path final_path;
-
-    if (type == CidType::GDR || type == CidType::IPFS) {
-        const auto filename = generate_output_filename();
-        final_path =
-            filename.empty() ? output_dir / cid : output_dir / filename;
-    } else {
-        final_path = output_dir / cid;
-    }
-
+    fs::path final_path = output_dir / cid;
     SPDLOG_TRACE("Generated final path for CID '{}' (type {}): {}", cid,
                  cid_type_to_string(type), final_path.string());
     return final_path;
