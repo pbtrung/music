@@ -123,12 +123,32 @@ static void cleanup_file(const fs::path &path) {
     }
 }
 
+static void cleanup_cid_files(const json &config, const json &track) {
+    const auto &cids = track["cids"].get<std::vector<std::string>>();
+    const fs::path output_dir = config["output"].get<std::string>();
+
+    for (size_t i = 0; i < cids.size(); ++i) {
+        const auto &cid = cids[i];
+        const fs::path path = output_dir / cid;
+        if (fs::exists(path)) {
+            try {
+                fs::remove(path);
+                SPDLOG_TRACE("Removed: {}", path.string());
+            } catch (const std::exception &e) {
+                SPDLOG_TRACE("Remove failed {}: {}", path.string(), e.what());
+            }
+        }
+    }
+}
+
 void producer(jdz::SpscQueue<json> &queue, json &config) {
     SPDLOG_TRACE("Start");
     while (true) {
         SPDLOG_TRACE("Loop starts");
+
+        json track;
         try {
-            json track = get_track(config);
+            track = get_track(config);
 
             std::string filename = download_track(config, track);
             if (!filename.empty()) {
@@ -141,11 +161,14 @@ void producer(jdz::SpscQueue<json> &queue, json &config) {
             }
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
+            cleanup_cid_files(config, track);
             log_trace();
         } catch (...) {
             SPDLOG_TRACE("Unknown error");
+            cleanup_cid_files(config, track);
             log_trace();
         }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         SPDLOG_TRACE("Loop ends");
     }
