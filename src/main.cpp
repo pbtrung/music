@@ -161,14 +161,15 @@ void producer(jdz::SpscQueue<json> &queue, json &config) {
             }
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
-            cleanup_cid_files(config, track);
             log_trace();
         } catch (...) {
             SPDLOG_TRACE("Unknown error");
-            cleanup_cid_files(config, track);
             log_trace();
         }
 
+        if (track.contains("cids") && config.contains("output")) {
+            cleanup_cid_files(config, track);
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         SPDLOG_TRACE("Loop ends");
     }
