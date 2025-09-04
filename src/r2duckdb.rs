@@ -63,25 +63,19 @@ impl R2DuckDB {
     fn connect(&self) -> Result<Connection> {
         let conn =
             Connection::open_in_memory().context("Failed to create in-memory DuckDB connection")?;
-        conn.execute("SET s3_region='auto'", [])
-            .context("Failed to set S3 region")?;
-        conn.execute("SET s3_url_style='path'", [])
-            .context("Failed to set S3 URL style")?;
-
-        let url = format!(
-            "s3://{}:{}@{}.r2.cloudflarestorage.com/{}/{}",
-            self.access_key.replace('@', "%40").replace(':', "%3A"),
-            self.secret_key.replace('@', "%40").replace(':', "%3A"),
-            self.account_id,
-            self.bucket,
-            self.db_file
-        );
 
         conn.execute(
-            &format!("ATTACH DATABASE '{}' AS r2db (READ_ONLY);", url),
+            &format!(
+                "CREATE SECRET r2 (TYPE r2, KEY_ID '{}', SECRET '{}', ACCOUNT_ID '{}');",
+                self.access_key, self.secret_key, self.account_id
+            ),
             [],
         )
-        .context("Failed to attach R2 database")?;
+        .context("Failed to create secret")?;
+
+        let url = format!("r2://{}/{}", self.bucket, self.db_file);
+        conn.execute(&format!("ATTACH '{}' AS r2db (READ_ONLY);", url), [])
+            .context("Failed to attach R2 database")?;
         Ok(conn)
     }
 
@@ -107,7 +101,7 @@ impl R2DuckDB {
     }
 
     fn detach_db(&self, conn: &Connection) -> Result<()> {
-        conn.execute("DETACH DATABASE r2db;", [])
+        conn.execute("DETACH r2db;", [])
             .context("Failed to detach database")?;
         Ok(())
     }
