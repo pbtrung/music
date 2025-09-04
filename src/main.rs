@@ -8,6 +8,7 @@ use config::Config;
 
 mod audio_decoder;
 mod migrate;
+mod r2duckdb;
 mod track;
 mod utils;
 
