@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use flexi_logger::{Cleanup, Criterion, DeferredNow, FileSpec, Logger, Naming, Record};
 use std::path::PathBuf;
 
@@ -7,8 +7,8 @@ mod config;
 use config::Config;
 
 mod audio_decoder;
-use audio_decoder::AudioDecoder;
-
+mod migrate;
+mod track;
 mod utils;
 
 #[derive(Parser, Debug)]
@@ -17,6 +17,15 @@ struct Args {
     /// Config file path (JSON format)
     #[arg(short, long, default_value = "config.json")]
     config: PathBuf,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Migrate,
+    Run,
 }
 
 fn log_format(
@@ -43,7 +52,7 @@ async fn main() -> Result<()> {
     Logger::try_with_str("info")?
         .log_to_file(
             FileSpec::default()
-                .directory(config.log_dir)
+                .directory(&config.log_dir)
                 .basename("music")
                 .suffix("log"),
         )
@@ -55,12 +64,18 @@ async fn main() -> Result<()> {
         .format_for_files(log_format)
         .start()?;
 
-    let input = "test.opus";
-    let mut decoder = AudioDecoder::new(config.pipe, input.to_string())?;
-
-    log::info!("Starting audio decoding for: {}", input);
-    decoder.decode().await?;
-    log::info!("Audio decoding completed successfully");
+    match args.command {
+        Some(Commands::Migrate) => {
+            log::info!(
+                "Running migrations using config: {:?}",
+                &args.config.display()
+            );
+            migrate::run_migrate(&config.sqlitedb, &config.duckdb, config.min_value)?;
+        }
+        Some(Commands::Run) | None => {
+            log::info!("Running app with config: {:?}", &args.config.display());
+        }
+    }
 
     Ok(())
 }
