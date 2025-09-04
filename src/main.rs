@@ -37,27 +37,25 @@ fn log_format(
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+    let config = Config::from_file(&args.config)?;
 
     Logger::try_with_str("info")?
         .log_to_file(
             FileSpec::default()
-                .directory("logs")
+                .directory(config.log_dir)
                 .basename("music")
                 .suffix("log"),
         )
         .rotate(
-            Criterion::Size(10_000_000),
+            Criterion::Size(15_000_000),
             Naming::Numbers,
             Cleanup::KeepLogFiles(4),
         )
         .format_for_files(log_format)
         .start()?;
 
-    let config = Config::from_file(&args.config)?;
-    log::info!("Loaded config from: {}", args.config.display());
-
     let input = "test.opus";
-    let mut decoder = AudioDecoder::new(config.pipe_name, input.to_string())?;
+    let mut decoder = AudioDecoder::new(config.pipe, input.to_string())?;
 
     log::info!("Starting audio decoding for: {}", input);
     decoder.decode().await?;
