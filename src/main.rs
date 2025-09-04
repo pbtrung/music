@@ -26,10 +26,11 @@ fn log_format(
 ) -> std::io::Result<()> {
     write!(
         w,
-        "[{}] {:<5}[{}] {}",
-        now.now().format("%Y-%m-%d %H:%M:%S"),
+        "[{}] {:<5}[{}:{}] {}",
+        now.now().format("%Y-%m-%d %H:%M:%S%.3f"),
         record.level(),
         record.target(),
+        record.line().unwrap_or(0),
         record.args()
     )
 }
