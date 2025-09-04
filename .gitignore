@@ -1,0 +1,12 @@
+*.json
+*.csv
+*.db
+*.sif
+*.mp3
+*.opus
+
+/build/
+/tmp/
+/data/
+/target/
+/logs/

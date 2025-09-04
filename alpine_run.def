@@ -1,0 +1,7 @@
+Bootstrap: docker
+From: alpine:edge
+
+%post
+    apk update
+    apk --no-cache upgrade
+    apk --no-cache add libssl3 libcrypto3 ffmpeg-libs

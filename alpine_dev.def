@@ -1,0 +1,8 @@
+Bootstrap: docker
+From: alpine:edge
+
+%post
+    apk update
+    apk --no-cache upgrade
+    apk --no-cache add alpine-sdk bash fish rust rustfmt cargo \
+        clang20-libclang ffmpeg-dev openssl-dev
