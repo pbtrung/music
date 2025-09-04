@@ -76,6 +76,8 @@ fn setup_duckdb_connection(duckdb_path: &str) -> Result<DuckConn> {
     let mut duck = DuckConn::open(duckdb_path)
         .with_context(|| format!("Failed to open DuckDB database at: {}", duckdb_path))?;
 
+    duck.execute("SET default_block_size=131072", [])
+        .context("Failed to set default block size")?;
     duck.execute(
         "CREATE TABLE IF NOT EXISTS tracks (
             track_id INTEGER PRIMARY KEY,
