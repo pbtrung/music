@@ -1,6 +1,9 @@
 use anyhow::{Context, Result, bail};
 use duckdb::{Connection, Result as DuckResult, Row};
 
+use crate::config::R2Config;
+use crate::track::Track;
+
 pub struct R2DuckDB {
     pub access_key: String,
     pub secret_key: String,
@@ -11,15 +14,24 @@ pub struct R2DuckDB {
 }
 
 impl R2DuckDB {
+    pub fn new(config: R2Config) -> Self {
+        Self {
+            access_key: config.access_key,
+            secret_key: config.secret_key,
+            account_id: config.account_id,
+            bucket: config.bucket,
+            db_file: config.db_file,
+            table: config.table,
+        }
+    }
+
     pub fn query<T, F>(&self, sql: &str, map_row: F) -> Result<Vec<T>>
     where
         F: Fn(&Row) -> DuckResult<T>,
     {
         self.validate_inputs(sql)?;
         let conn = self.connect()?;
-        let query = self.build_query(sql);
-        let results = self.execute_query(&conn, &query, map_row)?;
-        self.detach_db(&conn)?;
+        let results = self.execute_query(&conn, &sql, map_row)?;
         Ok(results)
     }
 
@@ -73,14 +85,7 @@ impl R2DuckDB {
         )
         .context("Failed to create secret")?;
 
-        let url = format!("r2://{}/{}", self.bucket, self.db_file);
-        conn.execute(&format!("ATTACH '{}' AS r2db (READ_ONLY);", url), [])
-            .context("Failed to attach R2 database")?;
         Ok(conn)
-    }
-
-    fn build_query(&self, sql: &str) -> String {
-        sql.replace("{table}", &format!("r2db.\"{}\"", self.table))
     }
 
     fn execute_query<T, F>(&self, conn: &Connection, query: &str, map_row: F) -> Result<Vec<T>>
@@ -100,9 +105,22 @@ impl R2DuckDB {
         Ok(results)
     }
 
-    fn detach_db(&self, conn: &Connection) -> Result<()> {
-        conn.execute("DETACH r2db;", [])
-            .context("Failed to detach database")?;
-        Ok(())
+    pub fn get_track(&self, track_id: u64) -> Result<Option<Track>> {
+        let sql = format!(
+            "SELECT track FROM 'r2://{}/{}' WHERE track_id = {} LIMIT 1;",
+            self.bucket, self.db_file, track_id
+        );
+
+        log::info!("sql: \"{}\"", sql);
+        let results = self.query(&sql, |row| {
+            let track_json: String = row.get(0)?;
+            let track: Track = serde_json::from_str(&track_json).map_err(|e| {
+                duckdb::Error::FromSqlConversionFailure(0, duckdb::types::Type::Text, Box::new(e))
+            })?;
+
+            Ok(track)
+        })?;
+
+        Ok(results.into_iter().next())
     }
 }
