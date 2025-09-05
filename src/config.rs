@@ -4,6 +4,16 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct R2Config {
+    pub access_key: String,
+    pub secret_key: String,
+    pub account_id: String,
+    pub db_file: String,
+    pub bucket: String,
+    pub table: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CosmosDbConfig {
     pub cosmos_uri: String,
     pub cosmos_key: String,
@@ -25,6 +35,7 @@ pub struct GdrAccount {
 pub struct Config {
     pub sqlitedb: String,
     pub duckdb: String,
+    pub parquet: String,
     pub download_dir: String,
     pub max_retries: i64,
     pub timeout: i64,
@@ -38,6 +49,7 @@ pub struct Config {
     pub ncores: i64,
     pub mul_factor: i64,
     pub cosmosdb: CosmosDbConfig,
+    pub r2: R2Config,
     pub gdr_accounts: Vec<GdrAccount>,
     pub gateways: Vec<String>,
 }

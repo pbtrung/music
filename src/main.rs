@@ -71,7 +71,12 @@ async fn main() -> Result<()> {
                 "Running migrations using config: {:?}",
                 &args.config.display()
             );
-            migrate::run_migrate(&config.sqlitedb, &config.duckdb, config.min_value)?;
+            migrate::run_migrate(
+                &config.sqlitedb,
+                &config.duckdb,
+                &config.parquet,
+                config.min_value,
+            )?;
         }
         Some(Commands::Run) | None => {
             log::info!("Running app with config: {:?}", &args.config.display());

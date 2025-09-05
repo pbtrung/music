@@ -12,6 +12,7 @@ struct TrackRow {
     album_id: i64,
     path: String,
     content_cid: Option<String>,
+    gdr_cid: Option<String>,
     start_byte: Option<i64>,
     end_byte: Option<i64>,
     gdr_account_id: Option<i64>,
@@ -26,10 +27,11 @@ impl TrackRow {
             album_id: row.get(2).context("Failed to get album_id")?,
             path: row.get(3).context("Failed to get path")?,
             content_cid: row.get(4).ok(),
-            start_byte: row.get(5).ok(),
-            end_byte: row.get(6).ok(),
-            gdr_account_id: row.get(7).ok(),
-            email: row.get(8).ok(),
+            gdr_cid: row.get(5).ok(),
+            start_byte: row.get(6).ok(),
+            end_byte: row.get(7).ok(),
+            gdr_account_id: row.get(8).ok(),
+            email: row.get(9).ok(),
         })
     }
 
@@ -65,6 +67,7 @@ fn setup_sqlite_connection(sqlite_path: &str) -> Result<SqliteConn> {
         PRAGMA journal_mode = MEMORY;
         PRAGMA temp_store = MEMORY;
         PRAGMA cache_size = 10000;
+        PRAGMA mmap_size = 268435456;
         ",
         )
         .context("Failed to set SQLite optimization pragmas")?;
@@ -78,6 +81,8 @@ fn setup_duckdb_connection(duckdb_path: &str) -> Result<DuckConn> {
 
     duck.execute("SET default_block_size=131072", [])
         .context("Failed to set default block size")?;
+    duck.execute("SET memory_limit='8GB'", [])
+        .context("Failed to set memory limit")?;
     duck.execute(
         "CREATE TABLE IF NOT EXISTS tracks (
             track_id INTEGER PRIMARY KEY,
@@ -90,7 +95,13 @@ fn setup_duckdb_connection(duckdb_path: &str) -> Result<DuckConn> {
     Ok(duck)
 }
 
-fn read_tracks_from_sqlite(sqlite: &SqliteConn, min_track_id: i64) -> Result<HashMap<i64, Value>> {
+fn process_tracks_batch(
+    sqlite: &SqliteConn,
+    duck: &mut DuckConn,
+    batch_start: i64,
+    batch_size: i64,
+) -> Result<usize> {
+    // Read batch from SQLite
     let mut stmt = sqlite
         .prepare(
             r#"
@@ -100,6 +111,7 @@ fn read_tracks_from_sqlite(sqlite: &SqliteConn, min_track_id: i64) -> Result<Has
             a.album_id, 
             a.path,
             cc.cid as content_cid,
+            cg.cid as gdr_cid,
             cg.start_byte,
             cg.end_byte,
             cg.gdr_account_id,
@@ -109,16 +121,17 @@ fn read_tracks_from_sqlite(sqlite: &SqliteConn, min_track_id: i64) -> Result<Has
         LEFT JOIN content_cid cc ON t.track_id = cc.track_id
         LEFT JOIN content_gdr cg ON t.track_id = cg.track_id
         LEFT JOIN gdr_accounts ga ON cg.gdr_account_id = ga.gdr_account_id
-        WHERE t.track_id >= ?
+        WHERE t.track_id >= ? AND t.track_id < ?
         ORDER BY t.track_id, cc.content_id, cg.content_id
         "#,
         )
         .context("Failed to prepare SQLite query")?;
 
     let mut rows = stmt
-        .query(params![min_track_id])
+        .query(params![batch_start, batch_start + batch_size])
         .context("Failed to execute SQLite query")?;
 
+    // Process batch in memory
     let mut tracks: HashMap<i64, Value> = HashMap::new();
     let mut row_count = 0;
 
@@ -131,22 +144,22 @@ fn read_tracks_from_sqlite(sqlite: &SqliteConn, min_track_id: i64) -> Result<Has
 
         process_track_row(&mut tracks, track_row)?;
         row_count += 1;
-
-        if row_count % 10000 == 0 {
-            log::info!(
-                "Read {} rows from SQLite, {} unique tracks so far",
-                row_count,
-                tracks.len()
-            );
-        }
     }
 
-    log::info!(
-        "Finished reading SQLite data. Total rows: {}, unique tracks: {}",
-        row_count,
-        tracks.len()
-    );
-    Ok(tracks)
+    // Insert batch into DuckDB
+    if !tracks.is_empty() {
+        let inserted = insert_tracks_batch_to_duckdb(duck, tracks)?;
+        log::info!(
+            "Processed batch {}-{}: {} rows read, {} unique tracks inserted",
+            batch_start,
+            batch_start + batch_size - 1,
+            row_count,
+            inserted
+        );
+        Ok(inserted)
+    } else {
+        Ok(0)
+    }
 }
 
 fn process_track_row(tracks: &mut HashMap<i64, Value>, row: TrackRow) -> Result<()> {
@@ -162,8 +175,9 @@ fn process_track_row(tracks: &mut HashMap<i64, Value>, row: TrackRow) -> Result<
         })
     });
 
-    // Handle CIDs (1-to-many relationship)
+    // Handle both content_cid and gdr_cid
     add_cid_to_track(track_entry, row.content_cid)?;
+    add_cid_to_track(track_entry, row.gdr_cid)?;
 
     // Handle GDR fields (1-to-1 relationship)
     set_gdr_fields(
@@ -178,15 +192,18 @@ fn process_track_row(tracks: &mut HashMap<i64, Value>, row: TrackRow) -> Result<
     Ok(())
 }
 
-fn add_cid_to_track(track_entry: &mut Value, content_cid: Option<String>) -> Result<()> {
-    if let Some(cid) = content_cid {
-        if !cid.trim().is_empty() {
+fn add_cid_to_track(track_entry: &mut Value, cid: Option<String>) -> Result<()> {
+    if let Some(cid_value) = cid {
+        if !cid_value.trim().is_empty() {
             let cids = track_entry["cids"]
                 .as_array_mut()
                 .context("cids field is not an array")?;
-            let cid_value = json!(cid.trim());
-            if !cids.contains(&cid_value) {
-                cids.push(cid_value);
+
+            let cid_json = json!(cid_value.trim());
+
+            // Check if this exact CID already exists (avoid duplicates)
+            if !cids.contains(&cid_json) {
+                cids.push(cid_json);
             }
         }
     }
@@ -277,8 +294,10 @@ fn set_gdr_fields(
     Ok(())
 }
 
-fn insert_tracks_to_duckdb(duck: &mut DuckConn, tracks: HashMap<i64, Value>) -> Result<usize> {
-    let chunk_size = 50_000;
+fn insert_tracks_batch_to_duckdb(
+    duck: &mut DuckConn,
+    tracks: HashMap<i64, Value>,
+) -> Result<usize> {
     let mut tx = duck
         .transaction()
         .context("Failed to start DuckDB transaction")?;
@@ -287,9 +306,7 @@ fn insert_tracks_to_duckdb(duck: &mut DuckConn, tracks: HashMap<i64, Value>) -> 
         .prepare("INSERT OR REPLACE INTO tracks (track_id, track) VALUES (?, ?)")
         .context("Failed to prepare DuckDB insert statement")?;
 
-    let start_time = Instant::now();
     let mut count = 0;
-    let total_tracks = tracks.len();
 
     // Sort tracks by ID for consistent processing
     let mut sorted_tracks: Vec<_> = tracks.into_iter().collect();
@@ -303,53 +320,25 @@ fn insert_tracks_to_duckdb(duck: &mut DuckConn, tracks: HashMap<i64, Value>) -> 
             .with_context(|| format!("Failed to insert track {} into DuckDB", track_id))?;
 
         count += 1;
-
-        // Log progress
-        if count % 5000 == 0 {
-            let progress = (count as f64 / total_tracks as f64) * 100.0;
-            let elapsed = start_time.elapsed();
-            log::info!(
-                "Progress: {}/{} ({:.1}%) tracks inserted | Track ID: {} | Elapsed: {:.2?}",
-                count,
-                total_tracks,
-                progress,
-                track_id,
-                elapsed
-            );
-        }
-
-        // Commit in chunks to avoid memory issues
-        if count % chunk_size == 0 {
-            tx.commit().context("Failed to commit DuckDB transaction")?;
-            log::info!(
-                "Committed chunk of {} tracks (up to track_id: {})",
-                chunk_size,
-                track_id
-            );
-
-            // Start new transaction
-            tx = duck
-                .transaction()
-                .context("Failed to start new DuckDB transaction")?;
-            insert = tx
-                .prepare("INSERT OR REPLACE INTO tracks (track_id, track) VALUES (?, ?)")
-                .context("Failed to prepare new DuckDB insert statement")?;
-        }
     }
 
-    // Commit remaining tracks
-    tx.commit()
-        .context("Failed to commit final DuckDB transaction")?;
-
-    let total_elapsed = start_time.elapsed();
-    log::info!(
-        "Migration completed successfully! {} tracks migrated in {:.2?} ({:.2} tracks/sec)",
-        count,
-        total_elapsed,
-        count as f64 / total_elapsed.as_secs_f64()
-    );
-
+    tx.commit().context("Failed to commit DuckDB transaction")?;
     Ok(count)
+}
+
+fn get_track_id_range(sqlite: &SqliteConn, min_track_id: i64) -> Result<(i64, i64)> {
+    let (min_id, max_id): (Option<i64>, Option<i64>) = sqlite
+        .query_row(
+            "SELECT MIN(track_id), MAX(track_id) FROM tracks WHERE track_id >= ?",
+            params![min_track_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .context("Failed to get track ID range")?;
+
+    match (min_id, max_id) {
+        (Some(min), Some(max)) => Ok((min, max)),
+        _ => anyhow::bail!("No tracks found with track_id >= {}", min_track_id),
+    }
 }
 
 fn verify_migration(duck: &DuckConn, expected_count: usize) -> Result<()> {
@@ -373,24 +362,77 @@ fn verify_migration(duck: &DuckConn, expected_count: usize) -> Result<()> {
     Ok(())
 }
 
-pub fn run_migrate(sqlite_path: &str, duckdb_path: &str, min_track_id: i64) -> Result<()> {
+pub fn run_migrate(
+    sqlite_path: &str,
+    duckdb_path: &str,
+    parquet_path: &str,
+    min_track_id: i64,
+) -> Result<()> {
     // Validate inputs
     if min_track_id < 0 {
         anyhow::bail!("min_track_id must be non-negative, got: {}", min_track_id);
     }
 
+    let start_time = Instant::now();
+
     // Setup connections
     let sqlite = setup_sqlite_connection(sqlite_path)?;
     let mut duck = setup_duckdb_connection(duckdb_path)?;
 
-    // Read all tracks from SQLite
-    let tracks = read_tracks_from_sqlite(&sqlite, min_track_id)?;
+    // Get the range of track IDs to process
+    let (min_id, max_id) = get_track_id_range(&sqlite, min_track_id)?;
+    log::info!(
+        "Processing tracks from {} to {} (total range: {})",
+        min_id,
+        max_id,
+        max_id - min_id + 1
+    );
 
-    // Insert tracks into DuckDB
-    let count = insert_tracks_to_duckdb(&mut duck, tracks)?;
+    // Process in batches to avoid memory issues
+    let batch_size = 10_000i64; // Adjust based on available memory
+    let mut total_inserted = 0;
+    let mut current_batch_start = min_id;
+
+    while current_batch_start <= max_id {
+        let batch_inserted =
+            process_tracks_batch(&sqlite, &mut duck, current_batch_start, batch_size)?;
+        total_inserted += batch_inserted;
+
+        current_batch_start += batch_size;
+
+        // Progress report
+        let progress =
+            ((current_batch_start - min_id) as f64 / (max_id - min_id + 1) as f64) * 100.0;
+        let elapsed = start_time.elapsed();
+        log::info!(
+            "Overall progress: {:.1}% | Total inserted: {} | Elapsed: {:.2?}",
+            progress.min(100.0),
+            total_inserted,
+            elapsed
+        );
+    }
 
     // Verify the migration
-    verify_migration(&duck, count)?;
+    verify_migration(&duck, total_inserted)?;
+
+    let total_elapsed = start_time.elapsed();
+    log::info!(
+        "Migration completed successfully! {} tracks migrated in {:.2?} ({:.2} tracks/sec)",
+        total_inserted,
+        total_elapsed,
+        total_inserted as f64 / total_elapsed.as_secs_f64()
+    );
+
+    log::info!("Copying to parquet");
+    duck.execute(
+        &format!(
+            "COPY tracks TO '{}' (FORMAT parquet, COMPRESSION zstd, COMPRESSION_LEVEL 5, PARQUET_VERSION v2);",
+            &parquet_path
+        ),
+        [],
+    )
+    .context("Failed to copy to parquet")?;
+    log::info!("Done copying to parquet");
 
     Ok(())
 }
