@@ -81,7 +81,7 @@ fn setup_duckdb_connection(duckdb_path: &str) -> Result<DuckConn> {
 
     duck.execute("SET default_block_size=131072", [])
         .context("Failed to set default block size")?;
-    duck.execute("SET memory_limit='8GB'", [])
+    duck.execute("SET memory_limit='16GB'", [])
         .context("Failed to set memory limit")?;
     duck.execute(
         "CREATE TABLE IF NOT EXISTS tracks (
@@ -326,7 +326,7 @@ fn insert_tracks_batch_to_duckdb(
     Ok(count)
 }
 
-fn get_track_id_range(sqlite: &SqliteConn, min_track_id: i64) -> Result<(i64, i64)> {
+fn get_track_id_range(sqlite: &SqliteConn, min_track_id: i32) -> Result<(i64, i64)> {
     let (min_id, max_id): (Option<i64>, Option<i64>) = sqlite
         .query_row(
             "SELECT MIN(track_id), MAX(track_id) FROM tracks WHERE track_id >= ?",
@@ -366,7 +366,7 @@ pub fn run_migrate(
     sqlite_path: &str,
     duckdb_path: &str,
     parquet_path: &str,
-    min_track_id: i64,
+    min_track_id: i32,
 ) -> Result<()> {
     // Validate inputs
     if min_track_id < 0 {
@@ -424,6 +424,9 @@ pub fn run_migrate(
     );
 
     log::info!("Copying to parquet");
+    // Limit the number of threads to prevent out-of-memory errors.
+    duck.execute("SET threads=4", [])
+        .context("Failed to set thread limit")?;
     duck.execute(
         &format!(
             "COPY tracks TO '{}' (FORMAT parquet, COMPRESSION zstd, COMPRESSION_LEVEL 5, PARQUET_VERSION v2);",
