@@ -9,7 +9,9 @@ pub struct Album {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Track {
-    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+
     pub track_id: u64,
     pub track_name: String,
     pub album: Album,
@@ -27,7 +29,7 @@ pub struct Track {
 
 impl Track {
     pub fn new(
-        id: impl Into<String>,
+        id: Option<String>,
         track_id: u64,
         track_name: impl Into<String>,
         album_id: u64,
@@ -37,7 +39,7 @@ impl Track {
         email: Option<String>,
     ) -> Self {
         Self {
-            id: id.into(),
+            id,
             track_id,
             track_name: track_name.into(),
             album: Album {
