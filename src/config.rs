@@ -10,7 +10,6 @@ pub struct R2Config {
     pub account_id: String,
     pub db_file: String,
     pub bucket: String,
-    pub table: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
