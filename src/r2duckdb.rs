@@ -10,7 +10,6 @@ pub struct R2DuckDB {
     pub account_id: String,
     pub bucket: String,
     pub db_file: String,
-    pub table: String,
 }
 
 impl R2DuckDB {
@@ -21,7 +20,6 @@ impl R2DuckDB {
             account_id: config.account_id,
             bucket: config.bucket,
             db_file: config.db_file,
-            table: config.table,
         }
     }
 
@@ -38,9 +36,6 @@ impl R2DuckDB {
     fn validate_inputs(&self, sql: &str) -> Result<()> {
         if sql.trim().is_empty() {
             bail!("SQL query cannot be empty");
-        }
-        if self.table.is_empty() || !self.table.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            bail!("Invalid table name: '{}'", self.table);
         }
         let sql_upper = sql.to_uppercase();
         if !sql_upper.trim_start().starts_with("SELECT")
