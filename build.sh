@@ -3,8 +3,13 @@
 cmake -S . -B build/release -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
 cmake --build build/release --target music
 
+# example_list=(
+#     ex01
+#     ex02
+#     ex03
+# )
 # cmake -S . -B build/examples -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
-# for target in ex01 ex02; do
+# for target in "${example_list[@]}"; do
 #     cmake --build build/examples --target "$target"
 # done
 

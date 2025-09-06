@@ -11,7 +11,6 @@ endif()
 # Set build flags for different build types
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wno-interference-size")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -Wno-interference-size")
-add_compile_definitions(SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
 find_package(PkgConfig REQUIRED)
 set(PKG_LIST
@@ -24,6 +23,8 @@ set(PKG_LIST
     libcrypto
     fmt
     spdlog
+    libzstd
+    sqlite3
 )
 foreach(PKG ${PKG_LIST})
     pkg_check_modules(${PKG} REQUIRED ${PKG})
@@ -33,7 +34,6 @@ foreach(PKG ${PKG_LIST})
 endforeach()
 list(APPEND COMMON_INCLUDE_DIRS include)
 # stacktrace
-list(APPEND COMMON_LINK_LIBS stdc++exp)
 
 add_executable(music
     src/main.cpp
@@ -42,7 +42,13 @@ add_executable(music
     src/audio_decoder.cpp
     src/cosmosdb.cpp
     src/downloader.cpp
+    src/httpvfs.cpp
+    src/track.cpp
 )
+target_include_directories(music PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_directories(music PRIVATE ${COMMON_LINK_DIRS})
+target_link_libraries(music PRIVATE ${COMMON_LINK_LIBS})
+
 add_executable(ex01
     examples/ex01.cpp
 )
@@ -52,7 +58,18 @@ add_executable(ex02
     src/utils.cpp
     src/curl.cpp
 )
-foreach(target music)
+add_executable(ex03
+    examples/ex03.cpp
+    src/httpvfs.cpp
+    src/curl.cpp
+    src/track.cpp
+)
+set(EXAMPLE_LIST
+    ex01
+    ex02
+    ex03
+)
+foreach(target ${EXAMPLE_LIST})
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
     target_link_directories(${target} PRIVATE ${COMMON_LINK_DIRS})
     target_link_libraries(${target} PRIVATE ${COMMON_LINK_LIBS})
