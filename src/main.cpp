@@ -10,9 +10,9 @@
 
 #include "atomic_queues.hpp"
 #include "audio_decoder.hpp"
-#include "cosmosdb.hpp"
 #include "downloader.hpp"
 #include "json.hpp"
+#include "track.hpp"
 #include "utils.hpp"
 
 using json = nlohmann::json;
@@ -39,8 +39,13 @@ static void init_log(const std::string &file) {
 }
 
 static json get_track(const json &config) {
-    CosmosDB cosmos(config);
-    return cosmos.get_item().value();
+    const auto rand_num = Utilities::generate_unique_ints(
+        1, config["min_value"].get<int>(), config["max_value"].get<int>());
+    std::string query = fmt::format("SELECT * FROM tracks WHERE track_id = {}",
+                                    rand_num->front());
+    SPDLOG_TRACE("{}", query);
+    Track track = Track::load(config["db_r2_url"].get<std::string>(), query);
+    return track.get_json();
 }
 
 static std::string download_track(const json &config, json &track) {
