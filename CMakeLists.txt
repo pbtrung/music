@@ -20,6 +20,8 @@ set(PKG_LIST
     libavformat
     libavutil
     libswresample
+    libssl
+    libcrypto
     fmt
     spdlog
     libzstd
@@ -51,12 +53,6 @@ add_executable(ex01
 )
 add_executable(ex02
     examples/ex02.cpp
-    src/cosmosdb.cpp
-    src/utils.cpp
-    src/curl.cpp
-)
-add_executable(ex03
-    examples/ex03.cpp
     src/httpvfs.cpp
     src/curl.cpp
     src/track.cpp
@@ -64,7 +60,6 @@ add_executable(ex03
 set(EXAMPLE_LIST
     ex01
     ex02
-    ex03
 )
 foreach(target ${EXAMPLE_LIST})
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})

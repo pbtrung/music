@@ -24,7 +24,7 @@ Stage: final
 %post
     apk update
     apk --no-cache upgrade
-    apk --no-cache add libcurl ffmpeg-libs snapcast-server fmt spdlog zstd-libs sqlite-libs
+    apk --no-cache add libcurl ffmpeg-libs snapcast-server fmt spdlog zstd-libs sqlite-libs libssl3 libcrypto3
 
 %runscript
     #!/bin/ash
