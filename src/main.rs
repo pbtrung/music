@@ -7,6 +7,7 @@ mod config;
 use config::Config;
 
 mod audio_decoder;
+mod indexed_block_store;
 mod track;
 mod utils;
 
