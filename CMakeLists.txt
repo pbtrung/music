@@ -20,8 +20,6 @@ set(PKG_LIST
     libavformat
     libavutil
     libswresample
-    libssl
-    libcrypto
     fmt
     spdlog
     libzstd

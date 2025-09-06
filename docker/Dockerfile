@@ -3,7 +3,7 @@ FROM alpine:edge AS build
 RUN apk update && \
     apk --no-cache upgrade && \
     apk add --no-cache alpine-sdk git pkgconf autoconf automake bash \
-        cmake curl-dev ffmpeg-dev openssl-dev fmt-dev spdlog-dev zstd-dev sqlite-dev
+        cmake curl-dev ffmpeg-dev fmt-dev spdlog-dev zstd-dev sqlite-dev
 
 WORKDIR /root
 
@@ -23,7 +23,7 @@ RUN echo "@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/a
 
 RUN apk update && \
     apk --no-cache upgrade && \
-    apk --no-cache add libcurl ffmpeg-libs openssl fmt zstd-libs sqlite-libs spdlog snapcast-server snapweb@testing
+    apk --no-cache add libcurl ffmpeg-libs fmt zstd-libs sqlite-libs spdlog snapcast-server snapweb@testing
 
 COPY --from=build /root/gwsocket/gwsocket /usr/bin/
 COPY --from=build /root/music/build/release/music /usr/bin/
