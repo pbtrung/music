@@ -11,6 +11,7 @@ endif()
 # Set build flags for different build types
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wno-interference-size")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -Wno-interference-size")
+add_compile_definitions(SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
 find_package(PkgConfig REQUIRED)
 set(PKG_LIST
