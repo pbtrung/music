@@ -1,7 +1,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <stacktrace>
 #include <string>
 #include <thread>
 
@@ -19,22 +18,9 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-static void log_trace() {
-    auto trace = std::stacktrace::current();
-    SPDLOG_TRACE("Stacktrace:");
-    for (const auto &entry : trace) {
-        SPDLOG_TRACE("  {}", std::to_string(entry));
-    }
-}
-
 [[noreturn]] static void die(const std::string &msg) {
     if (!msg.empty()) {
         fmt::println("Error: {}", msg);
-        auto trace = std::stacktrace::current();
-        fmt::println("Stacktrace:");
-        for (const auto &entry : trace) {
-            fmt::println("  {}", std::to_string(entry));
-        }
     }
     std::exit(EXIT_FAILURE);
 }
@@ -161,10 +147,8 @@ void producer(jdz::SpscQueue<json> &queue, json &config) {
             }
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
-            log_trace();
         } catch (...) {
             SPDLOG_TRACE("Unknown error");
-            log_trace();
         }
 
         if (track.contains("cids") && config.contains("output")) {
@@ -198,10 +182,8 @@ void consumer(jdz::SpscQueue<json> &queue, const json &config) {
             decoder.decode();
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
-            log_trace();
         } catch (...) {
             SPDLOG_TRACE("Unknown error");
-            log_trace();
         }
 
         if (valid_path) {
