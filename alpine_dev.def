@@ -5,4 +5,6 @@ From: alpine:edge
     apk update
     apk --no-cache upgrade
     apk --no-cache add alpine-sdk bash fish clang20-extra-tools cmake \
-        curl-dev ffmpeg-dev openssl-dev fmt-dev spdlog-dev
+        curl-dev ffmpeg-dev openssl-dev fmt-dev spdlog-dev \
+        zstd-dev sqlite-dev
+        
