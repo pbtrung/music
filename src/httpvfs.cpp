@@ -29,7 +29,7 @@ class HttpClient {
             curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
             curl.set_option(CURLOPT_MAXREDIRS, 5L);
             curl.set_option(CURLOPT_TIMEOUT, 30L);
-            curl.set_option(CURLOPT_CONNECTTIMEOUT, 10L);
+            curl.set_option(CURLOPT_CONNECTTIMEOUT, 30L);
             if (curl.perform() != CURLE_OK)
                 return std::nullopt;
 
@@ -61,7 +61,7 @@ class HttpClient {
             curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
             curl.set_option(CURLOPT_MAXREDIRS, 5L);
             curl.set_option(CURLOPT_TIMEOUT, 30L);
-            curl.set_option(CURLOPT_CONNECTTIMEOUT, 10L);
+            curl.set_option(CURLOPT_CONNECTTIMEOUT, 30L);
             if (curl.perform() != CURLE_OK)
                 return std::nullopt;
             long len = curl.get_info<long>(CURLINFO_CONTENT_LENGTH_DOWNLOAD_T);
