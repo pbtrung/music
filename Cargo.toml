@@ -22,3 +22,5 @@ concurrent-queue = "2.5.0"
 rusqlite = { version = "0.37", features = ["bundled"] }
 regex = "1.11"
 rand = "0.9"
+zstd = "0.13"
+byteorder = "1.5"
