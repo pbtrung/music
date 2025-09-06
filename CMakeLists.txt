@@ -34,7 +34,6 @@ foreach(PKG ${PKG_LIST})
     list(APPEND COMMON_LINK_LIBS    ${${PKG}_LIBRARIES})
 endforeach()
 list(APPEND COMMON_INCLUDE_DIRS include)
-# stacktrace
 
 add_executable(music
     src/main.cpp
