@@ -14,7 +14,6 @@ mod utils;
 #[derive(Parser, Debug)]
 #[command(name = "music")]
 struct Args {
-    /// Config file path (JSON format)
     #[arg(short, long, default_value = "config.json")]
     config: PathBuf,
 
