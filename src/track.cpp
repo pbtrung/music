@@ -13,7 +13,7 @@ int Track::get_id() const {
     return track_id;
 }
 
-const nlohmann::json &Track::get_json() const {
+const nlohmann::json Track::get_json() const {
     return track_json;
 }
 
