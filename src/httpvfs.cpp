@@ -2,13 +2,14 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <list>
 #include <optional>
 #include <random>
 #include <sstream>
 #include <thread>
 #include <vector>
-#include <list>
 
+#include <fmt/base.h>
 #include <spdlog/spdlog.h>
 #include <zstd.h>
 
@@ -19,7 +20,7 @@ class HttpClient {
   private:
     static void backoff_with_jitter(int attempt, int base_ms = 100) {
         static thread_local std::mt19937 rng{std::random_device{}()};
-        int max_delay = base_ms * (1 << attempt); // exponential
+        int max_delay = base_ms * (1 << attempt);
         std::uniform_int_distribution<int> dist(0, max_delay);
         int delay = dist(rng);
         std::this_thread::sleep_for(std::chrono::milliseconds(delay));
@@ -41,6 +42,11 @@ class HttpClient {
                 curl.set_option(CURLOPT_MAXREDIRS, 5L);
                 curl.set_option(CURLOPT_TIMEOUT, 30L);
                 curl.set_option(CURLOPT_CONNECTTIMEOUT, 30L);
+
+                curl.set_option(CURLOPT_HTTPGET, 1L);
+                curl.set_option(CURLOPT_AWS_SIGV4, "aws:amz:auto:s3");
+                curl.set_header("x-amz-content-sha256: UNSIGNED-PAYLOAD");
+                curl.set_option(CURLOPT_USERPWD, "xxx:yyy");
 
                 if (curl.perform() == CURLE_OK) {
                     auto data = curl.get_response();
@@ -66,42 +72,12 @@ class HttpClient {
         }
         return std::nullopt;
     }
-
-    static std::optional<sqlite3_int64>
-    get_content_length(const std::string &url) {
-        for (int attempt = 0; attempt < 20; ++attempt) {
-            try {
-                Curl curl;
-                curl.set_option(CURLOPT_URL, url);
-                curl.set_option(CURLOPT_NOBODY, 1L);
-                curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
-                curl.set_option(CURLOPT_MAXREDIRS, 5L);
-                curl.set_option(CURLOPT_TIMEOUT, 30L);
-                curl.set_option(CURLOPT_CONNECTTIMEOUT, 30L);
-
-                if (curl.perform() == CURLE_OK) {
-                    curl_off_t len = curl.get_info<curl_off_t>(
-                        CURLINFO_CONTENT_LENGTH_DOWNLOAD_T);
-                    return len >= 0 ? std::optional<sqlite3_int64>(len)
-                                    : std::nullopt;
-                }
-            } catch (const std::exception &e) {
-                SPDLOG_TRACE("HTTP head error: {} (attempt {})", e.what(),
-                             attempt + 1);
-            } catch (...) {
-                SPDLOG_TRACE("HTTP head error: unknown exception (attempt {})",
-                             attempt + 1);
-            }
-
-            backoff_with_jitter(attempt);
-        }
-        return std::nullopt;
-    }
 };
 
 template <typename Key, typename Value> class LRUCache {
   public:
     explicit LRUCache(size_t max_size) : max_size(max_size) {}
+
     void put(const Key &key, Value &&value) {
         std::lock_guard lock(mutex);
         if (auto it = map.find(key); it != map.end()) {
@@ -117,6 +93,7 @@ template <typename Key, typename Value> class LRUCache {
             list.pop_back();
         }
     }
+
     std::optional<std::reference_wrapper<Value>> get(const Key &key) {
         std::lock_guard lock(mutex);
         if (auto it = map.find(key); it != map.end()) {
@@ -141,23 +118,50 @@ class HttpFile {
         : url(std::move(url)), page_cache(MAX_CACHE_PAGES) {
         init_page_size();
     }
+
     std::optional<std::span<const char>> read_page(sqlite3_int64 page_no) {
         if (auto cached = page_cache.get(page_no))
             return std::span<const char>(cached->get());
+
         auto page_data =
             HttpClient::fetch_range(url, page_no * page_size, page_size);
         if (!page_data || page_data->empty())
             return std::nullopt;
+
         page_cache.put(page_no, std::move(*page_data));
         if (auto cached = page_cache.get(page_no))
             return std::span<const char>(cached->get());
         return std::nullopt;
     }
+
     std::optional<sqlite3_int64> get_file_size() {
-        if (!file_size)
-            file_size = HttpClient::get_content_length(url);
+        if (file_size)
+            return file_size;
+
+        // Try to get file size from SQLite database header first
+        auto page0 = read_page(0);
+        if (page0 && page0->size() >= 32) {
+            const unsigned char *data =
+                reinterpret_cast<const unsigned char *>(page0->data());
+
+            // Read page count (4 bytes, big-endian, at offset 28)
+            sqlite3_int64 page_count =
+                (static_cast<sqlite3_int64>(data[28]) << 24) |
+                (static_cast<sqlite3_int64>(data[29]) << 16) |
+                (static_cast<sqlite3_int64>(data[30]) << 8) |
+                static_cast<sqlite3_int64>(data[31]);
+
+            if (page_count > 0) {
+                file_size = page_count * page_size;
+                return file_size;
+            }
+        }
+
+        // Fallback to zero
+        file_size = 0;
         return file_size;
     }
+
     int get_page_size() const noexcept {
         return page_size;
     }
@@ -170,30 +174,32 @@ class HttpFile {
             return;
         }
 
-        // Parse page size
+        // Parse page size from SQLite header
         const auto ps =
             (static_cast<int>((*buf)[16]) << 8) | static_cast<int>((*buf)[17]);
         page_size = (ps == 1)
                         ? 65536
                         : ((ps >= 512 && ps <= 65536) ? ps : DEFAULT_PAGE_SIZE);
 
-        // Slice the buffer into pages and put them into cache
+        // Cache initial pages
         for (int pg = 0; pg * page_size < static_cast<int>(buf->size()); ++pg) {
             if (pg > 1)
-                break; // we only want page 0 and page 1
+                break; // Only cache page 0 and page 1
+
             const char *start = buf->data() + pg * page_size;
             int len = std::min(page_size,
                                static_cast<int>(buf->size()) - pg * page_size);
             page_cache.put(pg, std::vector<char>(start, start + len));
         }
 
-        // If page_size is bigger than what we fetched, refetch page 0 fully
+        // Refetch page 0 if needed
         if (page_size > static_cast<int>(buf->size())) {
             auto full_page0 = HttpClient::fetch_range(url, 0, page_size);
             if (full_page0)
                 page_cache.put(0, std::move(*full_page0));
         }
     }
+
     std::string url;
     int page_size = DEFAULT_PAGE_SIZE;
     std::optional<sqlite3_int64> file_size;
@@ -209,7 +215,6 @@ struct HttpFileHandle {
     std::unique_ptr<sqlite3_io_methods> methods;
 };
 
-// Helper function to safely cast sqlite3_file to HttpFileHandle
 static HttpFileHandle *get_handle(sqlite3_file *pFile) {
     return reinterpret_cast<HttpFileHandle *>(pFile);
 }
@@ -221,135 +226,120 @@ static int httpvfs_xClose(sqlite3_file *pFile) {
         return SQLITE_OK;
 
     auto *handle = get_handle(pFile);
-
-    // Reset unique_ptrs will automatically clean up
     handle->http_file.reset();
     handle->methods.reset();
-
     return SQLITE_OK;
 }
 
 static int httpvfs_xRead(sqlite3_file *pFile, void *zBuf, int iAmt,
                          sqlite3_int64 iOfst) {
-    if (!pFile || !zBuf || iAmt < 0) {
+    if (!pFile || !zBuf || iAmt < 0)
         return SQLITE_IOERR;
-    }
 
     auto *handle = get_handle(pFile);
-
-    if (!handle->http_file) {
+    if (!handle->http_file)
         return SQLITE_IOERR;
-    }
 
     const int page_size = handle->http_file->get_page_size();
-    const sqlite3_int64 page_no = iOfst / page_size;
-    const sqlite3_int64 page_offset = page_no * page_size;
-    const int offset_in_page = static_cast<int>(iOfst - page_offset);
+    char *output = static_cast<char *>(zBuf);
+    int bytes_read = 0;
 
-    auto page_data = handle->http_file->read_page(page_no);
-    if (!page_data || page_data->empty()) {
-        return SQLITE_IOERR;
+    while (bytes_read < iAmt) {
+        const sqlite3_int64 current_offset = iOfst + bytes_read;
+        const sqlite3_int64 page_no = current_offset / page_size;
+        const int offset_in_page = static_cast<int>(current_offset % page_size);
+
+        auto page_data = handle->http_file->read_page(page_no);
+        if (!page_data || page_data->empty()) {
+            if (bytes_read < iAmt) {
+                std::memset(output + bytes_read, 0, iAmt - bytes_read);
+                return bytes_read > 0 ? SQLITE_IOERR_SHORT_READ : SQLITE_IOERR;
+            }
+            break;
+        }
+
+        const int available_in_page =
+            static_cast<int>(page_data->size()) - offset_in_page;
+        const int remaining_bytes = iAmt - bytes_read;
+        const int copy_bytes = std::min(available_in_page, remaining_bytes);
+
+        if (copy_bytes <= 0)
+            break;
+
+        std::memcpy(output + bytes_read, page_data->data() + offset_in_page,
+                    copy_bytes);
+        bytes_read += copy_bytes;
     }
 
-    const int available_bytes =
-        static_cast<int>(page_data->size()) - offset_in_page;
-    const int copy_size = std::min(iAmt, std::max(0, available_bytes));
-
-    if (copy_size > 0) {
-        std::memcpy(zBuf, page_data->data() + offset_in_page, copy_size);
-    }
-
-    if (copy_size < iAmt) {
-        // Zero-fill remaining bytes
-        std::memset(static_cast<char *>(zBuf) + copy_size, 0, iAmt - copy_size);
-        return SQLITE_IOERR_SHORT_READ;
+    if (bytes_read < iAmt) {
+        std::memset(output + bytes_read, 0, iAmt - bytes_read);
+        return bytes_read > 0 ? SQLITE_IOERR_SHORT_READ : SQLITE_IOERR;
     }
 
     return SQLITE_OK;
 }
 
 static int httpvfs_xFileSize(sqlite3_file *pFile, sqlite3_int64 *pSize) {
-    if (!pFile || !pSize) {
+    if (!pFile || !pSize)
         return SQLITE_IOERR;
-    }
 
     auto *handle = get_handle(pFile);
-
-    if (!handle->http_file) {
+    if (!handle->http_file)
         return SQLITE_IOERR;
-    }
 
     auto size = handle->http_file->get_file_size();
-    if (!size) {
+    if (!size)
         return SQLITE_IOERR;
-    }
 
     *pSize = *size;
     return SQLITE_OK;
 }
 
-// Required stub implementations for VFS functions
 static int httpvfs_xLock(sqlite3_file *pFile, int eLock) {
-    (void)pFile;
-    (void)eLock;
     return SQLITE_OK; // Read-only, no locking needed
 }
 
 static int httpvfs_xUnlock(sqlite3_file *pFile, int eLock) {
-    (void)pFile;
-    (void)eLock;
     return SQLITE_OK; // Read-only, no locking needed
 }
 
 static int httpvfs_xCheckReservedLock(sqlite3_file *pFile, int *pResOut) {
-    (void)pFile;
     if (pResOut)
         *pResOut = 0; // Never locked
     return SQLITE_OK;
 }
 
 static int httpvfs_xFileControl(sqlite3_file *pFile, int op, void *pArg) {
-    (void)pFile;
-    (void)op;
-    (void)pArg;
     return SQLITE_NOTFOUND; // No special operations supported
 }
 
 static int httpvfs_xSectorSize(sqlite3_file *pFile) {
-    (void)pFile;
     return 4096; // Default sector size
 }
 
 static int httpvfs_xDeviceCharacteristics(sqlite3_file *pFile) {
-    (void)pFile;
     return SQLITE_IOCAP_IMMUTABLE; // HTTP files are immutable
 }
 
 static int httpvfs_xOpen(sqlite3_vfs *vfs, const char *zName,
                          sqlite3_file *file, int flags, int *pOutFlags) {
-
-    if (!zName || !file) {
+    if (!zName || !file)
         return SQLITE_IOERR;
-    }
 
-    // Only allow read-only access
-    if (!(flags & SQLITE_OPEN_READONLY)) {
+    if (!(flags & SQLITE_OPEN_READONLY))
         return SQLITE_CANTOPEN;
-    }
 
     auto *handle = get_handle(file);
-    std::memset(handle, 0, sizeof(HttpFileHandle)); // Zero-initialize
+    std::memset(handle, 0, sizeof(HttpFileHandle));
 
     try {
-        // Create IO methods with all required functions using designated
-        // initializers
         handle->methods = std::make_unique<sqlite3_io_methods>();
         *(handle->methods) = {.iVersion = 1,
                               .xClose = httpvfs_xClose,
                               .xRead = httpvfs_xRead,
-                              .xWrite = nullptr,    // Read-only
-                              .xTruncate = nullptr, // Read-only
-                              .xSync = nullptr,     // Read-only
+                              .xWrite = nullptr,
+                              .xTruncate = nullptr,
+                              .xSync = nullptr,
                               .xFileSize = httpvfs_xFileSize,
                               .xLock = httpvfs_xLock,
                               .xUnlock = httpvfs_xUnlock,
@@ -368,9 +358,22 @@ static int httpvfs_xOpen(sqlite3_vfs *vfs, const char *zName,
         handle->base.pMethods = handle->methods.get();
         handle->http_file = std::make_unique<HttpFile>(zName);
 
-        if (pOutFlags) {
+        // Validate SQLite header
+        auto page0 = handle->http_file->read_page(0);
+        if (!page0 || page0->empty() || page0->size() < 100)
+            return SQLITE_CANTOPEN;
+
+        std::string header(page0->data(), std::min(16ul, page0->size()));
+        if (header.substr(0, 6) != "SQLite")
+            return SQLITE_CANTOPEN;
+
+        // Verify file size
+        auto file_size = handle->http_file->get_file_size();
+        if (!file_size || *file_size <= 0)
+            return SQLITE_CANTOPEN;
+
+        if (pOutFlags)
             *pOutFlags = flags;
-        }
 
         return SQLITE_OK;
 
@@ -379,34 +382,28 @@ static int httpvfs_xOpen(sqlite3_vfs *vfs, const char *zName,
     }
 }
 
-// VFS-level functions
 static int httpvfs_xAccess(sqlite3_vfs *vfs, const char *zName, int flags,
                            int *pResOut) {
-    (void)vfs;
-    (void)zName;
-    (void)flags;
     if (pResOut)
-        *pResOut = 1; // Always assume file exists (will fail on open if not)
+        *pResOut = 1; // Always assume file exists
     return SQLITE_OK;
 }
 
 static int httpvfs_xFullPathname(sqlite3_vfs *vfs, const char *zName, int nOut,
                                  char *zOut) {
-    (void)vfs;
-    if (!zName || !zOut || nOut <= 0) {
+    if (!zName || !zOut || nOut <= 0)
         return SQLITE_CANTOPEN;
-    }
+
     int len = std::strlen(zName);
-    if (len >= nOut) {
+    if (len >= nOut)
         return SQLITE_CANTOPEN;
-    }
+
     std::strcpy(zOut, zName);
     return SQLITE_OK;
 }
 
 } // extern "C"
 
-// Initialize VFS structure properly with designated initializers
 static sqlite3_vfs http_vfs = {
     .iVersion = 1,
     .szOsFile = sizeof(HttpFileHandle),
@@ -415,7 +412,7 @@ static sqlite3_vfs http_vfs = {
     .zName = "httpvfs",
     .pAppData = nullptr,
     .xOpen = httpvfs_xOpen,
-    .xDelete = nullptr, // Read-only VFS
+    .xDelete = nullptr,
     .xAccess = httpvfs_xAccess,
     .xFullPathname = httpvfs_xFullPathname,
     .xDlOpen = nullptr,
