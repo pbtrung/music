@@ -1,12 +1,13 @@
 #include <atomic>
-#include <cstring>
+#include <chrono>
+#include <cstdlib>
 #include <iostream>
-#include <list>
-#include <memory>
-#include <span>
+#include <optional>
+#include <random>
 #include <sstream>
-#include <unordered_map>
-#include <utility>
+#include <thread>
+#include <vector>
+#include <list>
 
 #include <spdlog/spdlog.h>
 #include <zstd.h>
@@ -15,60 +16,86 @@
 #include "httpvfs.hpp"
 
 class HttpClient {
+  private:
+    static void backoff_with_jitter(int attempt, int base_ms = 100) {
+        static thread_local std::mt19937 rng{std::random_device{}()};
+        int max_delay = base_ms * (1 << attempt); // exponential
+        std::uniform_int_distribution<int> dist(0, max_delay);
+        int delay = dist(rng);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+    }
+
   public:
     inline static std::atomic<long long> total_downloaded_bytes{0};
 
     static std::optional<std::vector<char>>
     fetch_range(const std::string &url, sqlite3_int64 offset, int size) {
-        try {
-            Curl curl;
-            std::ostringstream oss;
-            oss << offset << "-" << (offset + size - 1);
-            curl.set_option(CURLOPT_URL, url);
-            curl.set_option(CURLOPT_RANGE, oss.str());
-            curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
-            curl.set_option(CURLOPT_MAXREDIRS, 5L);
-            curl.set_option(CURLOPT_TIMEOUT, 30L);
-            curl.set_option(CURLOPT_CONNECTTIMEOUT, 30L);
-            if (curl.perform() != CURLE_OK)
-                return std::nullopt;
+        for (int attempt = 0; attempt < 20; ++attempt) {
+            try {
+                Curl curl;
+                std::ostringstream oss;
+                oss << offset << "-" << (offset + size - 1);
+                curl.set_option(CURLOPT_URL, url);
+                curl.set_option(CURLOPT_RANGE, oss.str());
+                curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
+                curl.set_option(CURLOPT_MAXREDIRS, 5L);
+                curl.set_option(CURLOPT_TIMEOUT, 30L);
+                curl.set_option(CURLOPT_CONNECTTIMEOUT, 30L);
 
-            auto data = curl.get_response();
-            const auto downloaded = data.size();
-            total_downloaded_bytes += downloaded;
+                if (curl.perform() == CURLE_OK) {
+                    auto data = curl.get_response();
+                    const auto downloaded = data.size();
+                    total_downloaded_bytes += downloaded;
 
-            SPDLOG_TRACE(
-                "Downloaded {} bytes from range {}-{} | Total downloaded: {} bytes",
-                downloaded, offset, offset + size - 1,
-                total_downloaded_bytes.load());
+                    SPDLOG_TRACE(
+                        "Downloaded {} bytes from range {}-{} | Total downloaded: {} bytes",
+                        downloaded, offset, offset + size - 1,
+                        total_downloaded_bytes.load());
 
-            return std::vector<char>(data.begin(), data.end());
-        } catch (const std::exception &e) {
-            std::cerr << "HTTP fetch error: " << e.what() << "\n";
-            return std::nullopt;
-        } catch (...) {
-            std::cerr << "HTTP fetch error: unknown exception\n";
-            return std::nullopt;
+                    return std::vector<char>(data.begin(), data.end());
+                }
+            } catch (const std::exception &e) {
+                SPDLOG_TRACE("HTTP fetch error: {} (attempt {})", e.what(),
+                             attempt + 1);
+            } catch (...) {
+                SPDLOG_TRACE("HTTP fetch error: unknown exception (attempt {})",
+                             attempt + 1);
+            }
+
+            backoff_with_jitter(attempt);
         }
+        return std::nullopt;
     }
 
     static std::optional<sqlite3_int64>
     get_content_length(const std::string &url) {
-        try {
-            Curl curl;
-            curl.set_option(CURLOPT_URL, url);
-            curl.set_option(CURLOPT_NOBODY, 1L);
-            curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
-            curl.set_option(CURLOPT_MAXREDIRS, 5L);
-            curl.set_option(CURLOPT_TIMEOUT, 30L);
-            curl.set_option(CURLOPT_CONNECTTIMEOUT, 30L);
-            if (curl.perform() != CURLE_OK)
-                return std::nullopt;
-            long len = curl.get_info<long>(CURLINFO_CONTENT_LENGTH_DOWNLOAD_T);
-            return len >= 0 ? std::optional<sqlite3_int64>(len) : std::nullopt;
-        } catch (...) {
-            return std::nullopt;
+        for (int attempt = 0; attempt < 20; ++attempt) {
+            try {
+                Curl curl;
+                curl.set_option(CURLOPT_URL, url);
+                curl.set_option(CURLOPT_NOBODY, 1L);
+                curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
+                curl.set_option(CURLOPT_MAXREDIRS, 5L);
+                curl.set_option(CURLOPT_TIMEOUT, 30L);
+                curl.set_option(CURLOPT_CONNECTTIMEOUT, 30L);
+
+                if (curl.perform() == CURLE_OK) {
+                    curl_off_t len = curl.get_info<curl_off_t>(
+                        CURLINFO_CONTENT_LENGTH_DOWNLOAD_T);
+                    return len >= 0 ? std::optional<sqlite3_int64>(len)
+                                    : std::nullopt;
+                }
+            } catch (const std::exception &e) {
+                SPDLOG_TRACE("HTTP head error: {} (attempt {})", e.what(),
+                             attempt + 1);
+            } catch (...) {
+                SPDLOG_TRACE("HTTP head error: unknown exception (attempt {})",
+                             attempt + 1);
+            }
+
+            backoff_with_jitter(attempt);
         }
+        return std::nullopt;
     }
 };
 
