@@ -539,28 +539,80 @@ bool GDRDownloader::is_token_valid() const {
 
 Downloader::Downloader(const nlohmann::json &config,
                        const nlohmann::json &track)
-    : track(track), config(config), completed_cids(0) {
+    : config(config), track(track), completed_cids(0) {
     cid_download_status.resize(track["cids"].size(), DownloadStatus::PENDING);
-    SPDLOG_TRACE("Downloader initialized for track '{}' with {} CIDs",
+    SPDLOG_TRACE("Downloader initialized for track: '{}' with {} CIDs",
                  track["track_name"].get<std::string>(), track["cids"].size());
 }
 
+std::string Downloader::cid_type_to_string(CidType type) const {
+    switch (type) {
+    case CidType::GDR:
+        return "GDR";
+    case CidType::IPFS:
+        return "IPFS";
+    case CidType::ARW:
+        return "ARW";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 void Downloader::download_file() {
-    ensure_output_directory();
     const int thread_count =
         config["ncores"].get<int>() * config["mul_factor"].get<int>();
 
     SPDLOG_TRACE("Starting download with {} threads for {} CIDs", thread_count,
                  track["cids"].size());
 
-    dp::ThreadPool pool(thread_count);
+    dp::ThreadPool thread_pool(thread_count);
+
     for (size_t i = 0; i < track["cids"].size(); ++i) {
-        pool.enqueue_detach(
+        thread_pool.enqueue_detach(
             [this, i]() { download_single_cid(static_cast<int>(i)); });
     }
-    pool.wait_for_tasks();
+
+    SPDLOG_TRACE("All download tasks enqueued, waiting for completion");
+    thread_pool.wait_for_tasks();
+    SPDLOG_TRACE("All download tasks completed");
 }
 
+bool Downloader::succeeded() const {
+    int success_count = 0;
+    int failed_count = 0;
+
+    for (const auto &status : cid_download_status) {
+        if (status == DownloadStatus::SUCCEEDED) {
+            success_count++;
+        } else if (status == DownloadStatus::FAILED) {
+            failed_count++;
+        }
+    }
+
+    const bool all_succeeded = (failed_count == 0);
+    SPDLOG_TRACE(
+        "Download status check: {}/{} succeeded, {}/{} failed, overall success: {}",
+        success_count, cid_download_status.size(), failed_count,
+        cid_download_status.size(), all_succeeded);
+
+    return all_succeeded;
+}
+
+std::optional<std::string> Downloader::assemble_file() {
+    const auto &cids = track["cids"].get<std::vector<std::string>>();
+
+    SPDLOG_TRACE("Starting file assembly for {} CIDs", cids.size());
+
+    if (cids.size() == 1) {
+        SPDLOG_TRACE("Single file detected, handling single file assembly");
+        return handle_single_file();
+    }
+
+    SPDLOG_TRACE("Multiple files detected, handling multi-file assembly");
+    return assemble_multiple_files();
+}
+
+// Main download workflow
 void Downloader::download_single_cid(int cid_index) {
     const auto &cids = track["cids"].get<std::vector<std::string>>();
     const std::string &cid = cids[cid_index];
@@ -595,10 +647,22 @@ void Downloader::download_single_cid(int cid_index) {
 
 bool Downloader::execute_download(const std::string &cid,
                                   std::ofstream &outfile) {
-    const CidType cid_type = get_cid_type(cid);
+    const auto cid_type = get_cid_type(cid);
+
+    SPDLOG_TRACE("Executing download for CID '{}' using {} method", cid,
+                 cid_type_to_string(cid_type));
 
     auto downloader = create_downloader(cid_type);
-    return downloader->download(cid, outfile);
+    if (!downloader) {
+        SPDLOG_TRACE("Failed to create downloader for CID '{}' type {}", cid,
+                     cid_type_to_string(cid_type));
+        return false;
+    }
+
+    const bool result = downloader->download(cid, outfile);
+    SPDLOG_TRACE("Download method completed for CID '{}': success={}", cid,
+                 result);
+    return result;
 }
 
 void Downloader::finalize_download(int cid_index, const std::string &cid,
@@ -637,6 +701,7 @@ void Downloader::finalize_download(int cid_index, const std::string &cid,
     log_download_progress(cid_index, cid);
 }
 
+// CID type detection and downloader creation
 CidType Downloader::get_cid_type(const std::string &cid) const {
     CidType type;
 
@@ -659,23 +724,28 @@ CidType Downloader::get_cid_type(const std::string &cid) const {
 
 std::unique_ptr<BaseDownloader> Downloader::create_downloader(CidType type) {
     switch (type) {
-    case CidType::GDR:
-        if (!gdr_downloader)
-            gdr_downloader = std::make_unique<GDRDownloader>(config, track);
-        return std::make_unique<GDRDownloader>(config, track);
     case CidType::IPFS:
-        if (!ipfs_downloader)
+        if (!ipfs_downloader) {
             ipfs_downloader = std::make_unique<IPFSDownloader>(config, track);
+        }
         return std::make_unique<IPFSDownloader>(config, track);
     case CidType::ARW:
-        if (!arw_downloader)
+        if (!arw_downloader) {
             arw_downloader = std::make_unique<ARWDownloader>(config, track);
+        }
         return std::make_unique<ARWDownloader>(config, track);
+    case CidType::GDR:
+        if (!gdr_downloader) {
+            gdr_downloader = std::make_unique<GDRDownloader>(config, track);
+        }
+        return std::make_unique<GDRDownloader>(config, track);
     default:
-        throw std::runtime_error("Unsupported CID type");
+        SPDLOG_TRACE("Unknown CID type: {}", static_cast<int>(type));
+        return nullptr;
     }
 }
 
+// File management
 fs::path Downloader::get_temp_path(const std::string &cid) const {
     const fs::path output_dir = config["output"].get<std::string>();
     const auto temp_path = output_dir / (cid + ".tmp");
@@ -708,20 +778,7 @@ void Downloader::cleanup_temp_file(const fs::path &temp_path) const {
     }
 }
 
-std::optional<std::string> Downloader::assemble_file() {
-    const auto &cids = track["cids"].get<std::vector<std::string>>();
-
-    SPDLOG_TRACE("Starting file assembly for {} CIDs", cids.size());
-
-    if (cids.size() == 1) {
-        SPDLOG_TRACE("Single file detected, handling single file assembly");
-        return handle_single_file();
-    }
-
-    SPDLOG_TRACE("Multiple files detected, handling multi-file assembly");
-    return assemble_multiple_files();
-}
-
+// Assembly methods
 std::optional<std::string> Downloader::assemble_multiple_files() {
     const auto filename = generate_output_filename();
     if (filename.empty()) {
@@ -787,7 +844,7 @@ bool Downloader::combine_cid_files(const fs::path &output_path) {
     }
 
     const auto &cids = track["cids"].get<std::vector<std::string>>();
-    const fs::path &output_dir = config["output"].get<std::string>();
+    const fs::path output_dir = config["output"].get<std::string>();
 
     for (size_t i = 0; i < cids.size(); ++i) {
         const auto &cid = cids[i];
@@ -820,7 +877,7 @@ bool Downloader::combine_cid_files(const fs::path &output_path) {
 
 void Downloader::cleanup_cid_files() {
     const auto &cids = track["cids"].get<std::vector<std::string>>();
-    const fs::path &output_dir = config["output"].get<std::string>();
+    const fs::path output_dir = config["output"].get<std::string>();
 
     SPDLOG_TRACE("Cleaning up {} individual CID files", cids.size());
 
@@ -843,6 +900,7 @@ void Downloader::cleanup_cid_files() {
     SPDLOG_TRACE("Completed cleanup of individual CID files");
 }
 
+// Utilities
 std::string Downloader::generate_output_filename() const {
     const std::string original = track["track_name"].get<std::string>();
     const auto generated = Utilities::generate_filename(original);
@@ -875,38 +933,4 @@ void Downloader::ensure_output_directory() const {
         SPDLOG_TRACE("Output directory verified/created: {}",
                      output_dir.string());
     }
-}
-
-std::string Downloader::cid_type_to_string(CidType type) const {
-    switch (type) {
-    case CidType::GDR:
-        return "GDR";
-    case CidType::IPFS:
-        return "IPFS";
-    case CidType::ARW:
-        return "ARW";
-    default:
-        return "UNKNOWN";
-    }
-}
-
-bool Downloader::succeeded() const {
-    int success_count = 0;
-    int failed_count = 0;
-
-    for (const auto &status : cid_download_status) {
-        if (status == DownloadStatus::SUCCEEDED) {
-            success_count++;
-        } else if (status == DownloadStatus::FAILED) {
-            failed_count++;
-        }
-    }
-
-    const bool all_succeeded = (failed_count == 0);
-    SPDLOG_TRACE(
-        "Download status check: {}/{} succeeded, {}/{} failed, overall success: {}",
-        success_count, cid_download_status.size(), failed_count,
-        cid_download_status.size(), all_succeeded);
-
-    return all_succeeded;
 }
