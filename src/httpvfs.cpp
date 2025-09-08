@@ -9,7 +9,6 @@
 #include <thread>
 #include <vector>
 
-#include <fmt/base.h>
 #include <spdlog/spdlog.h>
 #include <zstd.h>
 
@@ -30,7 +29,8 @@ class HttpClient {
     inline static std::atomic<long long> total_downloaded_bytes{0};
 
     static std::optional<std::vector<char>>
-    fetch_range(const std::string &url, sqlite3_int64 offset, int size) {
+    fetch_range(const std::string &url, sqlite3_int64 offset, int size,
+                const nlohmann::json &config = {}) {
         for (int attempt = 0; attempt < 20; ++attempt) {
             try {
                 Curl curl;
@@ -46,7 +46,18 @@ class HttpClient {
                 curl.set_option(CURLOPT_HTTPGET, 1L);
                 curl.set_option(CURLOPT_AWS_SIGV4, "aws:amz:auto:s3");
                 curl.set_header("x-amz-content-sha256: UNSIGNED-PAYLOAD");
-                curl.set_option(CURLOPT_USERPWD, "xxx:yyy");
+
+                // Use credentials from config if provided
+                std::string credentials;
+                if (!config.empty() && config.contains("r2")) {
+                    credentials =
+                        config["r2"]["access_key"].get<std::string>() + ":" +
+                        config["r2"]["secret_key"].get<std::string>();
+                } else {
+                    throw std::runtime_error("Failed to load r2 credentials");
+                }
+
+                curl.set_option(CURLOPT_USERPWD, credentials.c_str());
 
                 if (curl.perform() == CURLE_OK) {
                     auto data = curl.get_response();
@@ -114,8 +125,8 @@ template <typename Key, typename Value> class LRUCache {
 
 class HttpFile {
   public:
-    explicit HttpFile(std::string url)
-        : url(std::move(url)), page_cache(MAX_CACHE_PAGES) {
+    explicit HttpFile(std::string url, const nlohmann::json &config = {})
+        : url(std::move(url)), config(config), page_cache(MAX_CACHE_PAGES) {
         init_page_size();
     }
 
@@ -123,8 +134,8 @@ class HttpFile {
         if (auto cached = page_cache.get(page_no))
             return std::span<const char>(cached->get());
 
-        auto page_data =
-            HttpClient::fetch_range(url, page_no * page_size, page_size);
+        auto page_data = HttpClient::fetch_range(url, page_no * page_size,
+                                                 page_size, config);
         if (!page_data || page_data->empty())
             return std::nullopt;
 
@@ -168,7 +179,7 @@ class HttpFile {
 
   private:
     void init_page_size() {
-        auto buf = HttpClient::fetch_range(url, 0, PREFETCH_SIZE);
+        auto buf = HttpClient::fetch_range(url, 0, PREFETCH_SIZE, config);
         if (!buf || buf->size() < 100) {
             page_size = DEFAULT_PAGE_SIZE;
             return;
@@ -194,13 +205,15 @@ class HttpFile {
 
         // Refetch page 0 if needed
         if (page_size > static_cast<int>(buf->size())) {
-            auto full_page0 = HttpClient::fetch_range(url, 0, page_size);
+            auto full_page0 =
+                HttpClient::fetch_range(url, 0, page_size, config);
             if (full_page0)
                 page_cache.put(0, std::move(*full_page0));
         }
     }
 
     std::string url;
+    nlohmann::json config;
     int page_size = DEFAULT_PAGE_SIZE;
     std::optional<sqlite3_int64> file_size;
     LRUCache<sqlite3_int64, std::vector<char>> page_cache;
@@ -213,6 +226,7 @@ struct HttpFileHandle {
     sqlite3_file base{};
     std::unique_ptr<HttpFile> http_file;
     std::unique_ptr<sqlite3_io_methods> methods;
+    nlohmann::json config;
 };
 
 static HttpFileHandle *get_handle(sqlite3_file *pFile) {
@@ -356,7 +370,15 @@ static int httpvfs_xOpen(sqlite3_vfs *vfs, const char *zName,
                               .xUnfetch = nullptr};
 
         handle->base.pMethods = handle->methods.get();
-        handle->http_file = std::make_unique<HttpFile>(zName);
+
+        // Get config from vfs pAppData if available
+        nlohmann::json config;
+        if (vfs->pAppData) {
+            config = *static_cast<nlohmann::json *>(vfs->pAppData);
+        }
+
+        handle->config = config;
+        handle->http_file = std::make_unique<HttpFile>(zName, config);
 
         // Validate SQLite header
         auto page0 = handle->http_file->read_page(0);
@@ -433,8 +455,27 @@ int register_http_vfs() {
     return sqlite3_vfs_register(&http_vfs, 0);
 }
 
-SQLiteDB::SQLiteDB(const std::string &url, const char *vfs_name) : db(nullptr) {
-    int rc = sqlite3_open_v2(url.c_str(), &db, SQLITE_OPEN_READONLY, vfs_name);
+SQLiteDB::SQLiteDB(const std::string &url, const nlohmann::json &config,
+                   const char *vfs_name = "httpvfs")
+    : db(nullptr), config(config) {
+
+    // Create a copy of the http_vfs and set the config in pAppData
+    custom_vfs = http_vfs;
+    custom_vfs.pAppData = &this->config;
+
+    // Register the custom VFS with a unique name
+    std::string custom_vfs_name =
+        std::string(vfs_name) + "_" +
+        std::to_string(reinterpret_cast<uintptr_t>(this));
+    custom_vfs.zName = custom_vfs_name.c_str();
+
+    int reg_result = sqlite3_vfs_register(&custom_vfs, 0);
+    if (reg_result != SQLITE_OK) {
+        throw std::runtime_error("Failed to register custom VFS");
+    }
+
+    int rc = sqlite3_open_v2(url.c_str(), &db, SQLITE_OPEN_READONLY,
+                             custom_vfs_name.c_str());
     if (rc != SQLITE_OK) {
         std::string err = db ? sqlite3_errmsg(db) : "Unknown error";
         if (db) {

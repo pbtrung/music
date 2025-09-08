@@ -6,11 +6,12 @@
 
 #include <sqlite3.h>
 
-int register_http_vfs();
+#include "json.hpp"
 
 class SQLiteDB {
   public:
-    explicit SQLiteDB(const std::string &url, const char *vfs_name);
+    explicit SQLiteDB(const std::string &url, const nlohmann::json &config,
+                      const char *vfs_name);
     ~SQLiteDB();
     SQLiteDB(const SQLiteDB &) = delete;
     SQLiteDB &operator=(const SQLiteDB &) = delete;
@@ -20,6 +21,8 @@ class SQLiteDB {
 
   private:
     sqlite3 *db = nullptr;
+    nlohmann::json config;
+    sqlite3_vfs custom_vfs;
 };
 
 class SQLiteStmt {

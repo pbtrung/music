@@ -9,7 +9,8 @@ class Track {
 
     int get_id() const;
     const nlohmann::json get_json() const;
-    static Track load(const std::string &url, const std::string &query);
+    static Track load(const std::string &url, const nlohmann::json &config,
+                      const std::string &query);
 
   private:
     int track_id;

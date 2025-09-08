@@ -44,7 +44,13 @@ static json get_track(const json &config) {
     std::string query = fmt::format("SELECT * FROM tracks WHERE track_id = {}",
                                     rand_num->front());
     SPDLOG_TRACE("{}", query);
-    Track track = Track::load(config["db_r2_url"].get<std::string>(), query);
+
+    const std::string url =
+        fmt::format("https://{}.r2.cloudflarestorage.com/{}/{}",
+                    config["r2"]["account_id"].get<std::string>(),
+                    config["r2"]["bucket"].get<std::string>(),
+                    config["r2"]["db_file"].get<std::string>());
+    Track track = Track::load(url, config, query);
     return track.get_json();
 }
 

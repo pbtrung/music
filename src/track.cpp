@@ -17,13 +17,9 @@ const nlohmann::json Track::get_json() const {
     return track_json;
 }
 
-Track Track::load(const std::string &url, const std::string &query) {
-    // Register HTTP VFS once
-    if (register_http_vfs() != SQLITE_OK) {
-        throw std::runtime_error("Failed to register HTTP VFS");
-    }
-
-    SQLiteDB db(url, "httpvfs");
+Track Track::load(const std::string &url, const nlohmann::json &config,
+                  const std::string &query) {
+    SQLiteDB db(url, config, "httpvfs");
     SQLiteStmt stmt(db.get(), query);
 
     int rc = sqlite3_step(stmt.get());
