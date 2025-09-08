@@ -19,30 +19,24 @@ using namespace std::chrono;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-static int get_account_index_by_email(const json &j, const std::string &email) {
-    if (!j.contains("gdr_accounts") || !j["gdr_accounts"].is_array()) {
-        return -1; // no accounts
-    }
+// =============================================================================
+// BaseDownloader Implementation
+// =============================================================================
 
-    const auto &accounts = j["gdr_accounts"];
-    for (size_t i = 0; i < accounts.size(); ++i) {
-        if (accounts[i].contains("email") &&
-            accounts[i]["email"].get<std::string>() == email) {
-            return static_cast<int>(i);
-        }
-    }
-    return -1; // not found
+BaseDownloader::BaseDownloader(nlohmann::json &config,
+                               const nlohmann::json &track)
+    : config(config), track(track) {
+    SPDLOG_TRACE("BaseDownloader initialized for track: '{}'",
+                 track["track_name"].get<std::string>());
 }
 
-Downloader::Downloader(const nlohmann::json &config,
-                       const nlohmann::json &track)
-    : config(config), track(track), completed_cids(0) {
-    cid_download_status.resize(track["cids"].size(), DownloadStatus::PENDING);
-    SPDLOG_TRACE("Downloader initialized for track: '{}' with {} CIDs",
-                 track["track_name"].get<std::string>(), track["cids"].size());
+void BaseDownloader::reset_file_position(std::ofstream &outfile) const {
+    SPDLOG_TRACE("Resetting file position to beginning");
+    outfile.clear();
+    outfile.seekp(0, std::ios::beg);
 }
 
-std::string Downloader::cid_type_to_string(CidType type) const {
+std::string BaseDownloader::cid_type_to_string(CidType type) const {
     switch (type) {
     case CidType::GDR:
         return "GDR";
@@ -55,192 +49,49 @@ std::string Downloader::cid_type_to_string(CidType type) const {
     }
 }
 
-void Downloader::download_file() {
-    const int thread_count =
-        config["ncores"].get<int>() * config["mul_factor"].get<int>();
-
-    SPDLOG_TRACE("Starting download with {} threads for {} CIDs", thread_count,
-                 track["cids"].size());
-
-    dp::ThreadPool thread_pool(thread_count);
-
-    for (size_t i = 0; i < track["cids"].size(); ++i) {
-        thread_pool.enqueue_detach(
-            [this, i]() { download_single_cid(static_cast<int>(i)); });
-    }
-
-    SPDLOG_TRACE("All download tasks enqueued, waiting for completion");
-    thread_pool.wait_for_tasks();
-    SPDLOG_TRACE("All download tasks completed");
-}
-
-bool Downloader::succeeded() const {
-    int success_count = 0;
-    int failed_count = 0;
-
-    for (const auto &status : cid_download_status) {
-        if (status == DownloadStatus::SUCCEEDED) {
-            success_count++;
-        } else if (status == DownloadStatus::FAILED) {
-            failed_count++;
-        }
-    }
-
-    const bool all_succeeded = (failed_count == 0);
-    SPDLOG_TRACE(
-        "Download status check: {}/{} succeeded, {}/{} failed, overall success: {}",
-        success_count, cid_download_status.size(), failed_count,
-        cid_download_status.size(), all_succeeded);
-
-    return all_succeeded;
-}
-
-std::optional<std::string> Downloader::assemble_file() {
-    const auto &cids = track["cids"].get<std::vector<std::string>>();
-
-    SPDLOG_TRACE("Starting file assembly for {} CIDs", cids.size());
-
-    if (cids.size() == 1) {
-        SPDLOG_TRACE("Single file detected, handling single file assembly");
-        return handle_single_file();
-    }
-
-    SPDLOG_TRACE("Multiple files detected, handling multi-file assembly");
-    return assemble_multiple_files();
-}
-
-// Main download workflow
-void Downloader::download_single_cid(int cid_index) {
-    const auto &cids = track["cids"].get<std::vector<std::string>>();
-    const std::string &cid = cids[cid_index];
-    const auto cid_type = get_cid_type(cid);
-
-    SPDLOG_TRACE("Starting download for CID {}/{}: '{}' (type: {})",
-                 cid_index + 1, cids.size(), cid, cid_type_to_string(cid_type));
-
-    ensure_output_directory();
-    const auto temp_path = get_temp_path(cid);
-
-    SPDLOG_TRACE("Opening temp file for CID '{}': {}", cid, temp_path.string());
-
-    std::ofstream outfile(temp_path, std::ios::binary);
-    if (!outfile.is_open()) {
-        SPDLOG_TRACE("Failed to open temp file for CID '{}': {}", cid,
-                     temp_path.string());
-        cid_download_status[cid_index] = DownloadStatus::FAILED;
-        return;
-    }
-
-    SPDLOG_TRACE("Executing download for CID '{}' (type: {})", cid,
-                 cid_type_to_string(cid_type));
-    const bool success = execute_download(cid, outfile);
-    outfile.close();
-
-    SPDLOG_TRACE("Download execution completed for CID '{}': success={}", cid,
-                 success);
-
-    finalize_download(cid_index, cid, temp_path, success);
-}
-
-bool Downloader::execute_download(const std::string &cid,
-                                  std::ofstream &outfile) {
-    const auto cid_type = get_cid_type(cid);
-
-    SPDLOG_TRACE("Executing download for CID '{}' using {} method", cid,
-                 cid_type_to_string(cid_type));
-
-    bool result = false;
-    switch (cid_type) {
-    case CidType::GDR:
-        SPDLOG_TRACE("Using Google Drive download for CID '{}'", cid);
-        result = download_via_gdr(cid, outfile);
-        break;
-    case CidType::IPFS:
-        SPDLOG_TRACE("Using IPFS special download for CID '{}'", cid);
-        result = download_via_ipfs(cid, outfile, true);
-        break;
-    case CidType::ARW:
-    default:
-        SPDLOG_TRACE("Using IPFS standard download for CID '{}'", cid);
-        result = download_via_ipfs(cid, outfile, false);
-        break;
-    }
-
-    SPDLOG_TRACE("Download method completed for CID '{}': success={}", cid,
-                 result);
+std::string BaseDownloader::to_iso8601(const system_clock::time_point &tp) {
+    const auto result = std::format("{:%Y-%m-%dT%H:%M:%S}", tp);
+    SPDLOG_TRACE("Converted time_point to ISO8601: {}", result);
     return result;
 }
 
-void Downloader::finalize_download(int cid_index, const std::string &cid,
-                                   const fs::path &temp_path, bool success) {
-    SPDLOG_TRACE("Finalizing download for CID '{}' (index {}): success={}", cid,
-                 cid_index, success);
+system_clock::time_point
+BaseDownloader::from_iso8601(const std::string &iso_string) {
+    SPDLOG_TRACE("Parsing ISO8601 string: {}", iso_string);
 
-    if (!success) {
-        SPDLOG_TRACE("Download failed for CID '{}', cleaning up temp file: {}",
-                     cid, temp_path.string());
-        cleanup_temp_file(temp_path);
-        cid_download_status[cid_index] = DownloadStatus::FAILED;
-        return;
+    system_clock::time_point tp;
+    std::istringstream ss(iso_string);
+    ss >> std::chrono::parse("%Y-%m-%dT%H:%M:%S", tp);
+
+    if (ss.fail()) {
+        SPDLOG_TRACE("Failed to parse ISO8601 string: {}", iso_string);
+        throw std::runtime_error("Invalid ISO8601 format: " + iso_string);
     }
 
-    const auto cid_type = get_cid_type(cid);
-    const auto final_path = get_final_path(cid, cid_type);
-
-    SPDLOG_TRACE("Moving temp file for CID '{}' from '{}' to '{}'", cid,
-                 temp_path.string(), final_path.string());
-
-    std::error_code ec;
-    fs::rename(temp_path, final_path, ec);
-
-    if (ec) {
-        SPDLOG_TRACE("Failed to rename '{}' to '{}' for CID '{}': {}",
-                     temp_path.string(), final_path.string(), cid,
-                     ec.message());
-        cleanup_temp_file(temp_path);
-        cid_download_status[cid_index] = DownloadStatus::FAILED;
-        return;
-    }
-
-    SPDLOG_TRACE("Successfully finalized download for CID '{}'", cid);
-    cid_download_status[cid_index] = DownloadStatus::SUCCEEDED;
-    log_download_progress(cid_index, cid);
+    SPDLOG_TRACE("Successfully parsed ISO8601 string: {}", iso_string);
+    return tp;
 }
 
-// CID type detection
-CidType Downloader::get_cid_type(const std::string &cid) const {
-    CidType type;
+// =============================================================================
+// IPFSDownloader Implementation
+// =============================================================================
 
-    if (!track.contains("byte_range")) {
-        if (cid.size() == 43) {
-            type = CidType::ARW;
-        } else {
-            type = CidType::IPFS;
-        }
-    } else {
-        type = CidType::GDR;
-    }
-
-    SPDLOG_TRACE(
-        "Detected CID type for '{}': {} (length: {}, has_byte_range: {})", cid,
-        cid_type_to_string(type), cid.size(), track.contains("byte_range"));
-
-    return type;
+IPFSDownloader::IPFSDownloader(nlohmann::json &config,
+                               const nlohmann::json &track)
+    : BaseDownloader(config, track) {
+    SPDLOG_TRACE("IPFSDownloader initialized");
 }
 
-// IPFS download methods
-bool Downloader::download_via_ipfs(const std::string &cid,
-                                   std::ofstream &outfile, bool is_special) {
+bool IPFSDownloader::download(const std::string &cid, std::ofstream &outfile) {
     const int max_retries = config["max_retries"].get<int>();
 
-    SPDLOG_TRACE(
-        "Starting IPFS download for CID '{}': special={}, max_retries={}", cid,
-        is_special, max_retries);
+    SPDLOG_TRACE("Starting IPFS download for CID '{}': max_retries={}", cid,
+                 max_retries);
 
     for (int attempt = 0; attempt < max_retries; ++attempt) {
-        const auto url = build_ipfs_url(cid, attempt, is_special);
-        const int timeout = is_special ? (2 * config["timeout"].get<int>())
-                                       : config["timeout"].get<int>();
+        const auto url = build_ipfs_url(cid, attempt);
+        const int timeout =
+            2 * config["timeout"].get<int>(); // Special timeout for IPFS
 
         SPDLOG_TRACE(
             "IPFS download attempt {}/{} for CID '{}': URL='{}', timeout={}s",
@@ -264,9 +115,9 @@ bool Downloader::download_via_ipfs(const std::string &cid,
     return false;
 }
 
-bool Downloader::try_ipfs_download(const std::string &cid,
-                                   std::ofstream &outfile,
-                                   const std::string &url, int timeout) {
+bool IPFSDownloader::try_ipfs_download(const std::string &cid,
+                                       std::ofstream &outfile,
+                                       const std::string &url, int timeout) {
     SPDLOG_TRACE("Attempting IPFS download for CID '{}' from URL: {}", cid,
                  url);
 
@@ -290,36 +141,114 @@ bool Downloader::try_ipfs_download(const std::string &cid,
         return false;
     }
 
-    const bool is_special = get_cid_type(cid) == CidType::IPFS;
-    const bool validation_result = validate_ipfs_response(curl, is_special);
-
-    SPDLOG_TRACE(
-        "IPFS download validation for CID '{}': is_special={}, validation_passed={}",
-        cid, is_special, validation_result);
+    const bool validation_result = validate_ipfs_response(curl);
+    SPDLOG_TRACE("IPFS download validation for CID '{}': validation_passed={}",
+                 cid, validation_result);
 
     return validation_result;
 }
 
-std::string Downloader::build_ipfs_url(const std::string &cid, int attempt,
-                                       bool is_special) const {
-    std::string url;
-
-    if (is_special) {
-        url = fmt::format("https://{}.{}", cid,
-                          config["n_gateway"].get<std::string>());
-        SPDLOG_TRACE("Built special IPFS URL for CID '{}': {}", cid, url);
-    } else {
-        const std::string gateway = get_gateway(attempt);
-        url = fmt::format("https://{}/{}", gateway, cid);
-        SPDLOG_TRACE(
-            "Built standard IPFS URL for CID '{}' (attempt {}): {} via gateway '{}'",
-            cid, attempt + 1, url, gateway);
-    }
-
+std::string IPFSDownloader::build_ipfs_url(const std::string &cid,
+                                           int attempt) const {
+    const std::string url = fmt::format("https://{}.{}", cid,
+                                        config["n_gateway"].get<std::string>());
+    SPDLOG_TRACE("Built IPFS URL for CID '{}': {}", cid, url);
     return url;
 }
 
-std::string Downloader::get_gateway(int attempt) const {
+std::string IPFSDownloader::get_gateway(int attempt) const {
+    // IPFS downloader uses n_gateway, so this method is not used
+    return config["n_gateway"].get<std::string>();
+}
+
+bool IPFSDownloader::validate_ipfs_response(const Curl &curl) const {
+    SPDLOG_TRACE("Skipping content type validation for IPFS download");
+    return true; // IPFS doesn't require content type validation
+}
+
+// =============================================================================
+// ARWDownloader Implementation
+// =============================================================================
+
+ARWDownloader::ARWDownloader(nlohmann::json &config,
+                             const nlohmann::json &track)
+    : BaseDownloader(config, track) {
+    SPDLOG_TRACE("ARWDownloader initialized");
+}
+
+bool ARWDownloader::download(const std::string &cid, std::ofstream &outfile) {
+    const int max_retries = config["max_retries"].get<int>();
+
+    SPDLOG_TRACE("Starting ARW download for CID '{}': max_retries={}", cid,
+                 max_retries);
+
+    for (int attempt = 0; attempt < max_retries; ++attempt) {
+        const auto url = build_arw_url(cid, attempt);
+        const int timeout = config["timeout"].get<int>();
+
+        SPDLOG_TRACE(
+            "ARW download attempt {}/{} for CID '{}': URL='{}', timeout={}s",
+            attempt + 1, max_retries, cid, url, timeout);
+
+        if (try_arw_download(cid, outfile, url, timeout)) {
+            SPDLOG_TRACE("ARW download succeeded for CID '{}' on attempt {}/{}",
+                         cid, attempt + 1, max_retries);
+            return true;
+        }
+
+        SPDLOG_TRACE(
+            "ARW download attempt {}/{} failed for CID '{}', resetting file position",
+            attempt + 1, max_retries, cid);
+        reset_file_position(outfile);
+    }
+
+    SPDLOG_TRACE("ARW download failed for CID '{}' after {} attempts", cid,
+                 max_retries);
+    return false;
+}
+
+bool ARWDownloader::try_arw_download(const std::string &cid,
+                                     std::ofstream &outfile,
+                                     const std::string &url, int timeout) {
+    SPDLOG_TRACE("Attempting ARW download for CID '{}' from URL: {}", cid, url);
+
+    Curl curl;
+    curl.set_option(CURLOPT_FOLLOWLOCATION, 1L);
+    curl.set_option(CURLOPT_URL, url);
+    curl.set_option(CURLOPT_TIMEOUT, timeout);
+    curl.set_file_output(&outfile);
+
+    const int result = curl.perform();
+    if (result != CURLE_OK) {
+        SPDLOG_TRACE("CURL perform failed for CID '{}': error_code={}", cid,
+                     result);
+        return false;
+    }
+
+    const long response_code = curl.get_info<long>(CURLINFO_RESPONSE_CODE);
+    if (response_code != 200) {
+        SPDLOG_TRACE("HTTP error for CID '{}': response_code={}", cid,
+                     response_code);
+        return false;
+    }
+
+    const bool validation_result = validate_arw_response(curl);
+    SPDLOG_TRACE("ARW download validation for CID '{}': validation_passed={}",
+                 cid, validation_result);
+
+    return validation_result;
+}
+
+std::string ARWDownloader::build_arw_url(const std::string &cid,
+                                         int attempt) const {
+    const std::string gateway = get_gateway(attempt);
+    const std::string url = fmt::format("https://{}/{}", gateway, cid);
+    SPDLOG_TRACE("Built ARW URL for CID '{}' (attempt {}): {} via gateway '{}'",
+                 cid, attempt + 1, url, gateway);
+    return url;
+}
+
+std::string ARWDownloader::get_gateway(int attempt) const {
     SPDLOG_TRACE("Selecting gateway for attempt {}", attempt + 1);
 
     if (attempt == 3 || attempt == 4) {
@@ -347,33 +276,36 @@ std::string Downloader::get_gateway(int attempt) const {
     return gateway;
 }
 
-bool Downloader::validate_ipfs_response(const Curl &curl,
-                                        bool is_special) const {
-    if (is_special) {
-        SPDLOG_TRACE(
-            "Skipping content type validation for special IPFS download");
-        return true;
-    }
-
+bool ARWDownloader::validate_arw_response(const Curl &curl) const {
     const char *content_type_ptr = curl.get_info<char *>(CURLINFO_CONTENT_TYPE);
     const std::string content_type = content_type_ptr ? content_type_ptr : "";
     const bool is_valid = (content_type == "application/octet-stream");
 
-    SPDLOG_TRACE("IPFS response validation: content_type='{}', is_valid={}",
+    SPDLOG_TRACE("ARW response validation: content_type='{}', is_valid={}",
                  content_type, is_valid);
 
     return is_valid;
 }
 
-// Google Drive download methods
-bool Downloader::download_via_gdr(const std::string &file_id,
-                                  std::ofstream &outfile) {
+// =============================================================================
+// GDRDownloader Implementation
+// =============================================================================
+
+GDRDownloader::GDRDownloader(nlohmann::json &config,
+                             const nlohmann::json &track)
+    : BaseDownloader(config, track) {
+    SPDLOG_TRACE("GDRDownloader initialized");
+}
+
+bool GDRDownloader::download(const std::string &file_id,
+                             std::ofstream &outfile) {
     const int max_retries = config["max_retries"].get<int>();
     const int timeout = config["timeout"].get<int>();
     const auto &byte_range = track["byte_range"].get<std::vector<int>>();
 
     SPDLOG_TRACE(
-        "Starting Google Drive download for file_id '{}': max_retries={}, timeout={}s, byte_range=[{}-{}]",
+        "Starting Google Drive download for file_id '{}': max_retries={}, "
+        "timeout={}s, byte_range=[{}-{}]",
         file_id, max_retries, timeout, byte_range[0], byte_range[1]);
 
     for (int attempt = 0; attempt < max_retries; ++attempt) {
@@ -403,24 +335,24 @@ bool Downloader::download_via_gdr(const std::string &file_id,
 
         const int result = curl.perform();
         if (result != CURLE_OK) {
-            SPDLOG_TRACE(
-                "Google Drive CURL perform failed for file_id '{}' attempt {}/{}: error_code={}",
-                file_id, attempt + 1, max_retries, result);
+            SPDLOG_TRACE("Google Drive CURL perform failed for file_id '{}' "
+                         "attempt {}/{}: error_code={}",
+                         file_id, attempt + 1, max_retries, result);
             reset_file_position(outfile);
             continue;
         }
 
         const long response_code = curl.get_info<long>(CURLINFO_RESPONSE_CODE);
         if (response_code == 200 || response_code == 206) {
-            SPDLOG_TRACE(
-                "Google Drive download succeeded for file_id '{}' on attempt {}/{}: response_code={}",
-                file_id, attempt + 1, max_retries, response_code);
+            SPDLOG_TRACE("Google Drive download succeeded for file_id '{}' "
+                         "on attempt {}/{}: response_code={}",
+                         file_id, attempt + 1, max_retries, response_code);
             return true;
         }
 
-        SPDLOG_TRACE(
-            "Google Drive HTTP error for file_id '{}' attempt {}/{}: response_code={}",
-            file_id, attempt + 1, max_retries, response_code);
+        SPDLOG_TRACE("Google Drive HTTP error for file_id '{}' "
+                     "attempt {}/{}: response_code={}",
+                     file_id, attempt + 1, max_retries, response_code);
 
         reset_file_position(outfile);
         const int sleep_ms = 1000 * (1 << attempt);
@@ -435,12 +367,28 @@ bool Downloader::download_via_gdr(const std::string &file_id,
     return false;
 }
 
-std::string Downloader::get_fresh_token() {
+int GDRDownloader::get_account_index_by_email(const std::string &email) const {
+    if (!config.contains("gdr_accounts") ||
+        !config["gdr_accounts"].is_array()) {
+        return -1; // no accounts
+    }
+
+    const auto &accounts = config["gdr_accounts"];
+    for (size_t i = 0; i < accounts.size(); ++i) {
+        if (accounts[i].contains("email") &&
+            accounts[i]["email"].get<std::string>() == email) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1; // not found
+}
+
+std::string GDRDownloader::get_fresh_token() {
     SPDLOG_TRACE("Checking token validity");
 
     if (is_token_valid()) {
-        const int gdr_account_id = get_account_index_by_email(
-            config, track["email"].get<std::string>());
+        const int gdr_account_id =
+            get_account_index_by_email(track["email"].get<std::string>());
         auto &gdr_account = config["gdr_accounts"][gdr_account_id];
 
         const std::string token =
@@ -453,10 +401,10 @@ std::string Downloader::get_fresh_token() {
     return request_new_token();
 }
 
-std::string Downloader::request_new_token() {
+std::string GDRDownloader::request_new_token() {
     const int max_retries = config["max_retries"].get<int>();
     const int gdr_account_id =
-        get_account_index_by_email(config, track["email"].get<std::string>());
+        get_account_index_by_email(track["email"].get<std::string>());
     auto &gdr_account = config["gdr_accounts"][gdr_account_id];
 
     const std::string &client_id = gdr_account["client_id"].get<std::string>();
@@ -557,9 +505,9 @@ std::string Downloader::request_new_token() {
     throw std::runtime_error("Token refresh failed unexpectedly");
 }
 
-bool Downloader::is_token_valid() const {
+bool GDRDownloader::is_token_valid() const {
     const int gdr_account_id =
-        get_account_index_by_email(config, track["email"].get<std::string>());
+        get_account_index_by_email(track["email"].get<std::string>());
     const auto &gdr_account = config["gdr_accounts"][gdr_account_id];
 
     if (!gdr_account.contains("access_token") ||
@@ -585,7 +533,149 @@ bool Downloader::is_token_valid() const {
     }
 }
 
-// File management
+// =============================================================================
+// Main Downloader Implementation
+// =============================================================================
+
+Downloader::Downloader(const nlohmann::json &config,
+                       const nlohmann::json &track)
+    : track(track), config(config), completed_cids(0) {
+    cid_download_status.resize(track["cids"].size(), DownloadStatus::PENDING);
+    SPDLOG_TRACE("Downloader initialized for track '{}' with {} CIDs",
+                 track["track_name"].get<std::string>(), track["cids"].size());
+}
+
+void Downloader::download_file() {
+    ensure_output_directory();
+    const int thread_count =
+        config["ncores"].get<int>() * config["mul_factor"].get<int>();
+
+    SPDLOG_TRACE("Starting download with {} threads for {} CIDs", thread_count,
+                 track["cids"].size());
+
+    dp::ThreadPool pool(thread_count);
+    for (size_t i = 0; i < track["cids"].size(); ++i) {
+        pool.enqueue_detach(
+            [this, i]() { download_single_cid(static_cast<int>(i)); });
+    }
+    pool.wait_for_tasks();
+}
+
+void Downloader::download_single_cid(int cid_index) {
+    const auto &cids = track["cids"].get<std::vector<std::string>>();
+    const std::string &cid = cids[cid_index];
+    const auto cid_type = get_cid_type(cid);
+
+    SPDLOG_TRACE("Starting download for CID {}/{}: '{}' (type: {})",
+                 cid_index + 1, cids.size(), cid, cid_type_to_string(cid_type));
+
+    ensure_output_directory();
+    const auto temp_path = get_temp_path(cid);
+
+    SPDLOG_TRACE("Opening temp file for CID '{}': {}", cid, temp_path.string());
+
+    std::ofstream outfile(temp_path, std::ios::binary);
+    if (!outfile.is_open()) {
+        SPDLOG_TRACE("Failed to open temp file for CID '{}': {}", cid,
+                     temp_path.string());
+        cid_download_status[cid_index] = DownloadStatus::FAILED;
+        return;
+    }
+
+    SPDLOG_TRACE("Executing download for CID '{}' (type: {})", cid,
+                 cid_type_to_string(cid_type));
+    const bool success = execute_download(cid, outfile);
+    outfile.close();
+
+    SPDLOG_TRACE("Download execution completed for CID '{}': success={}", cid,
+                 success);
+
+    finalize_download(cid_index, cid, temp_path, success);
+}
+
+bool Downloader::execute_download(const std::string &cid,
+                                  std::ofstream &outfile) {
+    const CidType cid_type = get_cid_type(cid);
+
+    auto downloader = create_downloader(cid_type);
+    return downloader->download(cid, outfile);
+}
+
+void Downloader::finalize_download(int cid_index, const std::string &cid,
+                                   const fs::path &temp_path, bool success) {
+    SPDLOG_TRACE("Finalizing download for CID '{}' (index {}): success={}", cid,
+                 cid_index, success);
+
+    if (!success) {
+        SPDLOG_TRACE("Download failed for CID '{}', cleaning up temp file: {}",
+                     cid, temp_path.string());
+        cleanup_temp_file(temp_path);
+        cid_download_status[cid_index] = DownloadStatus::FAILED;
+        return;
+    }
+
+    const auto cid_type = get_cid_type(cid);
+    const auto final_path = get_final_path(cid, cid_type);
+
+    SPDLOG_TRACE("Moving temp file for CID '{}' from '{}' to '{}'", cid,
+                 temp_path.string(), final_path.string());
+
+    std::error_code ec;
+    fs::rename(temp_path, final_path, ec);
+
+    if (ec) {
+        SPDLOG_TRACE("Failed to rename '{}' to '{}' for CID '{}': {}",
+                     temp_path.string(), final_path.string(), cid,
+                     ec.message());
+        cleanup_temp_file(temp_path);
+        cid_download_status[cid_index] = DownloadStatus::FAILED;
+        return;
+    }
+
+    SPDLOG_TRACE("Successfully finalized download for CID '{}'", cid);
+    cid_download_status[cid_index] = DownloadStatus::SUCCEEDED;
+    log_download_progress(cid_index, cid);
+}
+
+CidType Downloader::get_cid_type(const std::string &cid) const {
+    CidType type;
+
+    if (!track.contains("byte_range")) {
+        if (cid.size() == 43) {
+            type = CidType::ARW;
+        } else {
+            type = CidType::IPFS;
+        }
+    } else {
+        type = CidType::GDR;
+    }
+
+    SPDLOG_TRACE(
+        "Detected CID type for '{}': {} (length: {}, has_byte_range: {})", cid,
+        cid_type_to_string(type), cid.size(), track.contains("byte_range"));
+
+    return type;
+}
+
+std::unique_ptr<BaseDownloader> Downloader::create_downloader(CidType type) {
+    switch (type) {
+    case CidType::GDR:
+        if (!gdr_downloader)
+            gdr_downloader = std::make_unique<GDRDownloader>(config, track);
+        return std::make_unique<GDRDownloader>(config, track);
+    case CidType::IPFS:
+        if (!ipfs_downloader)
+            ipfs_downloader = std::make_unique<IPFSDownloader>(config, track);
+        return std::make_unique<IPFSDownloader>(config, track);
+    case CidType::ARW:
+        if (!arw_downloader)
+            arw_downloader = std::make_unique<ARWDownloader>(config, track);
+        return std::make_unique<ARWDownloader>(config, track);
+    default:
+        throw std::runtime_error("Unsupported CID type");
+    }
+}
+
 fs::path Downloader::get_temp_path(const std::string &cid) const {
     const fs::path output_dir = config["output"].get<std::string>();
     const auto temp_path = output_dir / (cid + ".tmp");
@@ -618,13 +708,20 @@ void Downloader::cleanup_temp_file(const fs::path &temp_path) const {
     }
 }
 
-void Downloader::reset_file_position(std::ofstream &outfile) const {
-    SPDLOG_TRACE("Resetting file position to beginning");
-    outfile.clear();
-    outfile.seekp(0, std::ios::beg);
+std::optional<std::string> Downloader::assemble_file() {
+    const auto &cids = track["cids"].get<std::vector<std::string>>();
+
+    SPDLOG_TRACE("Starting file assembly for {} CIDs", cids.size());
+
+    if (cids.size() == 1) {
+        SPDLOG_TRACE("Single file detected, handling single file assembly");
+        return handle_single_file();
+    }
+
+    SPDLOG_TRACE("Multiple files detected, handling multi-file assembly");
+    return assemble_multiple_files();
 }
 
-// Assembly methods
 std::optional<std::string> Downloader::assemble_multiple_files() {
     const auto filename = generate_output_filename();
     if (filename.empty()) {
@@ -690,7 +787,7 @@ bool Downloader::combine_cid_files(const fs::path &output_path) {
     }
 
     const auto &cids = track["cids"].get<std::vector<std::string>>();
-    const fs::path output_dir = config["output"].get<std::string>();
+    const fs::path &output_dir = config["output"].get<std::string>();
 
     for (size_t i = 0; i < cids.size(); ++i) {
         const auto &cid = cids[i];
@@ -723,7 +820,7 @@ bool Downloader::combine_cid_files(const fs::path &output_path) {
 
 void Downloader::cleanup_cid_files() {
     const auto &cids = track["cids"].get<std::vector<std::string>>();
-    const fs::path output_dir = config["output"].get<std::string>();
+    const fs::path &output_dir = config["output"].get<std::string>();
 
     SPDLOG_TRACE("Cleaning up {} individual CID files", cids.size());
 
@@ -746,7 +843,6 @@ void Downloader::cleanup_cid_files() {
     SPDLOG_TRACE("Completed cleanup of individual CID files");
 }
 
-// Utilities
 std::string Downloader::generate_output_filename() const {
     const std::string original = track["track_name"].get<std::string>();
     const auto generated = Utilities::generate_filename(original);
@@ -781,26 +877,36 @@ void Downloader::ensure_output_directory() const {
     }
 }
 
-// Time utilities require C++23.
-std::string Downloader::to_iso8601(const system_clock::time_point &tp) {
-    const auto result = std::format("{:%Y-%m-%dT%H:%M:%S}", tp);
-    SPDLOG_TRACE("Converted time_point to ISO8601: {}", result);
-    return result;
+std::string Downloader::cid_type_to_string(CidType type) const {
+    switch (type) {
+    case CidType::GDR:
+        return "GDR";
+    case CidType::IPFS:
+        return "IPFS";
+    case CidType::ARW:
+        return "ARW";
+    default:
+        return "UNKNOWN";
+    }
 }
 
-system_clock::time_point
-Downloader::from_iso8601(const std::string &iso_string) {
-    SPDLOG_TRACE("Parsing ISO8601 string: {}", iso_string);
+bool Downloader::succeeded() const {
+    int success_count = 0;
+    int failed_count = 0;
 
-    system_clock::time_point tp;
-    std::istringstream ss(iso_string);
-    ss >> std::chrono::parse("%Y-%m-%dT%H:%M:%S", tp);
-
-    if (ss.fail()) {
-        SPDLOG_TRACE("Failed to parse ISO8601 string: {}", iso_string);
-        throw std::runtime_error("Invalid ISO8601 format: " + iso_string);
+    for (const auto &status : cid_download_status) {
+        if (status == DownloadStatus::SUCCEEDED) {
+            success_count++;
+        } else if (status == DownloadStatus::FAILED) {
+            failed_count++;
+        }
     }
 
-    SPDLOG_TRACE("Successfully parsed ISO8601 string: {}", iso_string);
-    return tp;
+    const bool all_succeeded = (failed_count == 0);
+    SPDLOG_TRACE(
+        "Download status check: {}/{} succeeded, {}/{} failed, overall success: {}",
+        success_count, cid_download_status.size(), failed_count,
+        cid_download_status.size(), all_succeeded);
+
+    return all_succeeded;
 }
