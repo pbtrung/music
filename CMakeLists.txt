@@ -56,6 +56,8 @@ add_executable(ex02
     src/httpvfs.cpp
     src/curl.cpp
     src/track.cpp
+    src/downloader.cpp
+    src/utils.cpp
 )
 set(EXAMPLE_LIST
     ex01

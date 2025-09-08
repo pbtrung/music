@@ -4,6 +4,7 @@
 
 #include <fmt/format.h>
 
+#include "downloader.hpp"
 #include "track.hpp"
 
 using json = nlohmann::json;
@@ -27,9 +28,19 @@ int main(int argc, char **argv) {
                         config["r2"]["bucket"].get<std::string>(),
                         config["r2"]["db_file"].get<std::string>());
         Track track = Track::load(url, config, query);
+        auto track_info = track.get_json();
+        std::cout << "Track JSON:\n" << track_info.dump(4) << "\n";
 
-        std::cout << "Track ID: " << track.get_id() << "\n";
-        std::cout << "Track JSON:\n" << track.get_json().dump(4) << "\n";
+        Downloader dl(config, track_info);
+        dl.download_file();
+
+        if (dl.succeeded()) {
+            std::cout << "dl.succeeded()" << "\n";
+            auto filename = dl.assemble_file().value();
+            std::cout << "filename: " << filename << "\n";
+        } else {
+            std::cout << "!dl.succeeded()" << "\n";
+        }
 
         return 0;
     } catch (const std::exception &e) {

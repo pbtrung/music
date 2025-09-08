@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <thread>
 
+#include <fmt/base.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
@@ -17,6 +18,21 @@
 using namespace std::chrono;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
+
+static int get_account_index_by_email(const json &j, const std::string &email) {
+    if (!j.contains("gdr_accounts") || !j["gdr_accounts"].is_array()) {
+        return -1; // no accounts
+    }
+
+    const auto &accounts = j["gdr_accounts"];
+    for (size_t i = 0; i < accounts.size(); ++i) {
+        if (accounts[i].contains("email") &&
+            accounts[i]["email"].get<std::string>() == email) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1; // not found
+}
 
 Downloader::Downloader(const nlohmann::json &config,
                        const nlohmann::json &track)
@@ -423,7 +439,12 @@ std::string Downloader::get_fresh_token() {
     SPDLOG_TRACE("Checking token validity");
 
     if (is_token_valid()) {
-        const std::string token = config["access_token"].get<std::string>();
+        const int gdr_account_id = get_account_index_by_email(
+            config, track["email"].get<std::string>());
+        auto &gdr_account = config["gdr_accounts"][gdr_account_id];
+
+        const std::string token =
+            gdr_account["access_token"].get<std::string>();
         SPDLOG_TRACE("Using existing valid token: length={}", token.length());
         return token;
     }
@@ -434,7 +455,8 @@ std::string Downloader::get_fresh_token() {
 
 std::string Downloader::request_new_token() {
     const int max_retries = config["max_retries"].get<int>();
-    const int gdr_account_id = track["gdr_account_id"].get<int>() - 1;
+    const int gdr_account_id =
+        get_account_index_by_email(config, track["email"].get<std::string>());
     auto &gdr_account = config["gdr_accounts"][gdr_account_id];
 
     const std::string &client_id = gdr_account["client_id"].get<std::string>();
@@ -458,7 +480,7 @@ std::string Downloader::request_new_token() {
         Curl curl;
         curl.reset_string_output();
         curl.set_option(CURLOPT_URL, url);
-        curl.set_option(CURLOPT_POSTFIELDS, data);
+        curl.set_option(CURLOPT_POSTFIELDS, data.c_str());
         curl.set_option(CURLOPT_TIMEOUT, config["timeout"].get<int>());
         curl.set_header("Content-Type: application/x-www-form-urlencoded");
 
@@ -481,6 +503,10 @@ std::string Downloader::request_new_token() {
         if (response_code != 200) {
             SPDLOG_TRACE("Token refresh attempt {} failed with HTTP error: {}",
                          attempt + 1, response_code);
+
+            const std::string response = curl.get_response();
+            SPDLOG_TRACE("Error response: {}", response);
+
             if (attempt < max_retries - 1) {
                 const int sleep_ms = 1000 * (1 << attempt);
                 SPDLOG_TRACE("Sleeping {}ms before token refresh retry",
@@ -532,7 +558,8 @@ std::string Downloader::request_new_token() {
 }
 
 bool Downloader::is_token_valid() const {
-    const int gdr_account_id = track["gdr_account_id"].get<int>() - 1;
+    const int gdr_account_id =
+        get_account_index_by_email(config, track["email"].get<std::string>());
     const auto &gdr_account = config["gdr_accounts"][gdr_account_id];
 
     if (!gdr_account.contains("access_token") ||
