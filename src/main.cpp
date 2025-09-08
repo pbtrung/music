@@ -188,8 +188,8 @@ void consumer(jdz::SpscQueue<json> &queue, const json &config) {
             SPDLOG_TRACE("Pop: {}", filename);
             print_info(track);
 
-            AudioDecoder decoder(config["pipe_name"].get<std::string>(),
-                                 filename, file_path.string());
+            AudioDecoder decoder(config["pipe"].get<std::string>(), filename,
+                                 file_path.string());
             decoder.decode();
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
