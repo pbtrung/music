@@ -11,7 +11,14 @@
 #include "json.hpp"
 
 enum class DownloadStatus { PENDING, SUCCEEDED, FAILED };
+
 enum class CidType { ARW, IPFS, GDR };
+
+// Utility functions for CidType
+namespace CidUtils {
+std::string to_string(CidType type);
+CidType detect_type(const std::string &cid, bool has_byte_range);
+} // namespace CidUtils
 
 // Base class for all downloaders
 class BaseDownloader {
@@ -30,7 +37,6 @@ class BaseDownloader {
   protected:
     // Utility methods available to all derived classes
     void reset_file_position(std::ofstream &outfile) const;
-    std::string cid_type_to_string(CidType type) const;
 
     // Time utilities
     static std::string
@@ -47,38 +53,34 @@ class IPFSDownloader : public BaseDownloader {
   public:
     explicit IPFSDownloader(nlohmann::json &config,
                             const nlohmann::json &track);
-
     bool download(const std::string &cid, std::ofstream &outfile) override;
 
   private:
-    bool try_ipfs_download(const std::string &cid, std::ofstream &outfile,
-                           const std::string &url, int timeout);
-    std::string build_ipfs_url(const std::string &cid, int attempt) const;
-    std::string get_gateway(int attempt) const;
-    bool validate_ipfs_response(const Curl &curl) const;
+    bool try_download_attempt(const std::string &cid, std::ofstream &outfile,
+                              const std::string &url, int timeout);
+    std::string build_url(const std::string &cid) const;
+    bool validate_response(const Curl &curl) const;
 };
 
 // ARWeave downloader for standard IPFS gateways
 class ARWDownloader : public BaseDownloader {
   public:
     explicit ARWDownloader(nlohmann::json &config, const nlohmann::json &track);
-
     bool download(const std::string &cid, std::ofstream &outfile) override;
 
   private:
-    bool try_arw_download(const std::string &cid, std::ofstream &outfile,
-                          const std::string &url, int timeout);
-    std::string build_arw_url(const std::string &cid, int attempt) const;
+    bool try_download_attempt(const std::string &cid, std::ofstream &outfile,
+                              const std::string &url, int timeout);
+    std::string build_url(const std::string &cid, int attempt) const;
     std::string get_gateway(int attempt) const;
-    bool validate_arw_response(const Curl &curl) const;
+    bool validate_response(const Curl &curl) const;
 };
 
 // Google Drive downloader
 class GDRDownloader : public BaseDownloader {
   public:
     explicit GDRDownloader(nlohmann::json &config, const nlohmann::json &track);
-
-    bool download(const std::string &cid, std::ofstream &outfile) override;
+    bool download(const std::string &file_id, std::ofstream &outfile) override;
 
   private:
     std::string get_fresh_token();
@@ -111,9 +113,8 @@ class Downloader {
                            const std::filesystem::path &temp_path,
                            bool success);
 
-    // CID type detection and downloader creation
-    CidType get_cid_type(const std::string &cid) const;
-    std::unique_ptr<BaseDownloader> create_downloader(CidType type);
+    // Downloader creation and management
+    std::unique_ptr<BaseDownloader> get_downloader(CidType type);
 
     // File management
     std::filesystem::path get_temp_path(const std::string &cid) const;
@@ -131,14 +132,13 @@ class Downloader {
     std::string generate_output_filename() const;
     void log_download_progress(int cid_index, const std::string &cid);
     void ensure_output_directory() const;
-    std::string cid_type_to_string(CidType type) const;
 
     nlohmann::json track;
     nlohmann::json config;
     std::vector<DownloadStatus> cid_download_status;
     std::atomic<int> completed_cids;
 
-    // Cached downloaders for each type
+    // Cached downloaders for each type (lazy initialization)
     mutable std::unique_ptr<IPFSDownloader> ipfs_downloader;
     mutable std::unique_ptr<ARWDownloader> arw_downloader;
     mutable std::unique_ptr<GDRDownloader> gdr_downloader;

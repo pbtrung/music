@@ -20,6 +20,32 @@ using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 // =============================================================================
+// CidUtils Implementation
+// =============================================================================
+
+namespace CidUtils {
+std::string to_string(CidType type) {
+    switch (type) {
+    case CidType::GDR:
+        return "GDR";
+    case CidType::IPFS:
+        return "IPFS";
+    case CidType::ARW:
+        return "ARW";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+CidType detect_type(const std::string &cid, bool has_byte_range) {
+    if (has_byte_range) {
+        return CidType::GDR;
+    }
+    return (cid.size() == 43) ? CidType::ARW : CidType::IPFS;
+}
+} // namespace CidUtils
+
+// =============================================================================
 // BaseDownloader Implementation
 // =============================================================================
 
@@ -34,19 +60,6 @@ void BaseDownloader::reset_file_position(std::ofstream &outfile) const {
     SPDLOG_TRACE("Resetting file position to beginning");
     outfile.clear();
     outfile.seekp(0, std::ios::beg);
-}
-
-std::string BaseDownloader::cid_type_to_string(CidType type) const {
-    switch (type) {
-    case CidType::GDR:
-        return "GDR";
-    case CidType::IPFS:
-        return "IPFS";
-    case CidType::ARW:
-        return "ARW";
-    default:
-        return "UNKNOWN";
-    }
 }
 
 std::string BaseDownloader::to_iso8601(const system_clock::time_point &tp) {
@@ -89,7 +102,7 @@ bool IPFSDownloader::download(const std::string &cid, std::ofstream &outfile) {
                  max_retries);
 
     for (int attempt = 0; attempt < max_retries; ++attempt) {
-        const auto url = build_ipfs_url(cid, attempt);
+        const auto url = build_url(cid);
         const int timeout =
             2 * config["timeout"].get<int>(); // Special timeout for IPFS
 
@@ -97,7 +110,7 @@ bool IPFSDownloader::download(const std::string &cid, std::ofstream &outfile) {
             "IPFS download attempt {}/{} for CID '{}': URL='{}', timeout={}s",
             attempt + 1, max_retries, cid, url, timeout);
 
-        if (try_ipfs_download(cid, outfile, url, timeout)) {
+        if (try_download_attempt(cid, outfile, url, timeout)) {
             SPDLOG_TRACE(
                 "IPFS download succeeded for CID '{}' on attempt {}/{}", cid,
                 attempt + 1, max_retries);
@@ -115,9 +128,9 @@ bool IPFSDownloader::download(const std::string &cid, std::ofstream &outfile) {
     return false;
 }
 
-bool IPFSDownloader::try_ipfs_download(const std::string &cid,
-                                       std::ofstream &outfile,
-                                       const std::string &url, int timeout) {
+bool IPFSDownloader::try_download_attempt(const std::string &cid,
+                                          std::ofstream &outfile,
+                                          const std::string &url, int timeout) {
     SPDLOG_TRACE("Attempting IPFS download for CID '{}' from URL: {}", cid,
                  url);
 
@@ -141,27 +154,21 @@ bool IPFSDownloader::try_ipfs_download(const std::string &cid,
         return false;
     }
 
-    const bool validation_result = validate_ipfs_response(curl);
+    const bool validation_result = validate_response(curl);
     SPDLOG_TRACE("IPFS download validation for CID '{}': validation_passed={}",
                  cid, validation_result);
 
     return validation_result;
 }
 
-std::string IPFSDownloader::build_ipfs_url(const std::string &cid,
-                                           int attempt) const {
+std::string IPFSDownloader::build_url(const std::string &cid) const {
     const std::string url = fmt::format("https://{}.{}", cid,
                                         config["n_gateway"].get<std::string>());
     SPDLOG_TRACE("Built IPFS URL for CID '{}': {}", cid, url);
     return url;
 }
 
-std::string IPFSDownloader::get_gateway(int attempt) const {
-    // IPFS downloader uses n_gateway, so this method is not used
-    return config["n_gateway"].get<std::string>();
-}
-
-bool IPFSDownloader::validate_ipfs_response(const Curl &curl) const {
+bool IPFSDownloader::validate_response(const Curl &curl) const {
     SPDLOG_TRACE("Skipping content type validation for IPFS download");
     return true; // IPFS doesn't require content type validation
 }
@@ -183,14 +190,14 @@ bool ARWDownloader::download(const std::string &cid, std::ofstream &outfile) {
                  max_retries);
 
     for (int attempt = 0; attempt < max_retries; ++attempt) {
-        const auto url = build_arw_url(cid, attempt);
+        const auto url = build_url(cid, attempt);
         const int timeout = config["timeout"].get<int>();
 
         SPDLOG_TRACE(
             "ARW download attempt {}/{} for CID '{}': URL='{}', timeout={}s",
             attempt + 1, max_retries, cid, url, timeout);
 
-        if (try_arw_download(cid, outfile, url, timeout)) {
+        if (try_download_attempt(cid, outfile, url, timeout)) {
             SPDLOG_TRACE("ARW download succeeded for CID '{}' on attempt {}/{}",
                          cid, attempt + 1, max_retries);
             return true;
@@ -207,9 +214,9 @@ bool ARWDownloader::download(const std::string &cid, std::ofstream &outfile) {
     return false;
 }
 
-bool ARWDownloader::try_arw_download(const std::string &cid,
-                                     std::ofstream &outfile,
-                                     const std::string &url, int timeout) {
+bool ARWDownloader::try_download_attempt(const std::string &cid,
+                                         std::ofstream &outfile,
+                                         const std::string &url, int timeout) {
     SPDLOG_TRACE("Attempting ARW download for CID '{}' from URL: {}", cid, url);
 
     Curl curl;
@@ -232,15 +239,15 @@ bool ARWDownloader::try_arw_download(const std::string &cid,
         return false;
     }
 
-    const bool validation_result = validate_arw_response(curl);
+    const bool validation_result = validate_response(curl);
     SPDLOG_TRACE("ARW download validation for CID '{}': validation_passed={}",
                  cid, validation_result);
 
     return validation_result;
 }
 
-std::string ARWDownloader::build_arw_url(const std::string &cid,
-                                         int attempt) const {
+std::string ARWDownloader::build_url(const std::string &cid,
+                                     int attempt) const {
     const std::string gateway = get_gateway(attempt);
     const std::string url = fmt::format("https://{}/{}", gateway, cid);
     SPDLOG_TRACE("Built ARW URL for CID '{}' (attempt {}): {} via gateway '{}'",
@@ -276,7 +283,7 @@ std::string ARWDownloader::get_gateway(int attempt) const {
     return gateway;
 }
 
-bool ARWDownloader::validate_arw_response(const Curl &curl) const {
+bool ARWDownloader::validate_response(const Curl &curl) const {
     const char *content_type_ptr = curl.get_info<char *>(CURLINFO_CONTENT_TYPE);
     const std::string content_type = content_type_ptr ? content_type_ptr : "";
     const bool is_valid = (content_type == "application/octet-stream");
@@ -545,19 +552,6 @@ Downloader::Downloader(const nlohmann::json &config,
                  track["track_name"].get<std::string>(), track["cids"].size());
 }
 
-std::string Downloader::cid_type_to_string(CidType type) const {
-    switch (type) {
-    case CidType::GDR:
-        return "GDR";
-    case CidType::IPFS:
-        return "IPFS";
-    case CidType::ARW:
-        return "ARW";
-    default:
-        return "UNKNOWN";
-    }
-}
-
 void Downloader::download_file() {
     const int thread_count =
         config["ncores"].get<int>() * config["mul_factor"].get<int>();
@@ -578,18 +572,12 @@ void Downloader::download_file() {
 }
 
 bool Downloader::succeeded() const {
-    int success_count = 0;
-    int failed_count = 0;
-
-    for (const auto &status : cid_download_status) {
-        if (status == DownloadStatus::SUCCEEDED) {
-            success_count++;
-        } else if (status == DownloadStatus::FAILED) {
-            failed_count++;
-        }
-    }
-
+    const auto failed_count =
+        std::count(cid_download_status.begin(), cid_download_status.end(),
+                   DownloadStatus::FAILED);
+    const auto success_count = cid_download_status.size() - failed_count;
     const bool all_succeeded = (failed_count == 0);
+
     SPDLOG_TRACE(
         "Download status check: {}/{} succeeded, {}/{} failed, overall success: {}",
         success_count, cid_download_status.size(), failed_count,
@@ -616,10 +604,12 @@ std::optional<std::string> Downloader::assemble_file() {
 void Downloader::download_single_cid(int cid_index) {
     const auto &cids = track["cids"].get<std::vector<std::string>>();
     const std::string &cid = cids[cid_index];
-    const auto cid_type = get_cid_type(cid);
+    const auto cid_type =
+        CidUtils::detect_type(cid, track.contains("byte_range"));
 
     SPDLOG_TRACE("Starting download for CID {}/{}: '{}' (type: {})",
-                 cid_index + 1, cids.size(), cid, cid_type_to_string(cid_type));
+                 cid_index + 1, cids.size(), cid,
+                 CidUtils::to_string(cid_type));
 
     ensure_output_directory();
     const auto temp_path = get_temp_path(cid);
@@ -635,7 +625,7 @@ void Downloader::download_single_cid(int cid_index) {
     }
 
     SPDLOG_TRACE("Executing download for CID '{}' (type: {})", cid,
-                 cid_type_to_string(cid_type));
+                 CidUtils::to_string(cid_type));
     const bool success = execute_download(cid, outfile);
     outfile.close();
 
@@ -647,15 +637,16 @@ void Downloader::download_single_cid(int cid_index) {
 
 bool Downloader::execute_download(const std::string &cid,
                                   std::ofstream &outfile) {
-    const auto cid_type = get_cid_type(cid);
+    const auto cid_type =
+        CidUtils::detect_type(cid, track.contains("byte_range"));
 
     SPDLOG_TRACE("Executing download for CID '{}' using {} method", cid,
-                 cid_type_to_string(cid_type));
+                 CidUtils::to_string(cid_type));
 
-    auto downloader = create_downloader(cid_type);
+    auto downloader = get_downloader(cid_type);
     if (!downloader) {
         SPDLOG_TRACE("Failed to create downloader for CID '{}' type {}", cid,
-                     cid_type_to_string(cid_type));
+                     CidUtils::to_string(cid_type));
         return false;
     }
 
@@ -678,7 +669,8 @@ void Downloader::finalize_download(int cid_index, const std::string &cid,
         return;
     }
 
-    const auto cid_type = get_cid_type(cid);
+    const auto cid_type =
+        CidUtils::detect_type(cid, track.contains("byte_range"));
     const auto final_path = get_final_path(cid, cid_type);
 
     SPDLOG_TRACE("Moving temp file for CID '{}' from '{}' to '{}'", cid,
@@ -701,28 +693,8 @@ void Downloader::finalize_download(int cid_index, const std::string &cid,
     log_download_progress(cid_index, cid);
 }
 
-// CID type detection and downloader creation
-CidType Downloader::get_cid_type(const std::string &cid) const {
-    CidType type;
-
-    if (!track.contains("byte_range")) {
-        if (cid.size() == 43) {
-            type = CidType::ARW;
-        } else {
-            type = CidType::IPFS;
-        }
-    } else {
-        type = CidType::GDR;
-    }
-
-    SPDLOG_TRACE(
-        "Detected CID type for '{}': {} (length: {}, has_byte_range: {})", cid,
-        cid_type_to_string(type), cid.size(), track.contains("byte_range"));
-
-    return type;
-}
-
-std::unique_ptr<BaseDownloader> Downloader::create_downloader(CidType type) {
+// Downloader creation and management
+std::unique_ptr<BaseDownloader> Downloader::get_downloader(CidType type) {
     switch (type) {
     case CidType::IPFS:
         if (!ipfs_downloader) {
@@ -759,7 +731,7 @@ fs::path Downloader::get_final_path(const std::string &cid,
     const fs::path output_dir = config["output"].get<std::string>();
     fs::path final_path = output_dir / cid;
     SPDLOG_TRACE("Generated final path for CID '{}' (type {}): {}", cid,
-                 cid_type_to_string(type), final_path.string());
+                 CidUtils::to_string(type), final_path.string());
     return final_path;
 }
 
