@@ -92,8 +92,7 @@ class GDRDownloader : public BaseDownloader {
 // Main downloader orchestrator
 class Downloader {
   public:
-    explicit Downloader(const nlohmann::json &config,
-                        const nlohmann::json &track);
+    explicit Downloader(nlohmann::json &config, const nlohmann::json &track);
     ~Downloader() = default;
 
     Downloader(const Downloader &) = delete;
@@ -133,8 +132,8 @@ class Downloader {
     void log_download_progress(int cid_index, const std::string &cid);
     void ensure_output_directory() const;
 
-    nlohmann::json track;
-    nlohmann::json config;
+    const nlohmann::json &track;
+    nlohmann::json &config;
     std::vector<DownloadStatus> cid_download_status;
     std::atomic<int> completed_cids;
 

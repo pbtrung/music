@@ -544,8 +544,7 @@ bool GDRDownloader::is_token_valid() const {
 // Main Downloader Implementation
 // =============================================================================
 
-Downloader::Downloader(const nlohmann::json &config,
-                       const nlohmann::json &track)
+Downloader::Downloader(nlohmann::json &config, const nlohmann::json &track)
     : config(config), track(track), completed_cids(0) {
     cid_download_status.resize(track["cids"].size(), DownloadStatus::PENDING);
     SPDLOG_TRACE("Downloader initialized for track: '{}' with {} CIDs",

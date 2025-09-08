@@ -54,7 +54,7 @@ static json get_track(const json &config) {
     return track.get_json();
 }
 
-static std::string download_track(const json &config, json &track) {
+static std::string download_track(json &config, const json &track) {
     Downloader dl(config, track);
     dl.download_file();
 
