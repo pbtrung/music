@@ -16,6 +16,7 @@ RUN git clone https://github.com/allinurl/gwsocket && \
 
 RUN git clone https://github.com/pbtrung/music && \
     cd music && \
+    git submodule update --init --recursive && \
     ./build.sh
 
 FROM alpine:edge
