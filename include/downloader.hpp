@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -9,6 +10,8 @@
 
 #include "curl.hpp"
 #include "json.hpp"
+
+namespace fs = std::filesystem;
 
 enum class DownloadStatus { PENDING, SUCCEEDED, FAILED };
 
@@ -73,7 +76,10 @@ class ARWDownloader : public BaseDownloader {
                               const std::string &url, int timeout);
     std::string build_url(const std::string &cid, int attempt) const;
     std::string get_gateway(int attempt) const;
-    bool validate_response(const Curl &curl) const;
+    bool validate_response_with_path(const Curl &curl,
+                                     const fs::path &file_path) const;
+    std::string calculate_sha256_from_file(const fs::path &file_path) const;
+    mutable std::optional<std::string> previous_sha256;
 };
 
 // Google Drive downloader
