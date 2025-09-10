@@ -68,3 +68,18 @@ foreach(target ${EXAMPLE_LIST})
     target_link_directories(${target} PRIVATE ${COMMON_LINK_DIRS})
     target_link_libraries(${target} PRIVATE ${COMMON_LINK_LIBS})
 endforeach()
+
+add_subdirectory(external/rapidyenc)
+add_executable(data
+    src/data.cpp
+    src/downloader.cpp
+    src/track.cpp
+    src/httpvfs.cpp
+    src/utils.cpp
+    src/httpvfs.cpp
+    src/curl.cpp
+)
+target_link_libraries(data PRIVATE rapidyenc_static)
+target_link_libraries(data PRIVATE ${COMMON_LINK_LIBS})
+target_include_directories(data PRIVATE ${COMMON_INCLUDE_DIRS})
+target_link_directories(data PRIVATE ${COMMON_LINK_DIRS})

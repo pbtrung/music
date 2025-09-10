@@ -1,0 +1,3 @@
+[submodule "external/rapidyenc"]
+	path = external/rapidyenc
+	url = https://github.com/animetosho/rapidyenc

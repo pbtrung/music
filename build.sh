@@ -3,6 +3,9 @@
 cmake -S . -B build/release -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
 cmake --build build/release --target music
 
+cmake -S . -B build/release -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build/release --target data
+
 # example_list=(
 #     ex02
 # )
