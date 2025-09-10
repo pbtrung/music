@@ -313,11 +313,10 @@ bool ARWDownloader::validate_response_with_path(
     SPDLOG_TRACE("ARW response validation: current_sha256='{}'",
                  current_sha256);
 
-    // For first download attempt, store hash and return true
     if (!previous_sha256.has_value()) {
         previous_sha256 = current_sha256;
         SPDLOG_TRACE("ARW first attempt: stored_sha256='{}'", current_sha256);
-        return true;
+        return false;
     }
 
     const char *content_type_ptr = curl.get_info<char *>(CURLINFO_CONTENT_TYPE);
