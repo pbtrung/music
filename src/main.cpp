@@ -38,9 +38,30 @@ static void init_log(const std::string &file) {
     spdlog::set_default_logger(logger);
 }
 
-static json get_track(const json &config) {
-    const auto rand_num = Utilities::generate_unique_ints(
-        1, config["min_value"].get<int>(), config["max_value"].get<int>());
+static json get_track(jdz::SpscQueue<json> &queue, const json &config) {
+    int min_value;
+    int max_value;
+    const auto rand_range = Utilities::generate_unique_ints(1, 0, 1);
+    const auto &ranges = config["ranges"];
+
+    if (queue.size() <= 5) {
+        if (rand_range->front() == 0) {
+            const auto &r = ranges["low"].get<std::vector<int>>();
+            min_value = r[0];
+            max_value = r[1];
+        } else {
+            const auto &r = ranges["high"].get<std::vector<int>>();
+            min_value = r[0];
+            max_value = r[1];
+        }
+    } else {
+        const auto &r = ranges["middle"].get<std::vector<int>>();
+        min_value = r[0];
+        max_value = r[1];
+    }
+
+    const auto rand_num =
+        Utilities::generate_unique_ints(1, min_value, max_value);
     std::string query = fmt::format("SELECT * FROM tracks WHERE track_id = {}",
                                     rand_num->front());
     SPDLOG_TRACE("{}", query);
@@ -145,7 +166,7 @@ void producer(jdz::SpscQueue<json> &queue, json &config) {
 
         json track;
         try {
-            track = get_track(config);
+            track = get_track(queue, config);
 
             std::string filename = download_track(config, track);
             if (!filename.empty()) {
