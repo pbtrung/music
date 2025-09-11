@@ -1,3 +1,6 @@
 [submodule "external/rapidyenc"]
 	path = external/rapidyenc
 	url = https://github.com/animetosho/rapidyenc
+[submodule "external/wirehair"]
+	path = external/wirehair
+	url = https://github.com/catid/wirehair

@@ -70,6 +70,7 @@ foreach(target ${EXAMPLE_LIST})
 endforeach()
 
 add_subdirectory(external/rapidyenc)
+add_subdirectory(external/wirehair)
 add_executable(data
     src/data.cpp
     src/downloader.cpp
@@ -79,7 +80,9 @@ add_executable(data
     src/httpvfs.cpp
     src/curl.cpp
 )
+list(APPEND COMMON_INCLUDE_DIRS external)
 target_link_libraries(data PRIVATE rapidyenc_static)
+target_link_libraries(data PRIVATE wirehair)
 target_link_libraries(data PRIVATE ${COMMON_LINK_LIBS})
 target_include_directories(data PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_directories(data PRIVATE ${COMMON_LINK_DIRS})
