@@ -39,29 +39,18 @@ static void init_log(const std::string &file) {
 }
 
 static json get_track(jdz::SpscQueue<json> &queue, const json &config) {
-    int min_value;
-    int max_value;
     const auto rand_range = Utilities::generate_unique_ints(1, 0, 1);
-    const auto &ranges = config["ranges"];
 
-    if (queue.size() <= 5) {
-        if (rand_range->front() == 0) {
-            const auto &r = ranges["low"].get<std::vector<int>>();
-            min_value = r[0];
-            max_value = r[1];
-        } else {
-            const auto &r = ranges["high"].get<std::vector<int>>();
-            min_value = r[0];
-            max_value = r[1];
-        }
+    std::string range_category;
+    if (queue.size() <= 6) {
+        range_category = (rand_range->front() == 0) ? "low" : "high";
     } else {
-        const auto &r = ranges["middle"].get<std::vector<int>>();
-        min_value = r[0];
-        max_value = r[1];
+        range_category = "all";
     }
 
-    const auto rand_num =
-        Utilities::generate_unique_ints(1, min_value, max_value);
+    const auto &ranges = config["ranges"];
+    const auto &r = ranges[range_category].get<std::vector<int>>();
+    const auto rand_num = Utilities::generate_unique_ints(1, r[0], r[1]);
     std::string query = fmt::format("SELECT * FROM tracks WHERE track_id = {}",
                                     rand_num->front());
     SPDLOG_TRACE("{}", query);
