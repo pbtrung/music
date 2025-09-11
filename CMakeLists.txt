@@ -79,6 +79,7 @@ add_executable(data
     src/utils.cpp
     src/httpvfs.cpp
     src/curl.cpp
+    src/file_block_reader.cpp
 )
 list(APPEND COMMON_INCLUDE_DIRS external)
 target_link_libraries(data PRIVATE rapidyenc_static)
