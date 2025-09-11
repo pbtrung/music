@@ -35,6 +35,7 @@ static void init_log(const std::string &file) {
     logger->set_level(spdlog::level::trace);
     logger->flush_on(spdlog::level::trace);
     spdlog::set_level(spdlog::level::trace);
+    spdlog::enable_backtrace(32);
     spdlog::set_default_logger(logger);
 }
 
@@ -129,6 +130,7 @@ static void cleanup_file(const fs::path &path) {
             SPDLOG_TRACE("Removed: {}", path.string());
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Remove failed {}: {}", path.string(), e.what());
+            spdlog::dump_backtrace();
         }
     }
 }
@@ -146,6 +148,7 @@ static void cleanup_cid_files(const json &config, const json &track) {
                 SPDLOG_TRACE("Removed: {}", path.string());
             } catch (const std::exception &e) {
                 SPDLOG_TRACE("Remove failed {}: {}", path.string(), e.what());
+                spdlog::dump_backtrace();
             }
         }
     }
@@ -171,8 +174,10 @@ void producer(jdz::SpscQueue<json> &queue, json &config) {
             }
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
+            spdlog::dump_backtrace();
         } catch (...) {
             SPDLOG_TRACE("Unknown error");
+            spdlog::dump_backtrace();
         }
 
         if (track.contains("cids") && config.contains("output")) {
@@ -206,8 +211,10 @@ void consumer(jdz::SpscQueue<json> &queue, const json &config) {
             decoder.decode();
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Error: {}", e.what());
+            spdlog::dump_backtrace();
         } catch (...) {
             SPDLOG_TRACE("Unknown error");
+            spdlog::dump_backtrace();
         }
 
         if (valid_path) {
