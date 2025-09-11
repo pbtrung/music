@@ -47,9 +47,12 @@ static json get_track(jdz::SpscQueue<json> &queue, const json &config) {
     } else {
         range_category = "all";
     }
-
     const auto &ranges = config["ranges"];
     const auto &r = ranges[range_category].get<std::vector<int>>();
+    SPDLOG_TRACE(
+        "Range selection: queue.size={}, rand_range={}, range_category='{}', range=[{}, {}]",
+        queue.size(), rand_range->front(), range_category, r[0], r[1]);
+
     const auto rand_num = Utilities::generate_unique_ints(1, r[0], r[1]);
     std::string query = fmt::format("SELECT * FROM tracks WHERE track_id = {}",
                                     rand_num->front());
