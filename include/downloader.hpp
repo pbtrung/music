@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "curl.hpp"
@@ -79,7 +80,7 @@ class ARWDownloader : public BaseDownloader {
     bool validate_response_with_path(const Curl &curl,
                                      const fs::path &file_path) const;
     std::string calculate_sha256_from_file(const fs::path &file_path) const;
-    mutable std::optional<std::string> previous_sha256;
+    mutable std::unordered_set<std::string> sha256_cache;
 };
 
 // Google Drive downloader

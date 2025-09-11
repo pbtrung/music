@@ -313,25 +313,38 @@ bool ARWDownloader::validate_response_with_path(
     SPDLOG_TRACE("ARW response validation: current_sha256='{}'",
                  current_sha256);
 
-    if (!previous_sha256.has_value()) {
-        previous_sha256 = current_sha256;
-        SPDLOG_TRACE("ARW first attempt: stored_sha256='{}'", current_sha256);
-        return false;
-    }
-
     const char *content_type_ptr = curl.get_info<char *>(CURLINFO_CONTENT_TYPE);
     const std::string content_type = content_type_ptr ? content_type_ptr : "";
-    const bool is_valid = (content_type == "application/octet-stream" &&
-                           current_sha256 == previous_sha256.value());
 
+    // Only cache SHA256s when content type is application/octet-stream
+    if (content_type == "application/octet-stream") {
+        SPDLOG_TRACE(
+            "ARW valid content type detected, checking SHA256 cache: '{}'",
+            current_sha256);
+
+        // Check if this SHA256 already exists in cache
+        if (sha256_cache.find(current_sha256) != sha256_cache.end()) {
+            SPDLOG_TRACE("ARW hash match found: sha256='{}', validation=true",
+                         current_sha256);
+            return true;
+        }
+
+        // Store this SHA256 in cache
+        sha256_cache.insert(current_sha256);
+
+        SPDLOG_TRACE("ARW SHA256 cached: sha256='{}', cache_size={}",
+                     current_sha256, sha256_cache.size());
+    } else {
+        SPDLOG_TRACE("ARW invalid content type: '{}', not caching SHA256",
+                     content_type);
+    }
+
+    // Return false since we need at least two matching SHA256s
     SPDLOG_TRACE(
-        "ARW hash comparison: content_type='{}', previous='{}', current='{}', is_valid={}",
-        content_type, previous_sha256.value(), current_sha256, is_valid);
+        "ARW no hash match found yet: sha256='{}', cache_size={}, validation=false",
+        current_sha256, sha256_cache.size());
 
-    // Update stored hash for next comparison
-    previous_sha256 = current_sha256;
-
-    return is_valid;
+    return false;
 }
 
 std::string
