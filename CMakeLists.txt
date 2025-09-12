@@ -34,6 +34,8 @@ foreach(PKG ${PKG_LIST})
     list(APPEND COMMON_LINK_LIBS    ${${PKG}_LIBRARIES})
 endforeach()
 list(APPEND COMMON_INCLUDE_DIRS include)
+list(APPEND COMMON_INCLUDE_DIRS external)
+list(APPEND COMMON_INCLUDE_DIRS external/wirehair/include)
 
 add_executable(music
     src/main.cpp
@@ -65,10 +67,20 @@ add_executable(ex03
     src/curl.cpp
     src/track.cpp
 )
+
+add_subdirectory(external/rapidyenc)
+add_subdirectory(external/wirehair)
+add_executable(ex04
+    examples/ex04.cpp
+    src/rapidyenc.cpp
+)
+target_link_libraries(ex04 PRIVATE rapidyenc_static)
+
 set(EXAMPLE_LIST
     ex01
     ex02
     ex03
+    ex04
 )
 foreach(target ${EXAMPLE_LIST})
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
@@ -76,8 +88,6 @@ foreach(target ${EXAMPLE_LIST})
     target_link_libraries(${target} PRIVATE ${COMMON_LINK_LIBS})
 endforeach()
 
-add_subdirectory(external/rapidyenc)
-add_subdirectory(external/wirehair)
 add_executable(data
     src/data.cpp
     src/downloader.cpp
@@ -87,8 +97,8 @@ add_executable(data
     src/httpvfs.cpp
     src/curl.cpp
     src/file_block_reader.cpp
+    src/rapidyenc.cpp
 )
-list(APPEND COMMON_INCLUDE_DIRS external)
 target_link_libraries(data PRIVATE rapidyenc_static)
 target_link_libraries(data PRIVATE wirehair)
 target_link_libraries(data PRIVATE ${COMMON_LINK_LIBS})
