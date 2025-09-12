@@ -59,9 +59,16 @@ add_executable(ex02
     src/downloader.cpp
     src/utils.cpp
 )
+add_executable(ex03
+    examples/ex03.cpp
+    src/httpvfs.cpp
+    src/curl.cpp
+    src/track.cpp
+)
 set(EXAMPLE_LIST
     ex01
     ex02
+    ex03
 )
 foreach(target ${EXAMPLE_LIST})
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
