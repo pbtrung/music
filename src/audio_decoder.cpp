@@ -65,6 +65,8 @@ void AudioDecoder::init() {
     init_resampler();
     open_output_pipe();
 
+    gain_multiplier = std::pow(10.0, fixed_gain_db / 20.0);
+
     AVPacket *tmp_pkt = av_packet_alloc();
     if (!tmp_pkt)
         throw std::runtime_error("Failed to allocate packet");
@@ -199,6 +201,19 @@ void AudioDecoder::print_audio_info() {
     }
 }
 
+void AudioDecoder::apply_gain(uint8_t *buffer, int nb_samples) {
+    if (out_samplefmt == AV_SAMPLE_FMT_S16) {
+        int16_t *samples = reinterpret_cast<int16_t *>(buffer);
+        int total_samples = nb_samples * out_channels;
+        for (int i = 0; i < total_samples; ++i) {
+            double sample_value = samples[i] * gain_multiplier;
+            // Clamp to prevent overflow
+            sample_value = std::max(-32768.0, std::min(32767.0, sample_value));
+            samples[i] = static_cast<int16_t>(sample_value);
+        }
+    }
+}
+
 void AudioDecoder::process_frame() {
     int ret = avcodec_send_packet(codec_ctx.get(), pkt.get());
     if (ret < 0)
@@ -227,7 +242,7 @@ void AudioDecoder::process_frame() {
         if (nb_samples < 0) {
             throw std::runtime_error("Error converting samples");
         }
-
+        apply_gain(output_buffer.get(), nb_samples);
         output_stream.write(reinterpret_cast<char *>(output_buffer.get()),
                             max_dst_nb_samples * out_channels *
                                 av_get_bytes_per_sample(out_samplefmt));
