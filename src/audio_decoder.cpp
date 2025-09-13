@@ -65,9 +65,6 @@ void AudioDecoder::init() {
     init_resampler();
     open_output_pipe();
 
-    double gain_multiplier = std::pow(10.0, fixed_gain_db / 20.0);
-    gain_fixed = static_cast<int>(gain_multiplier * 32768.0);
-
     AVPacket *tmp_pkt = av_packet_alloc();
     if (!tmp_pkt)
         throw std::runtime_error("Failed to allocate packet");
@@ -206,10 +203,33 @@ void AudioDecoder::apply_gain(uint8_t *buffer, int nb_samples) {
     if (out_samplefmt == AV_SAMPLE_FMT_S16) {
         int16_t *samples = reinterpret_cast<int16_t *>(buffer);
         int total_samples = nb_samples * out_channels;
+
+        // Find peak in current buffer
+        int16_t peak = 0;
+        for (int i = 0; i < total_samples; ++i) {
+            peak = std::max(peak, static_cast<int16_t>(std::abs(samples[i])));
+        }
+
+        // Calculate gain to use most of dynamic range without clipping
+        double peak_db = (peak > 0) ? 20.0 * std::log10(peak / 32768.0) : -96.0;
+        double target_peak_db = -3.0; // Leave 3dB headroom
+        double required_gain = target_peak_db - peak_db;
+
+        // Limit gain range
+        required_gain = std::max(-20.0, std::min(20.0, required_gain));
+
+        // Smooth the gain changes
+        double alpha = 0.01; // Smoothing factor
+        current_gain_db =
+            current_gain_db * (1.0 - alpha) + required_gain * alpha;
+
+        // Apply gain
+        double gain_multiplier = std::pow(10.0, current_gain_db / 20.0);
+        int gain_fixed = static_cast<int>(gain_multiplier * 32768.0);
+
         for (int i = 0; i < total_samples; ++i) {
             int32_t sample_value =
                 (static_cast<int32_t>(samples[i]) * gain_fixed) >> 15;
-            // Clamp to prevent overflow
             sample_value = std::max(-32768, std::min(32767, sample_value));
             samples[i] = static_cast<int16_t>(sample_value);
         }

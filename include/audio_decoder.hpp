@@ -139,8 +139,7 @@ class AudioDecoder {
     std::string file_path;
     std::string duration_str;
 
-    static constexpr double fixed_gain_db = -7.0;
-    int gain_fixed;
+    double current_gain_db = 0.0;
     void apply_gain(uint8_t *buffer, int nb_samples);
 
     int stream_index = -1;
