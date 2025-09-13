@@ -65,7 +65,8 @@ void AudioDecoder::init() {
     init_resampler();
     open_output_pipe();
 
-    gain_multiplier = std::pow(10.0, fixed_gain_db / 20.0);
+    double gain_multiplier = std::pow(10.0, fixed_gain_db / 20.0);
+    gain_fixed = static_cast<int>(gain_multiplier * 32768);
 
     AVPacket *tmp_pkt = av_packet_alloc();
     if (!tmp_pkt)
@@ -206,9 +207,10 @@ void AudioDecoder::apply_gain(uint8_t *buffer, int nb_samples) {
         int16_t *samples = reinterpret_cast<int16_t *>(buffer);
         int total_samples = nb_samples * out_channels;
         for (int i = 0; i < total_samples; ++i) {
-            double sample_value = samples[i] * gain_multiplier;
+            int32_t sample_value =
+                (static_cast<int32_t>(samples[i]) * gain_fixed) >> 15;
             // Clamp to prevent overflow
-            sample_value = std::max(-32768.0, std::min(32767.0, sample_value));
+            sample_value = std::max(-32768, std::min(32767, sample_value));
             samples[i] = static_cast<int16_t>(sample_value);
         }
     }
@@ -244,7 +246,7 @@ void AudioDecoder::process_frame() {
         }
         apply_gain(output_buffer.get(), nb_samples);
         output_stream.write(reinterpret_cast<char *>(output_buffer.get()),
-                            max_dst_nb_samples * out_channels *
+                            nb_samples * out_channels *
                                 av_get_bytes_per_sample(out_samplefmt));
 
         int64_t current_pts =
