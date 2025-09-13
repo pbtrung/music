@@ -66,7 +66,7 @@ void AudioDecoder::init() {
     open_output_pipe();
 
     double gain_multiplier = std::pow(10.0, fixed_gain_db / 20.0);
-    gain_fixed = static_cast<int>(gain_multiplier * 32768);
+    gain_fixed = static_cast<int>(gain_multiplier * 32768.0);
 
     AVPacket *tmp_pkt = av_packet_alloc();
     if (!tmp_pkt)
