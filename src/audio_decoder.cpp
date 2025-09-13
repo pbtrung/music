@@ -201,6 +201,7 @@ void AudioDecoder::print_audio_info() {
 
 void AudioDecoder::apply_gain(uint8_t *buffer, int nb_samples) {
     if (out_samplefmt == AV_SAMPLE_FMT_S16) {
+        SPDLOG_TRACE("Apply gain");
         int16_t *samples = reinterpret_cast<int16_t *>(buffer);
         int total_samples = nb_samples * out_channels;
 
@@ -233,6 +234,7 @@ void AudioDecoder::apply_gain(uint8_t *buffer, int nb_samples) {
             sample_value = std::max(-32768, std::min(32767, sample_value));
             samples[i] = static_cast<int16_t>(sample_value);
         }
+        SPDLOG_TRACE("Finish applying gain");
     }
 }
 
