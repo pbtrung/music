@@ -13,6 +13,15 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
+// SIMD headers
+#if defined(__x86_64__) || defined(_M_X64)
+#include <immintrin.h>
+#elif defined(__aarch64__) || defined(_M_ARM64)
+#include <arm_neon.h>
+#endif
+
+#include <algorithm>
+
 namespace AudioDecoderUtils {
 
 struct AVFormatContextDeleter {
@@ -144,13 +153,48 @@ class AudioDecoder {
         std::pow(10.0, fixed_gain_db / 20.0);
     static constexpr int gain_fixed =
         static_cast<int>(gain_multiplier * 32768.0);
-    void apply_gain(uint8_t *buffer, int nb_samples);
 
     int stream_index = -1;
     static constexpr int width = 1;
     static constexpr int out_channels = 2;
     static constexpr int out_samplerate = 48000;
     static constexpr AVSampleFormat out_samplefmt = AV_SAMPLE_FMT_S16;
+
+    // CPU feature detection for SIMD optimization
+    static bool features_checked;
+    static bool has_avx512;
+    static bool has_avx2;
+    static bool has_sse2;
+    static bool has_neon;
+
+    // Function pointer for optimized implementation
+    static void (*apply_gain_impl)(int16_t *samples, int total_samples,
+                                   int gain_fixed);
+
+    // CPU feature detection
+    static void detect_cpu_features();
+
+    // SIMD implementations
+#if defined(__x86_64__) || defined(_M_X64)
+    static void apply_gain_avx512_impl(int16_t *samples, int total_samples,
+                                       int gain_fixed);
+    static void apply_gain_avx2_impl(int16_t *samples, int total_samples,
+                                     int gain_fixed);
+    static void apply_gain_sse2_impl(int16_t *samples, int total_samples,
+                                     int gain_fixed);
+#endif
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+    static void apply_gain_neon_impl(int16_t *samples, int total_samples,
+                                     int gain_fixed);
+#endif
+
+    // Scalar fallback
+    static void apply_gain_scalar_impl(int16_t *samples, int total_samples,
+                                       int gain_fixed);
+
+    // Main entry point with CPU detection and optimization
+    void apply_gain(uint8_t *buffer, int nb_samples);
 
     void init();
     void print_metadata();

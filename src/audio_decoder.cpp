@@ -1,7 +1,5 @@
-#include <algorithm>
 #include <chrono>
 #include <fstream>
-#include <immintrin.h>
 #include <iostream>
 
 #include <fmt/core.h>
@@ -201,52 +199,263 @@ void AudioDecoder::print_audio_info() {
     }
 }
 
+// ==================================================================
+
+// Static member definitions
+bool AudioDecoder::features_checked = false;
+bool AudioDecoder::has_avx512 = false;
+bool AudioDecoder::has_avx2 = false;
+bool AudioDecoder::has_sse2 = false;
+bool AudioDecoder::has_neon = false;
+void (*AudioDecoder::apply_gain_impl)(int16_t *, int, int) = nullptr;
+
+void AudioDecoder::detect_cpu_features() {
+    if (features_checked)
+        return;
+
+    const char *selected_impl = "unknown";
+
+#if defined(__x86_64__) || defined(_M_X64)
+    // x86_64 detection
+    has_sse2 = __builtin_cpu_supports("sse2");
+    has_avx2 = __builtin_cpu_supports("avx2");
+    has_avx512 = __builtin_cpu_supports("avx512f");
+    has_neon = false;
+
+    // Select best implementation
+    if (has_avx512) {
+        apply_gain_impl = apply_gain_avx512_impl;
+        selected_impl = "AVX-512";
+    } else if (has_avx2) {
+        apply_gain_impl = apply_gain_avx2_impl;
+        selected_impl = "AVX2";
+    } else if (has_sse2) {
+        apply_gain_impl = apply_gain_sse2_impl;
+        selected_impl = "SSE2";
+    } else {
+        apply_gain_impl = apply_gain_scalar_impl;
+        selected_impl = "Scalar";
+    }
+
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    // ARM64 detection
+    has_sse2 = false;
+    has_avx2 = false;
+    has_avx512 = false;
+    has_neon = true; // Standard on ARM64
+
+    if (has_neon) {
+        apply_gain_impl = apply_gain_neon_impl;
+        selected_impl = "NEON";
+    } else {
+        apply_gain_impl = apply_gain_scalar_impl;
+        selected_impl = "Scalar";
+    }
+
+#else
+    // Fallback for other architectures
+    has_sse2 = false;
+    has_avx2 = false;
+    has_avx512 = false;
+    has_neon = false;
+    apply_gain_impl = apply_gain_scalar_impl;
+    selected_impl = "Scalar";
+#endif
+
+    features_checked = true;
+
+    SPDLOG_TRACE(
+        "Audio gain CPU features - SSE2: {}, AVX2: {}, AVX-512: {}, NEON: {}, Selected: {}",
+        has_sse2, has_avx2, has_avx512, has_neon, selected_impl);
+}
+
+// Main entry point
 void AudioDecoder::apply_gain(uint8_t *buffer, int nb_samples) {
     if (out_samplefmt == AV_SAMPLE_FMT_S16) {
+        // Detect CPU features on first call
+        detect_cpu_features();
+
         int16_t *samples = reinterpret_cast<int16_t *>(buffer);
         int total_samples = nb_samples * out_channels;
 
-        // SIMD version - process 8 samples at once
-        int simd_end = total_samples & ~7; // Round down to nearest 8
-
-        __m128i gain_vec = _mm_set1_epi16(gain_fixed);
-        __m128i min_vec = _mm_set1_epi16(-32768);
-        __m128i max_vec = _mm_set1_epi16(32767);
-
-        for (int i = 0; i < simd_end; i += 8) {
-            // Load 8 int16 samples
-            __m128i sample_vec =
-                _mm_loadu_si128(reinterpret_cast<__m128i *>(&samples[i]));
-
-            // Multiply with gain (results in int32)
-            __m128i lo = _mm_mullo_epi16(sample_vec, gain_vec);
-            __m128i hi = _mm_mulhi_epi16(sample_vec, gain_vec);
-
-            // Interleave to get full 32-bit results
-            __m128i result_lo = _mm_unpacklo_epi16(lo, hi);
-            __m128i result_hi = _mm_unpackhi_epi16(lo, hi);
-
-            // Shift right by 15 (divide by 32768)
-            result_lo = _mm_srai_epi32(result_lo, 15);
-            result_hi = _mm_srai_epi32(result_hi, 15);
-
-            // Pack back to int16 with saturation (automatic clamping)
-            __m128i final_result = _mm_packs_epi32(result_lo, result_hi);
-
-            // Store result
-            _mm_storeu_si128(reinterpret_cast<__m128i *>(&samples[i]),
-                             final_result);
-        }
-
-        // Handle remaining samples with scalar code
-        for (int i = simd_end; i < total_samples; ++i) {
-            int32_t sample_value =
-                (static_cast<int32_t>(samples[i]) * gain_fixed) >> 15;
-            sample_value = std::max(-32768, std::min(32767, sample_value));
-            samples[i] = static_cast<int16_t>(sample_value);
-        }
+        // Call the optimized implementation
+        apply_gain_impl(samples, total_samples, gain_fixed);
     }
 }
+
+// x86_64 SIMD implementations
+#if defined(__x86_64__) || defined(_M_X64)
+
+void AudioDecoder::apply_gain_avx512_impl(int16_t *samples, int total_samples,
+                                          int gain_fixed) {
+#if defined(__AVX10_1__) || defined(__AVX512F__)
+    int avx512_end = total_samples & ~31; // Process 32 at once
+
+    __m512i gain_vec = _mm512_set1_epi16(static_cast<int16_t>(gain_fixed));
+
+    for (int i = 0; i < avx512_end; i += 32) {
+        __m512i sample_vec =
+            _mm512_loadu_si512(reinterpret_cast<__m512i *>(&samples[i]));
+
+        __m512i lo = _mm512_mullo_epi16(sample_vec, gain_vec);
+        __m512i hi = _mm512_mulhi_epi16(sample_vec, gain_vec);
+
+        __m512i result_lo = _mm512_unpacklo_epi16(lo, hi);
+        __m512i result_hi = _mm512_unpackhi_epi16(lo, hi);
+
+        result_lo = _mm512_srai_epi32(result_lo, 15);
+        result_hi = _mm512_srai_epi32(result_hi, 15);
+
+        __m512i final_result = _mm512_packs_epi32(result_lo, result_hi);
+
+        _mm512_storeu_si512(reinterpret_cast<__m512i *>(&samples[i]),
+                            final_result);
+    }
+
+    // Handle remaining with AVX2
+    if (avx512_end < total_samples) {
+        apply_gain_avx2_impl(&samples[avx512_end], total_samples - avx512_end,
+                             gain_fixed);
+    }
+#else
+    // Fallback if AVX-512 not available at compile time
+    apply_gain_avx2_impl(samples, total_samples, gain_fixed);
+#endif
+}
+
+void AudioDecoder::apply_gain_avx2_impl(int16_t *samples, int total_samples,
+                                        int gain_fixed) {
+#if defined(__AVX2__)
+    int avx2_end = total_samples & ~15; // Process 16 at once
+
+    __m256i gain_vec = _mm256_set1_epi16(static_cast<int16_t>(gain_fixed));
+
+    for (int i = 0; i < avx2_end; i += 16) {
+        __m256i sample_vec =
+            _mm256_loadu_si256(reinterpret_cast<__m256i *>(&samples[i]));
+
+        __m256i lo = _mm256_mullo_epi16(sample_vec, gain_vec);
+        __m256i hi = _mm256_mulhi_epi16(sample_vec, gain_vec);
+
+        __m256i result_lo = _mm256_unpacklo_epi16(lo, hi);
+        __m256i result_hi = _mm256_unpackhi_epi16(lo, hi);
+
+        result_lo = _mm256_srai_epi32(result_lo, 15);
+        result_hi = _mm256_srai_epi32(result_hi, 15);
+
+        __m256i final_result = _mm256_packs_epi32(result_lo, result_hi);
+
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(&samples[i]),
+                            final_result);
+    }
+
+    // Handle remaining with SSE2
+    if (avx2_end < total_samples) {
+        apply_gain_sse2_impl(&samples[avx2_end], total_samples - avx2_end,
+                             gain_fixed);
+    }
+#else
+    // Fallback if AVX2 not available at compile time
+    apply_gain_sse2_impl(samples, total_samples, gain_fixed);
+#endif
+}
+
+void AudioDecoder::apply_gain_sse2_impl(int16_t *samples, int total_samples,
+                                        int gain_fixed) {
+#if defined(__SSE2__)
+    int sse_end = total_samples & ~7; // Process 8 at once
+
+    __m128i gain_vec = _mm_set1_epi16(static_cast<int16_t>(gain_fixed));
+
+    for (int i = 0; i < sse_end; i += 8) {
+        __m128i sample_vec =
+            _mm_loadu_si128(reinterpret_cast<__m128i *>(&samples[i]));
+
+        __m128i lo = _mm_mullo_epi16(sample_vec, gain_vec);
+        __m128i hi = _mm_mulhi_epi16(sample_vec, gain_vec);
+
+        __m128i result_lo = _mm_unpacklo_epi16(lo, hi);
+        __m128i result_hi = _mm_unpackhi_epi16(lo, hi);
+
+        result_lo = _mm_srai_epi32(result_lo, 15);
+        result_hi = _mm_srai_epi32(result_hi, 15);
+
+        __m128i final_result = _mm_packs_epi32(result_lo, result_hi);
+
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(&samples[i]),
+                         final_result);
+    }
+
+    // Handle remaining with scalar
+    if (sse_end < total_samples) {
+        apply_gain_scalar_impl(&samples[sse_end], total_samples - sse_end,
+                               gain_fixed);
+    }
+#else
+    // Fallback if SSE2 not available at compile time
+    apply_gain_scalar_impl(samples, total_samples, gain_fixed);
+#endif
+}
+
+#endif // x86_64
+
+// ARM64 NEON implementation
+#if defined(__aarch64__) || defined(_M_ARM64)
+
+void AudioDecoder::apply_gain_neon_impl(int16_t *samples, int total_samples,
+                                        int gain_fixed) {
+#if defined(__ARM_NEON) || defined(_M_ARM64)
+    int neon_end = total_samples & ~7; // Process 8 at once
+
+    int16x8_t gain_vec = vdupq_n_s16(static_cast<int16_t>(gain_fixed));
+
+    for (int i = 0; i < neon_end; i += 8) {
+        // Load 8 int16 samples
+        int16x8_t sample_vec = vld1q_s16(&samples[i]);
+
+        // Multiply to get 32-bit intermediate results
+        int32x4_t result_lo =
+            vmull_s16(vget_low_s16(sample_vec), vget_low_s16(gain_vec));
+        int32x4_t result_hi = vmull_high_s16(sample_vec, gain_vec);
+
+        // Shift right by 15 (divide by 32768)
+        result_lo = vshrq_n_s32(result_lo, 15);
+        result_hi = vshrq_n_s32(result_hi, 15);
+
+        // Saturate and narrow back to int16
+        int16x4_t narrow_lo = vqmovn_s32(result_lo);
+        int16x4_t narrow_hi = vqmovn_s32(result_hi);
+
+        // Combine and store
+        int16x8_t final_result = vcombine_s16(narrow_lo, narrow_hi);
+        vst1q_s16(&samples[i], final_result);
+    }
+
+    // Handle remaining samples with scalar
+    if (neon_end < total_samples) {
+        apply_gain_scalar_impl(&samples[neon_end], total_samples - neon_end,
+                               gain_fixed);
+    }
+#else
+    // Fallback if NEON not available at compile time
+    apply_gain_scalar_impl(samples, total_samples, gain_fixed);
+#endif
+}
+
+#endif // aarch64
+
+// Scalar implementation (fallback for all architectures)
+void AudioDecoder::apply_gain_scalar_impl(int16_t *samples, int total_samples,
+                                          int gain_fixed) {
+    for (int i = 0; i < total_samples; ++i) {
+        int32_t sample_value =
+            (static_cast<int32_t>(samples[i]) * gain_fixed) >> 15;
+        sample_value = std::max(-32768, std::min(32767, sample_value));
+        samples[i] = static_cast<int16_t>(sample_value);
+    }
+}
+
+// ==================================================================
 
 void AudioDecoder::process_frame() {
     int ret = avcodec_send_packet(codec_ctx.get(), pkt.get());
