@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <immintrin.h>
 #include <iostream>
 
 #include <fmt/core.h>
@@ -203,10 +205,43 @@ void AudioDecoder::apply_gain(uint8_t *buffer, int nb_samples) {
     if (out_samplefmt == AV_SAMPLE_FMT_S16) {
         int16_t *samples = reinterpret_cast<int16_t *>(buffer);
         int total_samples = nb_samples * out_channels;
-        for (int i = 0; i < total_samples; ++i) {
+
+        // SIMD version - process 8 samples at once
+        int simd_end = total_samples & ~7; // Round down to nearest 8
+
+        __m128i gain_vec = _mm_set1_epi16(gain_fixed);
+        __m128i min_vec = _mm_set1_epi16(-32768);
+        __m128i max_vec = _mm_set1_epi16(32767);
+
+        for (int i = 0; i < simd_end; i += 8) {
+            // Load 8 int16 samples
+            __m128i sample_vec =
+                _mm_loadu_si128(reinterpret_cast<__m128i *>(&samples[i]));
+
+            // Multiply with gain (results in int32)
+            __m128i lo = _mm_mullo_epi16(sample_vec, gain_vec);
+            __m128i hi = _mm_mulhi_epi16(sample_vec, gain_vec);
+
+            // Interleave to get full 32-bit results
+            __m128i result_lo = _mm_unpacklo_epi16(lo, hi);
+            __m128i result_hi = _mm_unpackhi_epi16(lo, hi);
+
+            // Shift right by 15 (divide by 32768)
+            result_lo = _mm_srai_epi32(result_lo, 15);
+            result_hi = _mm_srai_epi32(result_hi, 15);
+
+            // Pack back to int16 with saturation (automatic clamping)
+            __m128i final_result = _mm_packs_epi32(result_lo, result_hi);
+
+            // Store result
+            _mm_storeu_si128(reinterpret_cast<__m128i *>(&samples[i]),
+                             final_result);
+        }
+
+        // Handle remaining samples with scalar code
+        for (int i = simd_end; i < total_samples; ++i) {
             int32_t sample_value =
                 (static_cast<int32_t>(samples[i]) * gain_fixed) >> 15;
-            // Clamp to prevent overflow
             sample_value = std::max(-32768, std::min(32767, sample_value));
             samples[i] = static_cast<int16_t>(sample_value);
         }
