@@ -31,6 +31,8 @@ class AudioStreamManager {
     void cleanup_file(const fs::path &path);
     void cleanup_cid_files(const json &track);
 
+    int compute_track_gain(const json &config, const json &track);
+
   public:
     explicit AudioStreamManager(const json &cfg, int queue_size = 4);
     ~AudioStreamManager();

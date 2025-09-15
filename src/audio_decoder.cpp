@@ -7,13 +7,12 @@
 #include <spdlog/spdlog.h>
 
 #include "audio_decoder.hpp"
-#include "track_gain_analyzer.hpp"
 #include "utils.hpp"
 
 AudioDecoder::AudioDecoder(std::string pipe_name, std::string filename,
-                           std::string file_path)
+                           std::string file_path, int gain_fixed)
     : pipe_name(std::move(pipe_name)), filename(std::move(filename)),
-      file_path(std::move(file_path)) {}
+      file_path(std::move(file_path)), gain_fixed(gain_fixed) {}
 
 void AudioDecoder::decode() {
     SPDLOG_TRACE("Start decoding {}", filename);
@@ -65,11 +64,6 @@ void AudioDecoder::init() {
     open_codec();
     init_resampler();
     open_output_pipe();
-
-    TrackGainAnalyzer analyzer(file_path);
-    double gain_db = analyzer.compute_track_gain();
-    double gain_multiplier = std::pow(10.0, gain_db / 20.0);
-    gain_fixed = static_cast<int>(gain_multiplier * 32768.0);
 
     AVPacket *tmp_pkt = av_packet_alloc();
     if (!tmp_pkt)

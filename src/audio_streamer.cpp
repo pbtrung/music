@@ -6,6 +6,7 @@
 #include "audio_streamer.hpp"
 #include "downloader.hpp"
 #include "track.hpp"
+#include "track_gain_analyzer.hpp"
 #include "utils.hpp"
 
 AudioStreamManager::AudioStreamManager(const json &cfg, int queue_size)
@@ -103,6 +104,20 @@ void AudioStreamManager::push_track(json track) {
     }
 }
 
+int AudioStreamManager::compute_track_gain(const json &config,
+                                           const json &track) {
+    const fs::path output_dir = config["output"].get<std::string>();
+    const std::string filename = track["filename"].get<std::string>();
+    const fs::path file_path = output_dir / filename;
+
+    TrackGainAnalyzer analyzer(file_path);
+    double gain_db = analyzer.compute_track_gain();
+    double gain_multiplier = std::pow(10.0, gain_db / 20.0);
+    int gain_fixed = static_cast<int>(gain_multiplier * 32768.0);
+
+    return gain_fixed;
+}
+
 void AudioStreamManager::producer_loop() {
     SPDLOG_TRACE("Producer start");
     while (true) {
@@ -116,6 +131,7 @@ void AudioStreamManager::producer_loop() {
             if (!filename.empty()) {
                 track["filename"] = filename;
                 track["max_value"] = config["max_value"].get<int>();
+                track["gain_fixed"] = compute_track_gain(config, track);
                 SPDLOG_TRACE("Push: {}", filename);
                 push_track(std::move(track));
             } else {
@@ -194,7 +210,8 @@ void AudioStreamManager::consumer_loop() {
             print_info(track);
 
             AudioDecoder decoder(config["pipe"].get<std::string>(), filename,
-                                 file_path.string());
+                                 file_path.string(),
+                                 track["gain_fixed"].get<int>());
             decoder.decode();
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Consumer error: {}", e.what());

@@ -127,7 +127,7 @@ using AVFramePtr = std::unique_ptr<AVFrame, AVFrameDeleter>;
 class AudioDecoder {
   public:
     AudioDecoder(std::string pipe_name, std::string filename,
-                 std::string file_path);
+                 std::string file_path, int gain_fixed);
     ~AudioDecoder() = default;
 
     AudioDecoder(const AudioDecoder &) = delete;
