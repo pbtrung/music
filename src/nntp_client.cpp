@@ -1,4 +1,3 @@
-#include "nntp_client.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -6,6 +5,8 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+
+#include "nntp_client.hpp"
 
 // Static member initialization
 SSL_CTX *NntpClient::ssl_context = nullptr;

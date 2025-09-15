@@ -4,15 +4,16 @@
 #include <memory>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
 #include <optional>
-#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
+
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <spdlog/spdlog.h>
 
 struct NntpMessage {
     std::string message_id;
