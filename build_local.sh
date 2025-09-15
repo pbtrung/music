@@ -8,6 +8,8 @@ cmake --build build/release --target data
 
 example_list=(
     ex04
+    ex05
+    ex06
 )
 cmake -S . -B build/examples -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
 for target in "${example_list[@]}"; do

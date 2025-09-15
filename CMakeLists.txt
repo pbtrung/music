@@ -26,6 +26,8 @@ set(PKG_LIST
     spdlog
     libzstd
     sqlite3
+    taglib
+    libebur128
 )
 foreach(PKG ${PKG_LIST})
     pkg_check_modules(${PKG} REQUIRED ${PKG})
@@ -77,11 +79,22 @@ add_executable(ex04
 )
 target_link_libraries(ex04 PRIVATE rapidyenc_static)
 
+add_executable(ex05
+    examples/ex05.cpp
+    src/track_gain_analyzer.cpp
+)
+add_executable(ex06
+    examples/ex06.cpp
+    src/nntp_client.cpp
+)
+
 set(EXAMPLE_LIST
     ex01
     ex02
     ex03
     ex04
+    ex05
+    ex06
 )
 foreach(target ${EXAMPLE_LIST})
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
@@ -99,6 +112,8 @@ add_executable(data
     src/curl.cpp
     src/file_block_reader.cpp
     src/rapidyenc.cpp
+    src/track_gain_analyzer.cpp
+    src/nntp_client.cpp
 )
 target_link_libraries(data PRIVATE rapidyenc_static)
 target_link_libraries(data PRIVATE wirehair)
