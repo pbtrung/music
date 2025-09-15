@@ -4,7 +4,7 @@ RUN apk update && \
     apk --no-cache upgrade && \
     apk add --no-cache alpine-sdk git pkgconf autoconf automake bash \
         cmake curl-dev ffmpeg-dev fmt-dev spdlog-dev zstd-dev sqlite-dev \
-        openssl-dev
+        openssl-dev libebur128-dev taglib-dev
 
 WORKDIR /root
 
@@ -25,7 +25,9 @@ RUN echo "@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/a
 
 RUN apk update && \
     apk --no-cache upgrade && \
-    apk --no-cache add libcurl ffmpeg-libs fmt zstd-libs sqlite-libs spdlog snapcast-server snapweb@testing libssl3 libcrypto3
+    apk --no-cache add libcurl ffmpeg-libs fmt zstd-libs \
+        sqlite-libs spdlog snapcast-server snapweb@testing \
+        libssl3 libcrypto3 libebur128 taglib
 
 COPY --from=build /root/gwsocket/gwsocket /usr/bin/
 COPY --from=build /root/music/build/release/music /usr/bin/
