@@ -48,6 +48,7 @@ add_executable(music
     src/httpvfs.cpp
     src/track.cpp
     src/audio_streamer.cpp
+    src/track_gain_analyzer.cpp
 )
 target_include_directories(music PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_directories(music PRIVATE ${COMMON_LINK_DIRS})
