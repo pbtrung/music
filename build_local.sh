@@ -10,6 +10,7 @@ example_list=(
     ex04
     ex05
     ex06
+    ex07
 )
 cmake -S . -B build/examples -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
 for target in "${example_list[@]}"; do

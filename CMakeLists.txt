@@ -87,6 +87,10 @@ add_executable(ex06
     examples/ex06.cpp
     src/nntp_client.cpp
 )
+add_executable(ex07
+    examples/ex07.cpp
+)
+target_link_libraries(ex07 PRIVATE wirehair)
 
 set(EXAMPLE_LIST
     ex01
