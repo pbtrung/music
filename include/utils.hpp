@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -35,6 +36,12 @@ class Utilities {
     static std::string generate_random_string(size_t length) noexcept;
     static std::string format_commas(long num) noexcept;
 
+    static std::string
+    compute_sha3_256(const std::filesystem::path &file_path) noexcept;
+    static std::string
+    hmac_sha3_256(std::string_view hmac_key_b64,
+                  const std::vector<std::byte> &input) noexcept;
+
     static constexpr size_t max_path_length = 4096;
     static constexpr size_t max_filename_length = 255;
     static constexpr size_t max_extension_length = 10;
@@ -42,4 +49,6 @@ class Utilities {
     static constexpr size_t min_random_string_length = 1;
     static constexpr size_t max_random_string_length = 256;
     static constexpr size_t default_filename_length = 25;
+    static constexpr size_t sha3_256_hex_length = 64;
+    static constexpr size_t hmac_sha3_256_b64_length = 43;
 };

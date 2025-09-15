@@ -79,8 +79,7 @@ class ARWDownloader : public BaseDownloader {
     std::string get_gateway(int attempt) const;
     bool validate_response_with_path(const Curl &curl,
                                      const fs::path &file_path) const;
-    std::string calculate_sha256_from_file(const fs::path &file_path) const;
-    mutable std::unordered_set<std::string> sha256_cache;
+    mutable std::unordered_set<std::string> hash_cache;
 };
 
 // Google Drive downloader

@@ -301,117 +301,48 @@ std::string ARWDownloader::get_gateway(int attempt) const {
 
 bool ARWDownloader::validate_response_with_path(
     const Curl &curl, const fs::path &file_path) const {
-    // Calculate SHA256 of current download
-    const std::string current_sha256 = calculate_sha256_from_file(file_path);
+    const std::string current_hash = Utilities::compute_sha3_256(file_path);
 
-    if (current_sha256.empty()) {
+    if (current_hash.empty()) {
         SPDLOG_TRACE(
-            "ARW response validation failed: could not calculate SHA256");
+            "ARW response validation failed: could not calculate SHA3_256");
         return false;
     }
 
-    SPDLOG_TRACE("ARW response validation: current_sha256='{}'",
-                 current_sha256);
+    SPDLOG_TRACE("ARW response validation: current_hash='{}'", current_hash);
 
     const char *content_type_ptr = curl.get_info<char *>(CURLINFO_CONTENT_TYPE);
     const std::string content_type = content_type_ptr ? content_type_ptr : "";
 
-    // Only cache SHA256s when content type is application/octet-stream
+    // Only cache SHA3_256s when content type is application/octet-stream
     if (content_type == "application/octet-stream") {
         SPDLOG_TRACE(
-            "ARW valid content type detected, checking SHA256 cache: '{}'",
-            current_sha256);
+            "ARW valid content type detected, checking SHA3_256 cache: '{}'",
+            current_hash);
 
-        // Check if this SHA256 already exists in cache
-        if (sha256_cache.find(current_sha256) != sha256_cache.end()) {
-            SPDLOG_TRACE("ARW hash match found: sha256='{}', validation=true",
-                         current_sha256);
+        // Check if this SHA3_256 already exists in cache
+        if (hash_cache.find(current_hash) != hash_cache.end()) {
+            SPDLOG_TRACE("ARW hash match found: SHA3_256='{}', validation=true",
+                         current_hash);
             return true;
         }
 
-        // Store this SHA256 in cache
-        sha256_cache.insert(current_sha256);
+        // Store this SHA3_256 in cache
+        hash_cache.insert(current_hash);
 
-        SPDLOG_TRACE("ARW SHA256 cached: sha256='{}', cache_size={}",
-                     current_sha256, sha256_cache.size());
+        SPDLOG_TRACE("ARW SHA3_256 cached: SHA3_256='{}', cache_size={}",
+                     current_hash, hash_cache.size());
     } else {
-        SPDLOG_TRACE("ARW invalid content type: '{}', not caching SHA256",
+        SPDLOG_TRACE("ARW invalid content type: '{}', not caching SHA3_256",
                      content_type);
     }
 
-    // Return false since we need at least two matching SHA256s
+    // Return false since we need at least two matching SHA3_256s
     SPDLOG_TRACE(
-        "ARW no hash match found yet: sha256='{}', cache_size={}, validation=false",
-        current_sha256, sha256_cache.size());
+        "ARW no hash match found yet: SHA3_256='{}', cache_size={}, validation=false",
+        current_hash, hash_cache.size());
 
     return false;
-}
-
-std::string
-ARWDownloader::calculate_sha256_from_file(const fs::path &file_path) const {
-    SPDLOG_TRACE("Calculating SHA256 hash for file: {}", file_path.string());
-
-    std::ifstream file(file_path, std::ios::binary);
-    if (!file.is_open()) {
-        SPDLOG_TRACE("Failed to open file for SHA256 calculation: {}",
-                     file_path.string());
-        return "";
-    }
-
-    // Initialize OpenSSL SHA256 context
-    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    if (!ctx) {
-        SPDLOG_TRACE("Failed to create EVP_MD_CTX for SHA256");
-        return "";
-    }
-
-    if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
-        SPDLOG_TRACE("Failed to initialize SHA256 digest");
-        EVP_MD_CTX_free(ctx);
-        return "";
-    }
-
-    // Read file in chunks and update hash
-    constexpr size_t buffer_size = 8192;
-    std::vector<unsigned char> buffer(buffer_size);
-
-    while (file.good() && !file.eof()) {
-        file.read(reinterpret_cast<char *>(buffer.data()), buffer_size);
-        const std::streamsize bytes_read = file.gcount();
-
-        if (bytes_read > 0) {
-            if (EVP_DigestUpdate(ctx, buffer.data(), bytes_read) != 1) {
-                SPDLOG_TRACE("Failed to update SHA256 digest");
-                EVP_MD_CTX_free(ctx);
-                return "";
-            }
-        }
-    }
-
-    // Finalize hash calculation
-    unsigned char hash[EVP_MAX_MD_SIZE];
-    unsigned int hash_len;
-
-    if (EVP_DigestFinal_ex(ctx, hash, &hash_len) != 1) {
-        SPDLOG_TRACE("Failed to finalize SHA256 digest");
-        EVP_MD_CTX_free(ctx);
-        return "";
-    }
-
-    EVP_MD_CTX_free(ctx);
-
-    // Convert hash to hex string
-    std::ostringstream hex_stream;
-    hex_stream << std::hex << std::setfill('0');
-    for (unsigned int i = 0; i < hash_len; ++i) {
-        hex_stream << std::setw(2) << static_cast<unsigned int>(hash[i]);
-    }
-
-    const std::string result = hex_stream.str();
-
-    SPDLOG_TRACE("SHA256 calculation completed: hash='{}', length={}", result,
-                 hash_len);
-    return result;
 }
 
 // =============================================================================

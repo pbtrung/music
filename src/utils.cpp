@@ -1,16 +1,92 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <ranges>
 #include <regex>
 #include <unordered_set>
 
+#include <openssl/bio.h>
+#include <openssl/buffer.h>
+#include <openssl/core_names.h>
+#include <openssl/evp.h>
+#include <openssl/params.h>
 #include <openssl/rand.h>
 #include <spdlog/spdlog.h>
 
 #include "utils.hpp"
+
+namespace {
+// Base64 encoding without padding
+std::string
+base64_encode_no_padding(const std::span<const unsigned char> input) {
+    BIO *bio = BIO_new(BIO_s_mem());
+    BIO *b64 = BIO_new(BIO_f_base64());
+    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+    BIO_push(b64, bio);
+
+    BIO_write(b64, input.data(), static_cast<int>(input.size()));
+    BIO_flush(b64);
+
+    BUF_MEM *bufferPtr;
+    BIO_get_mem_ptr(b64, &bufferPtr);
+
+    std::string result(bufferPtr->data, bufferPtr->length);
+    BIO_free_all(b64);
+
+    // Remove padding characters
+    while (!result.empty() && result.back() == '=') {
+        result.pop_back();
+    }
+
+    return result;
+}
+
+// Base64 decoding (handles missing padding)
+std::vector<unsigned char> base64_decode_no_padding(std::string_view input) {
+    std::string padded_input{input};
+
+    // Add padding if needed
+    while (padded_input.length() % 4 != 0) {
+        padded_input += '=';
+    }
+
+    BIO *bio = BIO_new_mem_buf(padded_input.data(),
+                               static_cast<int>(padded_input.length()));
+    BIO *b64 = BIO_new(BIO_f_base64());
+    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+    BIO_push(b64, bio);
+
+    std::vector<unsigned char> result(padded_input.length() * 3 / 4 + 1);
+    int decoded_length =
+        BIO_read(b64, result.data(), static_cast<int>(result.size()));
+
+    BIO_free_all(b64);
+
+    if (decoded_length <= 0) {
+        return {};
+    }
+
+    result.resize(decoded_length);
+    return result;
+}
+
+// Convert bytes to hex string
+std::string bytes_to_hex(const std::span<const unsigned char> bytes) {
+    std::string result;
+    result.reserve(bytes.size() * 2);
+
+    constexpr char hex_chars[] = "0123456789abcdef";
+    for (const auto byte : bytes) {
+        result += hex_chars[(byte >> 4) & 0x0F];
+        result += hex_chars[byte & 0x0F];
+    }
+
+    return result;
+}
+} // namespace
 
 bool Utilities::validate_string(std::string_view str, size_t max_len) noexcept {
     if (str.empty() || str.length() > max_len) {
@@ -282,4 +358,130 @@ std::string Utilities::format_commas(long num) noexcept {
     }
 
     return result;
+}
+
+std::string
+Utilities::compute_sha3_256(const std::filesystem::path &file_path) noexcept {
+    try {
+        // Check if file exists and is readable
+        if (!std::filesystem::exists(file_path) ||
+            !std::filesystem::is_regular_file(file_path)) {
+            return "";
+        }
+
+        // Open file
+        std::ifstream file(file_path, std::ios::binary);
+        if (!file) {
+            return "";
+        }
+
+        // Create SHA3-256 context
+        std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(
+            EVP_MD_CTX_new(), EVP_MD_CTX_free);
+
+        if (!ctx) {
+            return "";
+        }
+
+        const EVP_MD *md = EVP_sha3_256();
+        if (!md) {
+            return "";
+        }
+
+        if (EVP_DigestInit_ex(ctx.get(), md, nullptr) != 1) {
+            return "";
+        }
+
+        // Read file in chunks and update hash
+        constexpr size_t buffer_size = 8192;
+        std::array<char, buffer_size> buffer;
+
+        while (file.read(buffer.data(), buffer_size) || file.gcount() > 0) {
+            const auto bytes_read = static_cast<size_t>(file.gcount());
+            if (EVP_DigestUpdate(ctx.get(), buffer.data(), bytes_read) != 1) {
+                return "";
+            }
+        }
+
+        // Finalize hash
+        std::array<unsigned char, EVP_MAX_MD_SIZE> hash;
+        unsigned int hash_len = 0;
+
+        if (EVP_DigestFinal_ex(ctx.get(), hash.data(), &hash_len) != 1) {
+            return "";
+        }
+
+        // Convert to hex string
+        return bytes_to_hex(
+            std::span<const unsigned char>(hash.data(), hash_len));
+
+    } catch (...) {
+        return "";
+    }
+}
+
+std::string
+Utilities::hmac_sha3_256(std::string_view hmac_key_b64,
+                         const std::vector<std::byte> &input) noexcept {
+    try {
+        // Decode base64 key
+        auto key_bytes = base64_decode_no_padding(hmac_key_b64);
+        if (key_bytes.empty() && !hmac_key_b64.empty()) {
+            return "";
+        }
+
+        // Create EVP MAC context for HMAC (OpenSSL 3.0+ way)
+        std::unique_ptr<EVP_MAC, decltype(&EVP_MAC_free)> mac(
+            EVP_MAC_fetch(nullptr, "HMAC", nullptr), EVP_MAC_free);
+
+        if (!mac) {
+            return "";
+        }
+
+        std::unique_ptr<EVP_MAC_CTX, decltype(&EVP_MAC_CTX_free)> ctx(
+            EVP_MAC_CTX_new(mac.get()), EVP_MAC_CTX_free);
+
+        if (!ctx) {
+            return "";
+        }
+
+        // Set the digest algorithm to SHA3-256
+        const char *digest_name = "SHA3-256";
+        OSSL_PARAM params[] = {
+            OSSL_PARAM_utf8_string("digest", const_cast<char *>(digest_name),
+                                   0),
+            OSSL_PARAM_END};
+
+        // Initialize MAC with key and parameters
+        if (EVP_MAC_init(ctx.get(), key_bytes.data(), key_bytes.size(),
+                         params) != 1) {
+            return "";
+        }
+
+        // Update MAC with input data
+        if (!input.empty()) {
+            if (EVP_MAC_update(
+                    ctx.get(),
+                    reinterpret_cast<const unsigned char *>(input.data()),
+                    input.size()) != 1) {
+                return "";
+            }
+        }
+
+        // Finalize MAC
+        std::array<unsigned char, EVP_MAX_MD_SIZE> hmac_result;
+        size_t hmac_len = 0;
+
+        if (EVP_MAC_final(ctx.get(), hmac_result.data(), &hmac_len,
+                          hmac_result.size()) != 1) {
+            return "";
+        }
+
+        // Encode result as base64 without padding
+        return base64_encode_no_padding(
+            std::span<const unsigned char>(hmac_result.data(), hmac_len));
+
+    } catch (...) {
+        return "";
+    }
 }
