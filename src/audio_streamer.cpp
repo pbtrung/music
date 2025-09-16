@@ -105,15 +105,22 @@ void AudioStreamManager::push_track(json track) {
 
 int AudioStreamManager::compute_track_gain(const json &config,
                                            const json &track) {
-    const fs::path output_dir = config["output"].get<std::string>();
-    const std::string filename = track["filename"].get<std::string>();
-    const fs::path file_path = output_dir / filename;
+    double gain_db = -7.0;
+    try {
+        const fs::path output_dir = config["output"].get<std::string>();
+        const std::string filename = track["filename"].get<std::string>();
+        const fs::path file_path = output_dir / filename;
 
-    TrackGainAnalyzer analyzer(file_path);
-    double gain_db = analyzer.compute_track_gain();
+        TrackGainAnalyzer analyzer(file_path);
+        gain_db = analyzer.compute_track_gain();
+    } catch (const std::exception &e) {
+        SPDLOG_TRACE("Error: {}", e.what());
+    } catch (...) {
+        SPDLOG_TRACE("Unknown error");
+    }
+
     double gain_multiplier = std::pow(10.0, gain_db / 20.0);
     int gain_fixed = static_cast<int>(gain_multiplier * 32768.0);
-
     return gain_fixed;
 }
 
