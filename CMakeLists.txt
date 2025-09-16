@@ -81,7 +81,8 @@ target_link_libraries(ex04 PRIVATE rapidyenc_static)
 
 add_executable(ex05
     examples/ex05.cpp
-    src/track_gain_analyzer.cpp
+    src/audio_processor.cpp
+    src/utils.cpp
 )
 add_executable(ex06
     examples/ex06.cpp

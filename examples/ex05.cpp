@@ -6,7 +6,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
-#include "track_gain_analyzer.hpp"
+#include "audio_processor.hpp"
 
 int main(int argc, char *argv[]) {
     // Set up logging
