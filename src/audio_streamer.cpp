@@ -2,11 +2,10 @@
 #include <iostream>
 #include <spdlog/spdlog.h>
 
-#include "audio_decoder.hpp"
+#include "audio_processor.hpp"
 #include "audio_streamer.hpp"
 #include "downloader.hpp"
 #include "track.hpp"
-#include "track_gain_analyzer.hpp"
 #include "utils.hpp"
 
 AudioStreamManager::AudioStreamManager(const json &cfg, int queue_size)
@@ -209,8 +208,7 @@ void AudioStreamManager::consumer_loop() {
             SPDLOG_TRACE("Pop: {}", filename);
             print_info(track);
 
-            AudioDecoder decoder(config["pipe"].get<std::string>(), filename,
-                                 file_path.string(),
+            AudioDecoder decoder(config["pipe"].get<std::string>(), file_path,
                                  track["gain_fixed"].get<int>());
             decoder.decode();
         } catch (const std::exception &e) {
