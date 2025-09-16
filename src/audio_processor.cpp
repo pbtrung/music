@@ -179,49 +179,38 @@ void AudioProcessorBase::process_audio_data(
                     throw std::runtime_error("Error during decoding");
                 }
 
-                int nb_samples;
-                int out_channels;
-                AVSampleFormat out_format;
-                AudioUtils::SampleBuffer output_buffer;
+                // Calculate output buffer size for resampling
+                int max_dst_nb_samples = av_rescale_rnd(
+                    frame->nb_samples,
+                    av_opt_get_int(swr_context.get(), "out_sample_rate", 0,
+                                   nullptr),
+                    codec_context->sample_rate, AV_ROUND_UP);
 
-                if (swr_context) {
-                    // Resampling needed - calculate output buffer size
-                    int max_dst_nb_samples = av_rescale_rnd(
-                        frame->nb_samples,
-                        av_opt_get_int(swr_context.get(), "out_sample_rate", 0,
-                                       nullptr),
-                        codec_context->sample_rate, AV_ROUND_UP);
-
-                    out_channels = static_cast<int>(av_opt_get_int(
-                        swr_context.get(), "out_channels", 0, nullptr));
-                    out_format = static_cast<AVSampleFormat>(av_opt_get_int(
+                int out_channels = static_cast<int>(av_opt_get_int(
+                    swr_context.get(), "out_channels", 0, nullptr));
+                AVSampleFormat out_format =
+                    static_cast<AVSampleFormat>(av_opt_get_int(
                         swr_context.get(), "out_sample_fmt", 0, nullptr));
 
-                    if (!output_buffer.allocate(
-                            out_channels, max_dst_nb_samples, out_format)) {
-                        throw std::runtime_error(
-                            "Failed to allocate output buffer");
-                    }
-
-                    nb_samples =
-                        swr_convert(swr_context.get(), output_buffer.get_ptr(),
-                                    max_dst_nb_samples,
-                                    const_cast<const uint8_t **>(frame->data),
-                                    frame->nb_samples);
-
-                    if (nb_samples < 0) {
-                        throw std::runtime_error("Error converting samples");
-                    }
-                } else {
-                    // No resampling - use original frame data directly
-                    nb_samples = frame->nb_samples;
-                    out_channels = codec_context->ch_layout.nb_channels;
-                    out_format = codec_context->sample_fmt;
+                AudioUtils::SampleBuffer output_buffer;
+                if (!output_buffer.allocate(out_channels, max_dst_nb_samples,
+                                            out_format)) {
+                    throw std::runtime_error(
+                        "Failed to allocate output buffer");
                 }
 
-                // Call the callback with processed samples
-                callback(swr_context ? output_buffer.get() : frame->data[0],
-                         nb_samples, out_channels);
+                int nb_samples =
+                    swr_convert(swr_context.get(), output_buffer.get_ptr(),
+                                max_dst_nb_samples,
+                                const_cast<const uint8_t **>(frame->data),
+                                frame->nb_samples);
+
+                if (nb_samples < 0) {
+                    throw std::runtime_error("Error converting samples");
+                }
+
+                // Call the callback with resampled samples
+                callback(output_buffer.get(), nb_samples, out_channels);
                 frames_processed++;
             }
         }
@@ -588,12 +577,16 @@ double
 TrackGainAnalyzer::compute_and_write_track_gain(const fs::path &file_path) {
     SPDLOG_TRACE("Computing and writing track gain for: {}",
                  file_path.string());
+    auto start = std::chrono::steady_clock::now();
 
     TrackGainAnalyzer analyzer(file_path);
     double gain = analyzer.compute_track_gain();
     analyzer.write_track_gain_tag(gain);
 
-    SPDLOG_TRACE("Track gain computed: {:.2f} dB", gain);
+    auto end = std::chrono::steady_clock::now();
+    double elapsed_time = std::chrono::duration<double>(end - start).count();
+    SPDLOG_TRACE("Track gain analysis completed in {:.3f} s: {:.2f} dB",
+                 elapsed_time, gain);
     return gain;
 }
 
@@ -604,6 +597,7 @@ TrackGainAnalyzer::TrackGainAnalyzer(const fs::path &file_path)
 
 double TrackGainAnalyzer::compute_track_gain() {
     SPDLOG_TRACE("Starting track gain computation");
+    auto start = std::chrono::steady_clock::now();
 
     initialize_ffmpeg();
     find_audio_stream();
@@ -632,8 +626,14 @@ double TrackGainAnalyzer::compute_track_gain() {
     }
 
     double track_gain = REFERENCE_LOUDNESS - loudness;
+
+    auto end = std::chrono::steady_clock::now();
+    double elapsed_time = std::chrono::duration<double>(end - start).count();
+
+    SPDLOG_TRACE("Track gain computation completed in {:.3f} s", elapsed_time);
     SPDLOG_TRACE("Measured loudness: {:.2f} LUFS, Track gain: {:.2f} dB",
                  loudness, track_gain);
+
     return track_gain;
 }
 
