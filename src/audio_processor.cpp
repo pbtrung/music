@@ -23,7 +23,7 @@
 // =============================================================================
 
 AudioProcessorBase::AudioProcessorBase(const fs::path &file_path)
-    : file_path(file_path) {
+    : file_path(file_path), audio_config{} {
     setup_ffmpeg_logging();
 }
 
@@ -118,8 +118,7 @@ void AudioProcessorBase::initialize_codec() {
     SPDLOG_TRACE("Codec initialized: {} ({})", codec->long_name, codec->name);
 }
 
-void AudioProcessorBase::initialize_resampler(
-    const AudioUtils::AudioConfig &config) {
+void AudioProcessorBase::initialize_resampler() {
     SPDLOG_TRACE("Initializing resampler");
 
     SwrContext *tmp_swr = swr_alloc();
@@ -138,15 +137,17 @@ void AudioProcessorBase::initialize_resampler(
 
     // Set output parameters
     AVChannelLayout out_chlayout;
-    av_channel_layout_default(&out_chlayout, config.channels);
+    av_channel_layout_default(&out_chlayout, audio_config.channels);
     av_opt_set_chlayout(swr_context.get(), "out_chlayout", &out_chlayout, 0);
-    av_opt_set_int(swr_context.get(), "out_sample_rate", config.sample_rate, 0);
+    av_opt_set_int(swr_context.get(), "out_sample_rate",
+                   audio_config.sample_rate, 0);
     av_opt_set_sample_fmt(swr_context.get(), "out_sample_fmt",
-                          config.sample_format, 0);
+                          audio_config.sample_format, 0);
 
     // Set quality parameters
-    av_opt_set(swr_context.get(), "resampler", config.resampler.c_str(), 0);
-    av_opt_set_int(swr_context.get(), "precision", config.precision, 0);
+    av_opt_set(swr_context.get(), "resampler", audio_config.resampler.c_str(),
+               0);
+    av_opt_set_int(swr_context.get(), "precision", audio_config.precision, 0);
 
     if (swr_init(swr_context.get()) < 0) {
         throw std::runtime_error("Failed to initialize resampler");
@@ -154,8 +155,8 @@ void AudioProcessorBase::initialize_resampler(
 
     SPDLOG_TRACE("Resampler initialized: {} Hz {} ch -> {} Hz {} ch",
                  codec_context->sample_rate,
-                 codec_context->ch_layout.nb_channels, config.sample_rate,
-                 config.channels);
+                 codec_context->ch_layout.nb_channels, audio_config.sample_rate,
+                 audio_config.channels);
 }
 
 void AudioProcessorBase::process_audio_data(
@@ -180,21 +181,14 @@ void AudioProcessorBase::process_audio_data(
                 }
 
                 // Calculate output buffer size for resampling
-                int max_dst_nb_samples = av_rescale_rnd(
-                    frame->nb_samples,
-                    av_opt_get_int(swr_context.get(), "out_sample_rate", 0,
-                                   nullptr),
-                    codec_context->sample_rate, AV_ROUND_UP);
-
-                int out_channels = static_cast<int>(av_opt_get_int(
-                    swr_context.get(), "out_channels", 0, nullptr));
-                AVSampleFormat out_format =
-                    static_cast<AVSampleFormat>(av_opt_get_int(
-                        swr_context.get(), "out_sample_fmt", 0, nullptr));
+                int max_dst_nb_samples =
+                    av_rescale_rnd(frame->nb_samples, audio_config.sample_rate,
+                                   codec_context->sample_rate, AV_ROUND_UP);
 
                 AudioUtils::SampleBuffer output_buffer;
-                if (!output_buffer.allocate(out_channels, max_dst_nb_samples,
-                                            out_format)) {
+                if (!output_buffer.allocate(audio_config.channels,
+                                            max_dst_nb_samples,
+                                            audio_config.sample_format)) {
                     throw std::runtime_error(
                         "Failed to allocate output buffer");
                 }
@@ -210,7 +204,8 @@ void AudioProcessorBase::process_audio_data(
                 }
 
                 // Call the callback with resampled samples
-                callback(output_buffer.get(), nb_samples, out_channels);
+                callback(output_buffer.get(), nb_samples,
+                         audio_config.channels);
                 frames_processed++;
             }
         }
@@ -494,7 +489,9 @@ void GainProcessor::apply_gain_scalar_impl(int16_t *samples, int total_samples,
 AudioDecoder::AudioDecoder(const std::string &pipe_name,
                            const fs::path &file_path, int gain_fixed)
     : AudioProcessorBase(file_path), pipe_name(pipe_name),
-      gain_processor(gain_fixed) {}
+      gain_processor(gain_fixed) {
+    audio_config = OUTPUT_CONFIG;
+}
 
 void AudioDecoder::decode() {
     SPDLOG_TRACE("Start decoding {}", file_path.filename().string());
@@ -519,7 +516,7 @@ void AudioDecoder::decode() {
 
         // Write to output stream
         int bytes_per_sample =
-            av_get_bytes_per_sample(OUTPUT_CONFIG.sample_format);
+            av_get_bytes_per_sample(audio_config.sample_format);
         output_stream.write(reinterpret_cast<char *>(buffer),
                             nb_samples * channels * bytes_per_sample);
 
@@ -546,12 +543,12 @@ void AudioDecoder::initialize() {
     print_metadata();
     find_audio_stream();
     initialize_codec();
-    initialize_resampler(OUTPUT_CONFIG);
+    initialize_resampler();
     open_output_pipe();
 
     int64_t duration = get_duration();
     duration_str = Utilities::format_time(static_cast<int>(duration));
-    print_audio_info(OUTPUT_CONFIG);
+    print_audio_info(audio_config);
 }
 
 void AudioDecoder::open_output_pipe() {
@@ -593,6 +590,7 @@ TrackGainAnalyzer::compute_and_write_track_gain(const fs::path &file_path) {
 TrackGainAnalyzer::TrackGainAnalyzer(const fs::path &file_path)
     : AudioProcessorBase(file_path) {
     SPDLOG_TRACE("Initializing TrackGainAnalyzer for: {}", file_path.string());
+    audio_config = ANALYSIS_CONFIG;
 }
 
 double TrackGainAnalyzer::compute_track_gain() {
@@ -602,7 +600,7 @@ double TrackGainAnalyzer::compute_track_gain() {
     initialize_ffmpeg();
     find_audio_stream();
     initialize_codec();
-    initialize_resampler(ANALYSIS_CONFIG);
+    initialize_resampler();
     initialize_ebur128();
 
     // Create callback for EBU R128 analysis
@@ -647,14 +645,14 @@ void TrackGainAnalyzer::initialize_ebur128() {
     SPDLOG_TRACE("Initializing EBU R128 state");
 
     ebur128_state *tmp_state = ebur128_init(
-        ANALYSIS_CONFIG.channels, ANALYSIS_CONFIG.sample_rate, EBUR128_MODE_I);
+        audio_config.channels, audio_config.sample_rate, EBUR128_MODE_I);
     if (!tmp_state) {
         throw std::runtime_error("Failed to initialize EBU R128 state");
     }
 
     ebu_state = EbuStatePtr(tmp_state);
     SPDLOG_TRACE("EBU R128 state initialized for {} channels at {} Hz",
-                 ANALYSIS_CONFIG.channels, ANALYSIS_CONFIG.sample_rate);
+                 audio_config.channels, audio_config.sample_rate);
 }
 
 void TrackGainAnalyzer::write_metadata_tag(const std::string &key,

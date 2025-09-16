@@ -151,7 +151,7 @@ class AudioProcessorBase {
     void initialize_ffmpeg();
     void find_audio_stream();
     void initialize_codec();
-    void initialize_resampler(const AudioUtils::AudioConfig &config);
+    void initialize_resampler();
 
     // Audio processing
     void process_audio_data(const AudioUtils::AudioSampleCallback &callback);
@@ -172,6 +172,9 @@ class AudioProcessorBase {
     AudioUtils::AVPacketPtr packet;
     AudioUtils::AVFramePtr frame;
     int audio_stream_index = -1;
+
+    // Processing configuration
+    AudioUtils::AudioConfig audio_config;
 
   private:
     static void ffmpeg_log_callback(void *avcl, int level, const char *fmt,
