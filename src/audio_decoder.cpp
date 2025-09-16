@@ -9,13 +9,13 @@
 #include "audio_decoder.hpp"
 #include "utils.hpp"
 
-AudioDecoder::AudioDecoder(std::string pipe_name, std::string filename,
-                           std::string file_path, int gain_fixed)
-    : pipe_name(std::move(pipe_name)), filename(std::move(filename)),
-      file_path(std::move(file_path)), gain_fixed(gain_fixed) {}
+AudioDecoder::AudioDecoder(std::string pipe_name, fs::path file_path,
+                           int gain_fixed)
+    : pipe_name(std::move(pipe_name)), file_path(std::move(file_path)),
+      gain_fixed(gain_fixed) {}
 
 void AudioDecoder::decode() {
-    SPDLOG_TRACE("Start decoding {}", filename);
+    SPDLOG_TRACE("Start decoding {}", file_path.filename().string());
     auto start = std::chrono::steady_clock::now();
 
     try {
@@ -36,7 +36,7 @@ void AudioDecoder::decode() {
     }
     fmt::print("\n\n");
     SPDLOG_TRACE("Finish decode loop");
-    SPDLOG_TRACE("End decoding {}", filename);
+    SPDLOG_TRACE("End decoding {}", file_path.filename().string());
 }
 
 void AudioDecoder::init() {

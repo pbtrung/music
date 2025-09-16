@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -12,6 +13,8 @@ extern "C" {
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 }
+
+namespace fs = std::filesystem;
 
 // SIMD headers
 #if defined(__x86_64__) || defined(_M_X64)
@@ -126,8 +129,7 @@ using AVFramePtr = std::unique_ptr<AVFrame, AVFrameDeleter>;
 
 class AudioDecoder {
   public:
-    AudioDecoder(std::string pipe_name, std::string filename,
-                 std::string file_path, int gain_fixed);
+    AudioDecoder(std::string pipe_name, fs::path file_path, int gain_fixed);
     ~AudioDecoder() = default;
 
     AudioDecoder(const AudioDecoder &) = delete;
@@ -144,8 +146,7 @@ class AudioDecoder {
 
     std::ofstream output_stream;
     std::string pipe_name;
-    std::string filename;
-    std::string file_path;
+    fs::path file_path;
     std::string duration_str;
     int gain_fixed;
     int stream_index = -1;
