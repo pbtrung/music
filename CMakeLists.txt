@@ -43,12 +43,11 @@ add_executable(music
     src/main.cpp
     src/curl.cpp
     src/utils.cpp
-    src/audio_decoder.cpp
     src/downloader.cpp
     src/httpvfs.cpp
     src/track.cpp
+    src/audio_processor.cpp
     src/audio_streamer.cpp
-    src/track_gain_analyzer.cpp
 )
 target_include_directories(music PRIVATE ${COMMON_INCLUDE_DIRS})
 target_link_directories(music PRIVATE ${COMMON_LINK_DIRS})
@@ -117,7 +116,7 @@ add_executable(data
     src/curl.cpp
     src/file_block_reader.cpp
     src/rapidyenc.cpp
-    src/track_gain_analyzer.cpp
+    src/audio_processor.cpp
     src/nntp_client.cpp
 )
 target_link_libraries(data PRIVATE rapidyenc_static)
