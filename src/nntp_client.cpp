@@ -146,7 +146,7 @@ void NntpClient::send_command(ConnectionState *state,
         log_command = "AUTHINFO PASS [MASKED]";
     }
 
-    SPDLOG_TRACE("Sending command: {}", log_command);
+    // SPDLOG_TRACE("Sending command: {}", log_command);
     std::string full_command = command + "\r\n";
     const char *data = full_command.c_str();
     size_t len = full_command.length();
@@ -171,10 +171,18 @@ std::string NntpClient::receive_response(ConnectionState *state) {
         throw std::runtime_error("Connection not established");
     }
 
-    std::string response;
-    char buffer[1024];
-
+    // Check if we have a complete line in the buffer
     while (true) {
+        size_t pos = state->receive_buffer.find("\r\n");
+        if (pos != std::string::npos) {
+            std::string result = state->receive_buffer.substr(0, pos);
+            state->receive_buffer.erase(0, pos + 2);
+            // SPDLOG_TRACE("Received response: {}", result);
+            return result;
+        }
+
+        // Need more data
+        char buffer[1024];
         ssize_t received = 0;
         if (state->ssl) {
             received = SSL_read(state->ssl, buffer, sizeof(buffer) - 1);
@@ -188,15 +196,7 @@ std::string NntpClient::receive_response(ConnectionState *state) {
         }
 
         buffer[received] = '\0';
-        response += buffer;
-
-        // Check for end of line
-        size_t pos = response.find("\r\n");
-        if (pos != std::string::npos) {
-            std::string result = response.substr(0, pos);
-            SPDLOG_TRACE("Received response: {}", result);
-            return result;
-        }
+        state->receive_buffer += buffer;
     }
 }
 

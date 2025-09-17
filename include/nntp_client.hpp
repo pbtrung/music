@@ -42,6 +42,7 @@ class NntpClient {
         int socket_fd;
         SSL *ssl;
         bool connected;
+        std::string receive_buffer;
 
         ConnectionState() : socket_fd(-1), ssl(nullptr), connected(false) {}
         ~ConnectionState();
