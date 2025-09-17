@@ -50,11 +50,15 @@ int main() {
         std::string orig_hmac = Utilities::hmac_sha3_256(hmac_key_str, body);
         std::string message_id = fmt::format(
             "<{}@{}>", orig_hmac, Utilities::generate_random_string(10));
+        std::string from =
+            fmt::format("{}@{}.{}", Utilities::generate_random_string(10),
+                        Utilities::generate_random_string(10),
+                        Utilities::generate_random_string(5));
 
         // Post a message
         NntpMessage new_msg;
-        new_msg.subject = "Test Subject";
-        new_msg.from = "user@example.com";
+        new_msg.subject = Utilities::generate_random_string(42);
+        new_msg.from = from;
         new_msg.newsgroups = "test.group";
         new_msg.body = encoded_body;
         new_msg.message_id = message_id;
@@ -72,7 +76,8 @@ int main() {
             spdlog::info("a != b");
         }
 
-        std::string hmac = Utilities::hmac_sha3_256(hmac_key_str, decoded_binary);
+        std::string hmac =
+            Utilities::hmac_sha3_256(hmac_key_str, decoded_binary);
         spdlog::info(orig_hmac);
         spdlog::info(hmac);
 
