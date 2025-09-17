@@ -4,3 +4,6 @@
 [submodule "external/wirehair"]
 	path = external/wirehair
 	url = https://github.com/catid/wirehair
+[submodule "external/cppcodec"]
+	path = external/cppcodec
+	url = https://github.com/tplgy/cppcodec

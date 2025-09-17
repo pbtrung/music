@@ -16,63 +16,12 @@
 #include <openssl/rand.h>
 #include <spdlog/spdlog.h>
 
+#include "cppcodec/base64_url_unpadded.hpp"
 #include "utils.hpp"
 
+using base64_url_unpadded = cppcodec::base64_url_unpadded;
+
 namespace {
-// Base64 encoding without padding
-std::string
-base64_encode_no_padding(const std::span<const unsigned char> input) {
-    BIO *bio = BIO_new(BIO_s_mem());
-    BIO *b64 = BIO_new(BIO_f_base64());
-    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
-    BIO_push(b64, bio);
-
-    BIO_write(b64, input.data(), static_cast<int>(input.size()));
-    BIO_flush(b64);
-
-    BUF_MEM *bufferPtr;
-    BIO_get_mem_ptr(b64, &bufferPtr);
-
-    std::string result(bufferPtr->data, bufferPtr->length);
-    BIO_free_all(b64);
-
-    // Remove padding characters
-    while (!result.empty() && result.back() == '=') {
-        result.pop_back();
-    }
-
-    return result;
-}
-
-// Base64 decoding (handles missing padding)
-std::vector<unsigned char> base64_decode_no_padding(std::string_view input) {
-    std::string padded_input{input};
-
-    // Add padding if needed
-    while (padded_input.length() % 4 != 0) {
-        padded_input += '=';
-    }
-
-    BIO *bio = BIO_new_mem_buf(padded_input.data(),
-                               static_cast<int>(padded_input.length()));
-    BIO *b64 = BIO_new(BIO_f_base64());
-    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
-    BIO_push(b64, bio);
-
-    std::vector<unsigned char> result(padded_input.length() * 3 / 4 + 1);
-    int decoded_length =
-        BIO_read(b64, result.data(), static_cast<int>(result.size()));
-
-    BIO_free_all(b64);
-
-    if (decoded_length <= 0) {
-        return {};
-    }
-
-    result.resize(decoded_length);
-    return result;
-}
-
 // Convert bytes to hex string
 std::string bytes_to_hex(const std::span<const unsigned char> bytes) {
     std::string result;
@@ -425,7 +374,7 @@ Utilities::hmac_sha3_256(std::string_view hmac_key_b64,
                          const std::vector<std::byte> &input) noexcept {
     try {
         // Decode base64 key
-        auto key_bytes = base64_decode_no_padding(hmac_key_b64);
+        auto key_bytes = base64_url_unpadded::decode(hmac_key_b64);
         if (key_bytes.empty() && !hmac_key_b64.empty()) {
             return "";
         }
@@ -478,7 +427,7 @@ Utilities::hmac_sha3_256(std::string_view hmac_key_b64,
         }
 
         // Encode result as base64 without padding
-        return base64_encode_no_padding(
+        return base64_url_unpadded::encode(
             std::span<const unsigned char>(hmac_result.data(), hmac_len));
 
     } catch (...) {

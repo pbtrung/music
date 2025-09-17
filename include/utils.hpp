@@ -49,6 +49,4 @@ class Utilities {
     static constexpr size_t min_random_string_length = 1;
     static constexpr size_t max_random_string_length = 256;
     static constexpr size_t default_filename_length = 25;
-    static constexpr size_t sha3_256_hex_length = 64;
-    static constexpr size_t hmac_sha3_256_b64_length = 43;
 };

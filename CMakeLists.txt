@@ -37,6 +37,7 @@ foreach(PKG ${PKG_LIST})
 endforeach()
 list(APPEND COMMON_INCLUDE_DIRS include)
 list(APPEND COMMON_INCLUDE_DIRS external)
+list(APPEND COMMON_INCLUDE_DIRS external/cppcodec)
 list(APPEND COMMON_INCLUDE_DIRS external/wirehair/include)
 
 add_executable(music

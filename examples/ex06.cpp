@@ -5,9 +5,12 @@
 #include <fmt/format.h>
 #include <openssl/rand.h>
 
+#include "cppcodec/base64_url_unpadded.hpp"
 #include "nntp_client.hpp"
 #include "rapidyenc.hpp"
 #include "utils.hpp"
+
+using base64_url_unpadded = cppcodec::base64_url_unpadded;
 
 int main() {
     // Set up logging
@@ -43,9 +46,10 @@ int main() {
             return 1;
         }
 
-        std::string hmac_key_str = Utilities::generate_random_string(32);
+        std::string hmac_key_str = base64_url_unpadded::encode(hmac_key);
+        std::string orig_hmac = Utilities::hmac_sha3_256(hmac_key_str, body);
         std::string message_id = fmt::format(
-            "<{}@sth.com>", Utilities::hmac_sha3_256(hmac_key_str, body));
+            "<{}@{}>", orig_hmac, Utilities::generate_random_string(10));
 
         // Post a message
         NntpMessage new_msg;
@@ -67,6 +71,10 @@ int main() {
         } else {
             spdlog::info("a != b");
         }
+
+        std::string hmac = Utilities::hmac_sha3_256(hmac_key_str, decoded_binary);
+        spdlog::info(orig_hmac);
+        spdlog::info(hmac);
 
     } catch (const std::exception &e) {
         spdlog::error("NNTP operation failed: {}", e.what());
