@@ -1,6 +1,7 @@
+#include <stdexcept>
+
 #include "rapidyenc.hpp"
 #include "rapidyenc/rapidyenc.h"
-#include <stdexcept>
 
 RapidYenc::RapidYenc() : initialized(false) {
     // Initialize encoding functionality
@@ -66,6 +67,13 @@ std::string RapidYenc::encode_string(const std::string &input) const {
                        encoded.size());
 }
 
+std::string
+RapidYenc::encode_to_string(const std::vector<std::byte> &input) const {
+    auto encoded = encode(input.data(), input.size());
+    return std::string(reinterpret_cast<const char *>(encoded.data()),
+                       encoded.size());
+}
+
 // Decode methods
 
 std::vector<std::byte>
@@ -96,6 +104,12 @@ std::string RapidYenc::decode_string(const std::string &input) const {
         decode(reinterpret_cast<const std::byte *>(input.data()), input.size());
     return std::string(reinterpret_cast<const char *>(decoded.data()),
                        decoded.size());
+}
+
+std::vector<std::byte>
+RapidYenc::decode_from_string(const std::string &input) const {
+    return decode(reinterpret_cast<const std::byte *>(input.data()),
+                  input.size());
 }
 
 // Utility methods

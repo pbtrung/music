@@ -26,11 +26,13 @@ class RapidYenc {
     std::vector<std::byte> encode(const std::vector<std::byte> &input) const;
     std::vector<std::byte> encode(const std::byte *data, size_t size) const;
     std::string encode_string(const std::string &input) const;
+    std::string encode_to_string(const std::vector<std::byte> &input) const;
 
     // Decode methods
     std::vector<std::byte> decode(const std::vector<std::byte> &input) const;
     std::vector<std::byte> decode(const std::byte *data, size_t size) const;
     std::string decode_string(const std::string &input) const;
+    std::vector<std::byte> decode_from_string(const std::string &input) const;
 
     // Utility methods
     static size_t get_max_encoded_length(size_t input_size,
