@@ -87,7 +87,10 @@ add_executable(ex05
 add_executable(ex06
     examples/ex06.cpp
     src/nntp_client.cpp
+    src/utils.cpp
+    src/rapidyenc.cpp
 )
+target_link_libraries(ex06 PRIVATE rapidyenc_static)
 add_executable(ex07
     examples/ex07.cpp
 )
