@@ -117,12 +117,12 @@ add_executable(data
     src/track.cpp
     src/httpvfs.cpp
     src/utils.cpp
-    src/httpvfs.cpp
     src/curl.cpp
     src/file_block_reader.cpp
     src/rapidyenc.cpp
     src/audio_processor.cpp
     src/nntp_client.cpp
+    src/migrator.cpp
 )
 target_link_libraries(data PRIVATE rapidyenc_static)
 target_link_libraries(data PRIVATE wirehair)

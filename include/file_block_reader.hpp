@@ -54,7 +54,7 @@ void FileBlockReader::process_blocks(Callback &&callback) {
         buffer.resize(bytes_read);
 
         // Call the callback with block index and data
-        callback(i, std::span<const std::byte>{buffer});
+        callback(i, buffer);
 
         current_pos += bytes_read;
     }
