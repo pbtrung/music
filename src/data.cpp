@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 
 #include "json.hpp"
+#include "migrator.hpp"
 
 using json = nlohmann::json;
 
@@ -47,6 +48,11 @@ int main(int argc, char *argv[]) {
 
     if (command == "migrate") {
         SPDLOG_TRACE("Running migration with {}", config_file);
+        int num_files = config["num_files"].get<int>();
+        Migrator migrator(config, num_files);
+        migrator.start();
+        migrator.wait();
+
     } else if (command == "upload-music") {
         SPDLOG_TRACE("Running upload-music with {}", config_file);
     } else if (command == "upload-data") {

@@ -27,6 +27,8 @@ class Migrator {
     std::jthread producer_thread;
     std::jthread consumer_thread;
 
+    std::vector<std::vector<std::string>> res;
+
     // Producer methods
     json get_track(size_t i);
     std::string download_track(const json &track);

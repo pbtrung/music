@@ -151,30 +151,29 @@ void Migrator::producer_loop() {
     const int start = config["migrate"]["start"].get<int>();
     const int end = config["migrate"]["end"].get<int>();
 
-    for (int i = start; i < end; i++) {
+    for (int i = start; i <= end; i++) {
         SPDLOG_TRACE("Producer processing track {}", i);
 
-        json track;
         try {
-            track = prepare_track_for_processing(i);
-            const std::string &filename = track["filename"].get<std::string>();
+            json track = prepare_track_for_processing(i);
 
+            // Always cleanup cids at scope exit
+            ScopeGuard cleanup([&] { cleanup_cid_files(track); });
+
+            const std::string &filename = track["filename"].get<std::string>();
             SPDLOG_TRACE("Push: {}", filename);
             push_track(std::move(track));
 
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Producer error for track {}: {}", i, e.what());
             spdlog::dump_backtrace();
-            cleanup_cid_files(track);
             std::exit(EXIT_FAILURE);
         } catch (...) {
             SPDLOG_TRACE("Producer unknown error for track {}", i);
             spdlog::dump_backtrace();
-            cleanup_cid_files(track);
             std::exit(EXIT_FAILURE);
         }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     // Signal end of processing
@@ -270,6 +269,7 @@ void Migrator::process_block_with_wirehair(size_t block_index,
 
     const std::string hmac_key = track["hmac_key"].get<std::string>();
 
+    res[block_index].resize(redu_count);
     for (int piece_id = 0; piece_id < static_cast<int>(redu_count);
          ++piece_id) {
         std::vector<std::byte> piece_data(block_size);
@@ -295,12 +295,14 @@ void Migrator::process_block_with_wirehair(size_t block_index,
                 EncodedPiece result =
                     process_piece(block_index, piece_id, piece_data, hmac_key);
 
-                // Submit it to NNTP
+                // Submit to NNTP
                 // handle_encoded_piece(std::move(result));
+                res[block_index][piece_id] = std::move(result.hmac);
 
             } catch (const std::exception &e) {
-                SPDLOG_ERROR("Error processing piece {}-{}: {}", block_index,
+                SPDLOG_TRACE("Error processing piece {}-{}: {}", block_index,
                              piece_id, e.what());
+                res[block_index][piece_id] = "";
             }
         });
     }
@@ -315,7 +317,6 @@ void Migrator::consumer_loop() {
 
     while (true) {
         SPDLOG_TRACE("Consumer loop iteration");
-        fs::path file_path;
 
         try {
             json track = pop_track();
@@ -328,27 +329,43 @@ void Migrator::consumer_loop() {
 
             const fs::path output_dir = config["output"].get<std::string>();
             const std::string filename = track["filename"].get<std::string>();
-            file_path = output_dir / filename;
+            fs::path file_path = output_dir / filename;
+
+            // Always cleanup file at scope exit
+            ScopeGuard cleanup([&] { cleanup_file(file_path); });
 
             SPDLOG_TRACE("Processing: {}", filename);
             print_info(track);
 
             FileBlockReader reader(file_path);
+            auto block_sizes = reader.calculate_block_sizes();
+            res.clear();
+            res.resize(block_sizes.size());
+
+            track["msg_id_ext"] = Utilities::generate_random_string(10);
+            track["from"] =
+                fmt::format("{}@{}.{}", Utilities::generate_random_string(10),
+                            Utilities::generate_random_string(10),
+                            Utilities::generate_random_string(5));
+
             reader.process_blocks(
-                [this, track](size_t block_index,
-                              const std::vector<std::byte> &data) {
+                [this, &track](size_t block_index,
+                               const std::vector<std::byte> &data) {
                     process_block_with_wirehair(block_index, data, track);
+                    track["cids"] = res;
                 });
 
+            track.erase("filename");
+            track.erase("max_value");
+            fmt::println("{}", track.dump(4));
+
         } catch (const std::exception &e) {
-            SPDLOG_ERROR("Consumer error: {}", e.what());
+            SPDLOG_TRACE("Consumer error: {}", e.what());
             spdlog::dump_backtrace();
-            cleanup_file(file_path);
             std::exit(EXIT_FAILURE);
         } catch (...) {
-            SPDLOG_ERROR("Consumer unknown error");
+            SPDLOG_TRACE("Consumer unknown error");
             spdlog::dump_backtrace();
-            cleanup_file(file_path);
             std::exit(EXIT_FAILURE);
         }
     }

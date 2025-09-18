@@ -50,3 +50,22 @@ class Utilities {
     static constexpr size_t max_random_string_length = 256;
     static constexpr size_t default_filename_length = 25;
 };
+
+class ScopeGuard {
+  public:
+    explicit ScopeGuard(std::function<void()> f)
+        : func(std::move(f)), active(true) {}
+
+    ~ScopeGuard() {
+        if (active)
+            func();
+    }
+
+    void dismiss() {
+        active = false;
+    }
+
+  private:
+    std::function<void()> func;
+    bool active;
+};
