@@ -9,7 +9,6 @@
 #include "downloader.hpp"
 #include "file_block_reader.hpp"
 #include "migrator.hpp"
-#include "nntp_client.hpp"
 #include "rapidyenc.hpp"
 #include "thread_pool.hpp"
 #include "track.hpp"
@@ -253,6 +252,26 @@ Migrator::create_wirehair_encoder(const std::vector<std::byte> &data) {
         encoder, wirehair_free);
 }
 
+void Migrator::post_with_retry(const NntpConnection &conn,
+                               const NntpMessage &msg, size_t block_index,
+                               int piece_id, int max_retries) {
+    int attempt = 0;
+    while (true) {
+        try {
+            NntpClient::post_message(conn, msg);
+            return;
+        } catch (const std::exception &e) {
+            attempt++;
+            SPDLOG_TRACE("Post attempt {} failed for block {} piece {}: {}",
+                         attempt, block_index, piece_id, e.what());
+            if (attempt >= max_retries) {
+                throw;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    }
+}
+
 void Migrator::process_block_with_wirehair(size_t block_index,
                                            const std::vector<std::byte> &data,
                                            const json &track) {
@@ -287,29 +306,60 @@ void Migrator::process_block_with_wirehair(size_t block_index,
         // Resize to actual data size
         piece_data.resize(bytes_out);
 
+        NntpConnection conn{
+            .hostname = usenet_config["hostname"].get<std::string>(),
+            .port = usenet_config["port"].get<int>(),
+            .username = usenet_config["username"].get<std::string>(),
+            .password = usenet_config["password"].get<std::string>(),
+            .use_ssl = true};
+
         // Submit work to thread pool
-        thread_pool.enqueue_detach([this, block_index, piece_id,
-                                    piece_data = std::move(piece_data),
-                                    hmac_key]() {
-            try {
-                EncodedPiece result =
-                    process_piece(block_index, piece_id, piece_data, hmac_key);
+        thread_pool.enqueue_detach(
+            [this, block_index, piece_id, piece_data = std::move(piece_data),
+             &hmac_key, &conn, &track, &usenet_config]() {
+                try {
+                    EncodedPiece result = process_piece(block_index, piece_id,
+                                                        piece_data, hmac_key);
 
-                // Submit to NNTP
-                // handle_encoded_piece(std::move(result));
-                res[block_index][piece_id] = std::move(result.hmac);
+                    NntpMessage new_msg;
+                    new_msg.subject = Utilities::generate_random_string(45);
+                    new_msg.from = track["from"].get<std::string>();
+                    new_msg.newsgroups =
+                        usenet_config["newsgroups"].get<std::string>();
+                    new_msg.body = result.encoded_data;
+                    new_msg.message_id =
+                        fmt::format("<{}@{}>", result.hmac,
+                                    track["msg_id_ext"].get<std::string>());
 
-            } catch (const std::exception &e) {
-                SPDLOG_TRACE("Error processing piece {}-{}: {}", block_index,
-                             piece_id, e.what());
-                res[block_index][piece_id] = "";
-            }
-        });
+                    post_with_retry(conn, new_msg, block_index, piece_id, 10);
+                    res[block_index][piece_id] = std::move(result.hmac);
+
+                } catch (const std::exception &e) {
+                    SPDLOG_TRACE("Error processing piece {}-{}: {}",
+                                 block_index, piece_id, e.what());
+                    res[block_index][piece_id] = "";
+                }
+            });
     }
 
     SPDLOG_TRACE("All download tasks enqueued, waiting for completion");
     thread_pool.wait_for_tasks();
     SPDLOG_TRACE("All download tasks completed");
+}
+
+void Migrator::validate_res() const {
+    for (size_t block_index = 0; block_index < res.size(); ++block_index) {
+        for (size_t piece_id = 0; piece_id < res[block_index].size();
+             ++piece_id) {
+            if (res[block_index][piece_id].empty()) {
+                SPDLOG_TRACE("Missing CID at block {} piece {}", block_index,
+                             piece_id);
+                throw std::runtime_error(
+                    fmt::format("Missing CID for block {} piece {}",
+                                block_index, piece_id));
+            }
+        }
+    }
 }
 
 void Migrator::consumer_loop() {
@@ -354,6 +404,7 @@ void Migrator::consumer_loop() {
                     process_block_with_wirehair(block_index, data, track);
                 });
 
+            validate_res();
             track["cids"] = res;
             track.erase("filename");
             track.erase("max_value");

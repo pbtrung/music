@@ -7,6 +7,7 @@
 
 #include "atomic_queues.hpp"
 #include "json.hpp"
+#include "nntp_client.hpp"
 #include "wirehair/wirehair.h"
 
 using json = nlohmann::json;
@@ -60,6 +61,9 @@ class Migrator {
     void cleanup_file(const fs::path &path);
     void cleanup_cid_files(const json &track);
     int compute_track_gain(const json &config, const json &track);
+    void validate_res() const;
+    void post_with_retry(const NntpConnection &conn, const NntpMessage &msg,
+                         size_t block_index, int piece_id, int max_retries);
 
   public:
     explicit Migrator(const json &cfg, int queue_size = 4);
