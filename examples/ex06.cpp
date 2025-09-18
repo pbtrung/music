@@ -59,7 +59,7 @@ int main() {
         NntpMessage new_msg;
         new_msg.subject = Utilities::generate_random_string(42);
         new_msg.from = from;
-        new_msg.newsgroups = "test.group";
+        new_msg.newsgroups = "alt.binaries.music";
         new_msg.body = encoded_body;
         new_msg.message_id = message_id;
 

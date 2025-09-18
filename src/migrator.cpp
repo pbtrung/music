@@ -10,6 +10,7 @@
 #include "file_block_reader.hpp"
 #include "migrator.hpp"
 #include "rapidyenc.hpp"
+#include "sqlitedb.hpp"
 #include "thread_pool.hpp"
 #include "track.hpp"
 #include "utils.hpp"
@@ -210,9 +211,9 @@ void Migrator::print_info(const json &track) {
         const std::string cid = track.contains("cids") && !track["cids"].empty()
                                     ? track["cids"][0].get<std::string>()
                                     : "UNKNOWN";
-        fmt::print("  info: {} -> {}\n", cid, filename);
+        fmt::print("  info: {} -> {}\n\n", cid, filename);
     } else {
-        fmt::print("  info: {} CIDs -> {}\n", cids, filename);
+        fmt::print("  info: {} CIDs -> {}\n\n", cids, filename);
     }
     std::cout.flush();
 }
@@ -282,8 +283,7 @@ void Migrator::process_block_with_wirehair(size_t block_index,
     uint32_t redu_count = usenet_config["wh_n"].get<uint32_t>();
     uint32_t block_size = (data.size() + orig_count - 1) / orig_count;
 
-    const int thread_count =
-        config["ncores"].get<int>() * config["mul_factor"].get<int>();
+    const int thread_count = usenet_config["num_conns"].get<int>();
     dp::ThreadPool thread_pool(thread_count);
 
     const std::string hmac_key = track["hmac_key"].get<std::string>();
@@ -314,32 +314,35 @@ void Migrator::process_block_with_wirehair(size_t block_index,
             .use_ssl = true};
 
         // Submit work to thread pool
-        thread_pool.enqueue_detach(
-            [this, block_index, piece_id, piece_data = std::move(piece_data),
-             &hmac_key, &conn, &track, &usenet_config]() {
-                try {
-                    EncodedPiece result = process_piece(block_index, piece_id,
-                                                        piece_data, hmac_key);
+        thread_pool.enqueue_detach([this, block_index, piece_id,
+                                    piece_data = std::move(piece_data),
+                                    &hmac_key, conn, &track, &usenet_config]() {
+            try {
+                EncodedPiece result =
+                    process_piece(block_index, piece_id, piece_data, hmac_key);
 
-                    NntpMessage new_msg;
-                    new_msg.subject = Utilities::generate_random_string(45);
-                    new_msg.from = track["from"].get<std::string>();
-                    new_msg.newsgroups =
-                        usenet_config["newsgroups"].get<std::string>();
-                    new_msg.body = result.encoded_data;
-                    new_msg.message_id =
-                        fmt::format("<{}@{}>", result.hmac,
-                                    track["msg_id_ext"].get<std::string>());
+                NntpMessage new_msg;
+                new_msg.subject = Utilities::generate_random_string(45);
+                new_msg.from = track["from"].get<std::string>();
+                new_msg.newsgroups =
+                    usenet_config["newsgroups"].get<std::string>();
+                new_msg.body = result.encoded_data;
+                new_msg.message_id =
+                    fmt::format("<{}@{}>", result.hmac,
+                                track["msg_id_ext"].get<std::string>());
 
-                    post_with_retry(conn, new_msg, block_index, piece_id, 10);
-                    res[block_index][piece_id] = std::move(result.hmac);
+                post_with_retry(conn, new_msg, block_index, piece_id, 10);
+                res[block_index][piece_id] = std::move(result.hmac);
+                SPDLOG_TRACE(
+                    "Processed: track_id={}, block_index={}, piece_id={}",
+                    track["track_id"].get<int>(), block_index, piece_id);
 
-                } catch (const std::exception &e) {
-                    SPDLOG_TRACE("Error processing piece {}-{}: {}",
-                                 block_index, piece_id, e.what());
-                    res[block_index][piece_id] = "";
-                }
-            });
+            } catch (const std::exception &e) {
+                SPDLOG_TRACE("Error processing piece {}-{}: {}", block_index,
+                             piece_id, e.what());
+                res[block_index][piece_id] = "";
+            }
+        });
     }
 
     SPDLOG_TRACE("All download tasks enqueued, waiting for completion");
@@ -364,6 +367,10 @@ void Migrator::validate_res() const {
 
 void Migrator::consumer_loop() {
     SPDLOG_TRACE("Consumer start");
+
+    db::SqliteDb database(config["usenet"]["db"].get<std::string>());
+    database.execute(
+        "CREATE TABLE IF NOT EXISTS tracks (track_id INTEGER PRIMARY KEY, track BLOB NOT NULL)");
 
     while (true) {
         SPDLOG_TRACE("Consumer loop iteration");
@@ -408,7 +415,14 @@ void Migrator::consumer_loop() {
             track["cids"] = res;
             track.erase("filename");
             track.erase("max_value");
-            fmt::println("{}", track.dump(4));
+
+            std::string track_str = track.dump(4);
+            // fmt::println("{}", track_str);
+
+            auto track_blob = ZstdCompressor::compress(track_str);
+            int rows = database.insert(
+                "INSERT OR REPLACE INTO tracks (track_id, track) VALUES (?, ?)",
+                {track["track_id"].get<int>(), track_blob});
 
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Consumer error: {}", e.what());
