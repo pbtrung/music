@@ -123,6 +123,7 @@ add_executable(data
     src/audio_processor.cpp
     src/nntp_client.cpp
     src/migrator.cpp
+    src/sqlitedb.cpp
 )
 target_link_libraries(data PRIVATE rapidyenc_static)
 target_link_libraries(data PRIVATE wirehair)
