@@ -352,9 +352,9 @@ void Migrator::consumer_loop() {
                 [this, &track](size_t block_index,
                                const std::vector<std::byte> &data) {
                     process_block_with_wirehair(block_index, data, track);
-                    track["cids"] = res;
                 });
 
+            track["cids"] = res;
             track.erase("filename");
             track.erase("max_value");
             fmt::println("{}", track.dump(4));
