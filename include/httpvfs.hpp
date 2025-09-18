@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -37,6 +38,18 @@ class SQLiteStmt {
 
   private:
     sqlite3_stmt *stmt = nullptr;
+};
+
+class ZstdCompressor {
+  public:
+    static std::vector<std::byte> compress(const void *data, size_t size,
+                                           int compression_level = 3);
+    static std::vector<std::byte> compress(const std::vector<std::byte> &input,
+                                           int compression_level = 3);
+    static std::vector<std::byte> compress(const std::vector<char> &input,
+                                           int compression_level = 3);
+    static std::vector<std::byte> compress(const std::string &input,
+                                           int compression_level = 3);
 };
 
 class ZstdDecompressor {

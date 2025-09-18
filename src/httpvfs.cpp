@@ -569,3 +569,48 @@ std::vector<char> ZstdDecompressor::decompress(const void *data, size_t size) {
 
     return out;
 }
+
+std::vector<std::byte> ZstdCompressor::compress(const void *data, size_t size,
+                                                int compression_level) {
+    if (!data || size == 0) {
+        throw std::runtime_error("Invalid input data");
+    }
+
+    // Get the maximum compressed size bound
+    size_t max_compressed_size = ZSTD_compressBound(size);
+    if (ZSTD_isError(max_compressed_size)) {
+        throw std::runtime_error("Failed to get compression bound");
+    }
+
+    std::vector<std::byte> out(max_compressed_size);
+
+    // Compress the data
+    size_t compressed_size =
+        ZSTD_compress(out.data(), out.size(), data, size, compression_level);
+
+    if (ZSTD_isError(compressed_size)) {
+        throw std::runtime_error(
+            "Zstd compression error: " +
+            std::string(ZSTD_getErrorName(compressed_size)));
+    }
+
+    // Resize to actual compressed size
+    out.resize(compressed_size);
+    return out;
+}
+
+std::vector<std::byte>
+ZstdCompressor::compress(const std::vector<std::byte> &input,
+                         int compression_level) {
+    return compress(input.data(), input.size(), compression_level);
+}
+
+std::vector<std::byte> ZstdCompressor::compress(const std::vector<char> &input,
+                                                int compression_level) {
+    return compress(input.data(), input.size(), compression_level);
+}
+
+std::vector<std::byte> ZstdCompressor::compress(const std::string &input,
+                                                int compression_level) {
+    return compress(input.data(), input.size(), compression_level);
+}
