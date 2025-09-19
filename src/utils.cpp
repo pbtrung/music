@@ -434,3 +434,132 @@ Utilities::hmac_sha3_256(std::string_view hmac_key_b64,
         return "";
     }
 }
+
+std::optional<std::uintmax_t>
+Utilities::get_file_size(const std::filesystem::path &file_path) noexcept {
+    try {
+        // Check if file exists and is a regular file
+        if (!std::filesystem::exists(file_path) ||
+            !std::filesystem::is_regular_file(file_path)) {
+            SPDLOG_TRACE("File does not exist or is not a regular file: {}",
+                         file_path.string());
+            return std::nullopt;
+        }
+
+        std::error_code ec;
+        auto size = std::filesystem::file_size(file_path, ec);
+        if (ec) {
+            SPDLOG_TRACE("Error getting file size: {}", ec.message());
+            return std::nullopt;
+        }
+
+        return size;
+    } catch (const std::exception &e) {
+        SPDLOG_TRACE("Exception getting file size: {}", e.what());
+        return std::nullopt;
+    } catch (...) {
+        SPDLOG_TRACE("Unknown exception getting file size");
+        return std::nullopt;
+    }
+}
+
+std::string Utilities::hmac_sha3_256_from_file(
+    std::string_view hmac_key_b64,
+    const std::filesystem::path &file_path) noexcept {
+    try {
+        // Check if file exists and is readable
+        if (!std::filesystem::exists(file_path) ||
+            !std::filesystem::is_regular_file(file_path)) {
+            SPDLOG_TRACE("File does not exist or is not a regular file: {}",
+                         file_path.string());
+            return "";
+        }
+
+        // Decode base64 key
+        auto key_bytes = base64_url_unpadded::decode(hmac_key_b64);
+        if (key_bytes.empty() && !hmac_key_b64.empty()) {
+            SPDLOG_TRACE("Failed to decode HMAC key");
+            return "";
+        }
+
+        // Open file
+        std::ifstream file(file_path, std::ios::binary);
+        if (!file) {
+            SPDLOG_TRACE("Failed to open file: {}", file_path.string());
+            return "";
+        }
+
+        // Create EVP MAC context for HMAC (OpenSSL 3.0+ way)
+        std::unique_ptr<EVP_MAC, decltype(&EVP_MAC_free)> mac(
+            EVP_MAC_fetch(nullptr, "HMAC", nullptr), EVP_MAC_free);
+
+        if (!mac) {
+            SPDLOG_TRACE("Failed to create EVP_MAC");
+            return "";
+        }
+
+        std::unique_ptr<EVP_MAC_CTX, decltype(&EVP_MAC_CTX_free)> ctx(
+            EVP_MAC_CTX_new(mac.get()), EVP_MAC_CTX_free);
+
+        if (!ctx) {
+            SPDLOG_TRACE("Failed to create EVP_MAC_CTX");
+            return "";
+        }
+
+        // Set the digest algorithm to SHA3-256
+        const char *digest_name = "SHA3-256";
+        OSSL_PARAM params[] = {
+            OSSL_PARAM_utf8_string("digest", const_cast<char *>(digest_name),
+                                   0),
+            OSSL_PARAM_END};
+
+        // Initialize MAC with key and parameters
+        if (EVP_MAC_init(ctx.get(), key_bytes.data(), key_bytes.size(),
+                         params) != 1) {
+            SPDLOG_TRACE("Failed to initialize EVP_MAC");
+            return "";
+        }
+
+        // Read file in chunks and update HMAC
+        constexpr size_t buffer_size = 8192;
+        std::array<char, buffer_size> buffer;
+
+        while (file.read(buffer.data(), buffer_size) || file.gcount() > 0) {
+            const auto bytes_read = static_cast<size_t>(file.gcount());
+            if (EVP_MAC_update(
+                    ctx.get(),
+                    reinterpret_cast<const unsigned char *>(buffer.data()),
+                    bytes_read) != 1) {
+                SPDLOG_TRACE("Failed to update EVP_MAC");
+                return "";
+            }
+        }
+
+        // Check for file read errors
+        if (!file.eof() && file.fail()) {
+            SPDLOG_TRACE("Error reading file: {}", file_path.string());
+            return "";
+        }
+
+        // Finalize HMAC
+        std::array<unsigned char, EVP_MAX_MD_SIZE> hmac_result;
+        size_t hmac_len = 0;
+
+        if (EVP_MAC_final(ctx.get(), hmac_result.data(), &hmac_len,
+                          hmac_result.size()) != 1) {
+            SPDLOG_TRACE("Failed to finalize EVP_MAC");
+            return "";
+        }
+
+        // Encode result as base64 without padding
+        return base64_url_unpadded::encode(
+            std::span<const unsigned char>(hmac_result.data(), hmac_len));
+
+    } catch (const std::exception &e) {
+        SPDLOG_TRACE("Exception computing HMAC from file: {}", e.what());
+        return "";
+    } catch (...) {
+        SPDLOG_TRACE("Unknown exception computing HMAC from file");
+        return "";
+    }
+}

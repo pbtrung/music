@@ -29,6 +29,7 @@ class Migrator {
     std::jthread consumer_thread;
 
     std::vector<std::vector<std::string>> res;
+    std::vector<std::vector<int>> sizes;
 
     // Producer methods
     json get_track(size_t i);
@@ -36,7 +37,7 @@ class Migrator {
     void push_track(json track);
     void producer_loop();
 
-    // New producer helper methods
+    // Producer helper methods
     std::string generate_hmac_key();
     json prepare_track_for_processing(size_t track_id);
 
@@ -45,7 +46,7 @@ class Migrator {
     void print_info(const json &track);
     void consumer_loop();
 
-    // New consumer helper methods
+    // Consumer helper methods
     EncodedPiece process_piece(size_t block_index, int piece_id,
                                const std::vector<std::byte> &piece_data,
                                const std::string &hmac_key);
@@ -60,7 +61,7 @@ class Migrator {
     // Utility methods
     void cleanup_file(const fs::path &path);
     void cleanup_cid_files(const json &track);
-    int compute_track_gain(const json &config, const json &track);
+    double compute_track_gain(const json &track);
     void validate_res() const;
     void post_with_retry(const NntpConnection &conn, const NntpMessage &msg,
                          size_t block_index, int piece_id, int max_retries);

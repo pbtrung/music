@@ -3,6 +3,7 @@
 #include <concepts>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -41,6 +42,11 @@ class Utilities {
     static std::string
     hmac_sha3_256(std::string_view hmac_key_b64,
                   const std::vector<std::byte> &input) noexcept;
+    static std::optional<std::uintmax_t>
+    get_file_size(const std::filesystem::path &file_path) noexcept;
+    static std::string
+    hmac_sha3_256_from_file(std::string_view hmac_key_b64,
+                            const std::filesystem::path &file_path) noexcept;
 
     static constexpr size_t max_path_length = 4096;
     static constexpr size_t max_filename_length = 255;
