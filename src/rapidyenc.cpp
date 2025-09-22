@@ -1,48 +1,71 @@
-#include <stdexcept>
-
 #include "rapidyenc.hpp"
 #include "rapidyenc/rapidyenc.h"
 
-RapidYenc::RapidYenc() : initialized(false) {
-    // Initialize encoding functionality
-    rapidyenc_encode_init();
+#include <mutex>
+#include <stdexcept>
 
-    // Initialize decoding functionality
-    rapidyenc_decode_init();
+// Static member initialization
+bool RapidYenc::s_initialized = false;
 
-    initialized = true;
+// Thread-safe initialization
+namespace {
+std::mutex init_mutex;
 }
 
-RapidYenc::~RapidYenc() = default;
+// Library management methods
 
-RapidYenc::RapidYenc(RapidYenc &&other) noexcept
-    : initialized(other.initialized) {
-    other.initialized = false;
-}
+bool RapidYenc::initialize() {
+    std::lock_guard<std::mutex> lock(init_mutex);
 
-RapidYenc &RapidYenc::operator=(RapidYenc &&other) noexcept {
-    if (this != &other) {
-        initialized = other.initialized;
-        other.initialized = false;
+    if (s_initialized) {
+        return true;
     }
-    return *this;
+
+    try {
+        // Initialize encoding functionality
+        rapidyenc_encode_init();
+
+        // Initialize decoding functionality
+        rapidyenc_decode_init();
+
+        s_initialized = true;
+        return true;
+    } catch (...) {
+        s_initialized = false;
+        return false;
+    }
 }
 
-void RapidYenc::ensure_initialized() const {
-    if (!initialized) {
-        throw std::runtime_error("RapidYenc instance not properly initialized");
+void RapidYenc::cleanup() {
+    std::lock_guard<std::mutex> lock(init_mutex);
+    s_initialized = false;
+}
+
+bool RapidYenc::is_initialized() {
+    std::lock_guard<std::mutex> lock(init_mutex);
+    return s_initialized;
+}
+
+bool RapidYenc::safe_initialize() {
+    if (!s_initialized) {
+        return initialize();
+    }
+    return true;
+}
+
+void RapidYenc::ensure_initialized() {
+    if (!safe_initialize()) {
+        throw std::runtime_error("RapidYenc library initialization failed");
     }
 }
 
 // Encode methods
 
-std::vector<std::byte>
-RapidYenc::encode(const std::vector<std::byte> &input) const {
+std::vector<std::byte> RapidYenc::encode(const std::vector<std::byte> &input) {
     return encode(input.data(), input.size());
 }
 
-std::vector<std::byte> RapidYenc::encode(const std::byte *data,
-                                         size_t size) const {
+std::vector<std::byte> RapidYenc::encode(const std::byte *data, size_t size) {
     ensure_initialized();
 
     if (data == nullptr || size == 0) {
@@ -60,15 +83,14 @@ std::vector<std::byte> RapidYenc::encode(const std::byte *data,
     return output;
 }
 
-std::string RapidYenc::encode_string(const std::string &input) const {
+std::string RapidYenc::encode_string(const std::string &input) {
     auto encoded =
         encode(reinterpret_cast<const std::byte *>(input.data()), input.size());
     return std::string(reinterpret_cast<const char *>(encoded.data()),
                        encoded.size());
 }
 
-std::string
-RapidYenc::encode_to_string(const std::vector<std::byte> &input) const {
+std::string RapidYenc::encode_to_string(const std::vector<std::byte> &input) {
     auto encoded = encode(input.data(), input.size());
     return std::string(reinterpret_cast<const char *>(encoded.data()),
                        encoded.size());
@@ -76,13 +98,11 @@ RapidYenc::encode_to_string(const std::vector<std::byte> &input) const {
 
 // Decode methods
 
-std::vector<std::byte>
-RapidYenc::decode(const std::vector<std::byte> &input) const {
+std::vector<std::byte> RapidYenc::decode(const std::vector<std::byte> &input) {
     return decode(input.data(), input.size());
 }
 
-std::vector<std::byte> RapidYenc::decode(const std::byte *data,
-                                         size_t size) const {
+std::vector<std::byte> RapidYenc::decode(const std::byte *data, size_t size) {
     ensure_initialized();
 
     if (data == nullptr || size == 0) {
@@ -99,15 +119,14 @@ std::vector<std::byte> RapidYenc::decode(const std::byte *data,
     return output;
 }
 
-std::string RapidYenc::decode_string(const std::string &input) const {
+std::string RapidYenc::decode_string(const std::string &input) {
     auto decoded =
         decode(reinterpret_cast<const std::byte *>(input.data()), input.size());
     return std::string(reinterpret_cast<const char *>(decoded.data()),
                        decoded.size());
 }
 
-std::vector<std::byte>
-RapidYenc::decode_from_string(const std::string &input) const {
+std::vector<std::byte> RapidYenc::decode_from_string(const std::string &input) {
     return decode(reinterpret_cast<const std::byte *>(input.data()),
                   input.size());
 }
