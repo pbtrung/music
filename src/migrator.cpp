@@ -351,12 +351,11 @@ void Migrator::print_info(const json &track) {
 EncodedPiece Migrator::process_piece(size_t block_index, int piece_id,
                                      const std::vector<std::byte> &piece_data,
                                      const std::string &hmac_key) {
-    std::string hmac = Utilities::hmac_sha3_256(hmac_key, piece_data);
+    std::string encoded_data = RapidYenc::encode_to_string(piece_data);
+    std::string hmac = Utilities::hmac_sha3_256(hmac_key, encoded_data);
     if (hmac.empty()) {
         throw std::runtime_error("Failed to compute hmac_sha3_256");
     }
-
-    std::string encoded_data = RapidYenc::encode_to_string(piece_data);
     return {block_index, piece_id, std::move(hmac), std::move(encoded_data)};
 }
 
