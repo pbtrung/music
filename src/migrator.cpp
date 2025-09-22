@@ -341,9 +341,9 @@ void Migrator::print_info(const json &track) {
         const std::string cid = track.contains("cids") && !track["cids"].empty()
                                     ? track["cids"][0].get<std::string>()
                                     : "UNKNOWN";
-        fmt::print("  info: {} -> {}\n\n", cid, filename);
+        fmt::print("  info: {} -> {}\n", cid, filename);
     } else {
-        fmt::print("  info: {} CIDs -> {}\n\n", cids, filename);
+        fmt::print("  info: {} CIDs -> {}\n", cids, filename);
     }
     std::cout.flush();
 }
@@ -356,9 +356,7 @@ EncodedPiece Migrator::process_piece(size_t block_index, int piece_id,
         throw std::runtime_error("Failed to compute hmac_sha3_256");
     }
 
-    RapidYenc yenc;
-    std::string encoded_data = yenc.encode_to_string(piece_data);
-
+    std::string encoded_data = RapidYenc::encode_to_string(piece_data);
     return {block_index, piece_id, std::move(hmac), std::move(encoded_data)};
 }
 
@@ -515,7 +513,14 @@ void Migrator::consumer_loop() {
         SPDLOG_TRACE("Consumer loop iteration");
 
         try {
+            if (!RapidYenc::initialize()) {
+                throw std::runtime_error(
+                    "Failed to initialize RapidYenc library");
+            }
+
             json track = pop_track();
+
+            auto start = std::chrono::steady_clock::now();
 
             // Check for termination signal
             if (!track.contains("track_name")) {
@@ -577,8 +582,13 @@ void Migrator::consumer_loop() {
                 "INSERT OR REPLACE INTO tracks (track_id, track) VALUES (?, ?)",
                 {track["track_id"].get<int>(), track_blob});
 
-            SPDLOG_TRACE("Successfully processed track {}",
-                         track["track_id"].get<int>());
+            auto end = std::chrono::steady_clock::now();
+            double elapsed_time =
+                std::chrono::duration<double>(end - start).count();
+            fmt::print("Successfully processed track {}, took {:.3f} s\n\n",
+                       track["track_id"].get<int>(), elapsed_time);
+            SPDLOG_TRACE("Successfully processed track {}, took {:.3f} s",
+                         track["track_id"].get<int>(), elapsed_time);
 
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Consumer error: {}", e.what());
