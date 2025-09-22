@@ -42,6 +42,8 @@ class Utilities {
     static std::string
     hmac_sha3_256(std::string_view hmac_key_b64,
                   const std::vector<std::byte> &input) noexcept;
+    static std::string hmac_sha3_256(std::string_view hmac_key_b64,
+                                     const std::string &input) noexcept;
     static std::optional<std::uintmax_t>
     get_file_size(const std::filesystem::path &file_path) noexcept;
     static std::string

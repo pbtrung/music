@@ -435,6 +435,81 @@ Utilities::hmac_sha3_256(std::string_view hmac_key_b64,
     }
 }
 
+std::string Utilities::hmac_sha3_256(std::string_view hmac_key_b64,
+                                     const std::string &input) noexcept {
+    try {
+        // Decode base64 key
+        auto key_bytes = base64_url_unpadded::decode(hmac_key_b64);
+        if (key_bytes.empty() && !hmac_key_b64.empty()) {
+            SPDLOG_TRACE("Failed to decode HMAC key");
+            return "";
+        }
+
+        // Create EVP MAC context for HMAC (OpenSSL 3.0+ way)
+        std::unique_ptr<EVP_MAC, decltype(&EVP_MAC_free)> mac(
+            EVP_MAC_fetch(nullptr, "HMAC", nullptr), EVP_MAC_free);
+
+        if (!mac) {
+            SPDLOG_TRACE("Failed to create EVP_MAC");
+            return "";
+        }
+
+        std::unique_ptr<EVP_MAC_CTX, decltype(&EVP_MAC_CTX_free)> ctx(
+            EVP_MAC_CTX_new(mac.get()), EVP_MAC_CTX_free);
+
+        if (!ctx) {
+            SPDLOG_TRACE("Failed to create EVP_MAC_CTX");
+            return "";
+        }
+
+        // Set the digest algorithm to SHA3-256
+        const char *digest_name = "SHA3-256";
+        OSSL_PARAM params[] = {
+            OSSL_PARAM_utf8_string("digest", const_cast<char *>(digest_name),
+                                   0),
+            OSSL_PARAM_END};
+
+        // Initialize MAC with key and parameters
+        if (EVP_MAC_init(ctx.get(), key_bytes.data(), key_bytes.size(),
+                         params) != 1) {
+            SPDLOG_TRACE("Failed to initialize EVP_MAC");
+            return "";
+        }
+
+        // Update MAC with input data (if any)
+        if (!input.empty()) {
+            if (EVP_MAC_update(
+                    ctx.get(),
+                    reinterpret_cast<const unsigned char *>(input.data()),
+                    input.size()) != 1) {
+                SPDLOG_TRACE("Failed to update EVP_MAC with input");
+                return "";
+            }
+        }
+
+        // Finalize MAC
+        std::array<unsigned char, EVP_MAX_MD_SIZE> hmac_result;
+        size_t hmac_len = 0;
+
+        if (EVP_MAC_final(ctx.get(), hmac_result.data(), &hmac_len,
+                          hmac_result.size()) != 1) {
+            SPDLOG_TRACE("Failed to finalize EVP_MAC");
+            return "";
+        }
+
+        // Encode result as base64 without padding
+        return base64_url_unpadded::encode(
+            std::span<const unsigned char>(hmac_result.data(), hmac_len));
+
+    } catch (const std::exception &e) {
+        SPDLOG_TRACE("Exception computing HMAC: {}", e.what());
+        return "";
+    } catch (...) {
+        SPDLOG_TRACE("Unknown exception computing HMAC");
+        return "";
+    }
+}
+
 std::optional<std::uintmax_t>
 Utilities::get_file_size(const std::filesystem::path &file_path) noexcept {
     try {
