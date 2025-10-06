@@ -199,6 +199,11 @@ void AudioStreamManager::print_info(const json &track) {
 
 void AudioStreamManager::consumer_loop() {
     SPDLOG_TRACE("Consumer start");
+
+    double gain_db = -6.0;
+    double gain_multiplier = std::pow(10.0, gain_db / 20.0);
+    int gain_fixed = static_cast<int>(gain_multiplier * 32768.0);
+
     while (true) {
         SPDLOG_TRACE("Consumer loop starts");
         fs::path file_path;
@@ -215,7 +220,6 @@ void AudioStreamManager::consumer_loop() {
             SPDLOG_TRACE("Pop: {}", filename);
             print_info(track);
 
-            int gain_fixed = 0;
             AudioDecoder decoder(config["pipe"].get<std::string>(), file_path,
                                  gain_fixed);
             decoder.decode();
