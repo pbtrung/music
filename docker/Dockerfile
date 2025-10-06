@@ -36,4 +36,4 @@ WORKDIR /script
 COPY entrypoint.sh /script/
 
 ENTRYPOINT ["/script/entrypoint.sh"]
-CMD ["/music/snapserver.conf", "/music/config.json"]
+CMD ["/music/snapserver.conf", "/music/music_config.json"]
