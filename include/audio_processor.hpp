@@ -10,6 +10,9 @@
 extern "C" {
 #include <ebur128.h>
 #include <libavcodec/avcodec.h>
+#include <libavfilter/avfilter.h>
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/opt.h>
@@ -61,6 +64,14 @@ struct AVFrameDeleter {
     }
 };
 
+struct AVFilterGraphDeleter {
+    void operator()(AVFilterGraph *graph) {
+        if (graph) {
+            avfilter_graph_free(&graph);
+        }
+    }
+};
+
 using AVFormatContextPtr =
     std::unique_ptr<AVFormatContext, AVFormatContextDeleter>;
 using AVCodecContextPtr =
@@ -68,6 +79,7 @@ using AVCodecContextPtr =
 using SwrContextPtr = std::unique_ptr<SwrContext, SwrContextDeleter>;
 using AVPacketPtr = std::unique_ptr<AVPacket, AVPacketDeleter>;
 using AVFramePtr = std::unique_ptr<AVFrame, AVFrameDeleter>;
+using AVFilterGraphPtr = std::unique_ptr<AVFilterGraph, AVFilterGraphDeleter>;
 
 // Sample buffer management with RAII
 class SampleBuffer {
@@ -235,6 +247,12 @@ class AudioDecoder : public AudioProcessorBase {
     std::string duration_str;
     GainProcessor gain_processor;
 
+    // Filter graph for dynaudnorm
+    AudioUtils::AVFilterGraphPtr filter_graph;
+    AVFilterContext *buffersrc_ctx = nullptr;
+    AVFilterContext *buffersink_ctx = nullptr;
+    AudioUtils::AVFramePtr filter_frame;
+
     static constexpr AudioUtils::AudioConfig OUTPUT_CONFIG{
         .channels = 2,
         .sample_rate = 48000,
@@ -243,6 +261,7 @@ class AudioDecoder : public AudioProcessorBase {
         .precision = 20};
 
     void initialize();
+    void initialize_filter_graph();
     void open_output_pipe();
     void log_duration(std::chrono::steady_clock::time_point start) const;
 };

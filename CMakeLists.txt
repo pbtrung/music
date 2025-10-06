@@ -19,6 +19,7 @@ set(PKG_LIST
     libavcodec
     libavformat
     libavutil
+    libavfilter
     libswresample
     libssl
     libcrypto

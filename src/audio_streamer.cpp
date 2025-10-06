@@ -137,7 +137,7 @@ void AudioStreamManager::producer_loop() {
             if (!filename.empty()) {
                 track["filename"] = filename;
                 track["max_value"] = config["max_value"].get<int>();
-                track["gain_fixed"] = compute_track_gain(config, track);
+                // track["gain_fixed"] = compute_track_gain(config, track);
                 SPDLOG_TRACE("Push: {}", filename);
                 push_track(std::move(track));
             } else {
@@ -215,8 +215,9 @@ void AudioStreamManager::consumer_loop() {
             SPDLOG_TRACE("Pop: {}", filename);
             print_info(track);
 
+            int gain_fixed = 0;
             AudioDecoder decoder(config["pipe"].get<std::string>(), file_path,
-                                 track["gain_fixed"].get<int>());
+                                 gain_fixed);
             decoder.decode();
         } catch (const std::exception &e) {
             SPDLOG_TRACE("Consumer error: {}", e.what());

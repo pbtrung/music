@@ -491,6 +491,127 @@ AudioDecoder::AudioDecoder(const std::string &pipe_name,
     : AudioProcessorBase(file_path), pipe_name(pipe_name),
       gain_processor(gain_fixed) {
     audio_config = OUTPUT_CONFIG;
+
+    // Allocate filter frame
+    AVFrame *tmp_filter_frame = av_frame_alloc();
+    if (!tmp_filter_frame) {
+        throw std::runtime_error("Failed to allocate filter frame");
+    }
+    filter_frame = AudioUtils::AVFramePtr(tmp_filter_frame);
+}
+
+void AudioDecoder::initialize_filter_graph() {
+    SPDLOG_TRACE("Initializing filter graph with dynaudnorm");
+
+    AVFilterGraph *tmp_graph = avfilter_graph_alloc();
+    if (!tmp_graph) {
+        throw std::runtime_error("Failed to allocate filter graph");
+    }
+    filter_graph = AudioUtils::AVFilterGraphPtr(tmp_graph);
+
+    // Get the buffer source and sink filters
+    const AVFilter *buffersrc = avfilter_get_by_name("abuffer");
+    const AVFilter *buffersink = avfilter_get_by_name("abuffersink");
+    if (!buffersrc || !buffersink) {
+        throw std::runtime_error(
+            "Failed to find abuffer or abuffersink filter");
+    }
+
+    // Create buffer source
+    char ch_layout_str[64];
+    AVChannelLayout ch_layout;
+    av_channel_layout_default(&ch_layout, audio_config.channels);
+    av_channel_layout_describe(&ch_layout, ch_layout_str,
+                               sizeof(ch_layout_str));
+
+    char args[512];
+    snprintf(args, sizeof(args),
+             "time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=%s",
+             1, audio_config.sample_rate, audio_config.sample_rate,
+             av_get_sample_fmt_name(audio_config.sample_format), ch_layout_str);
+
+    int ret = avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in",
+                                           args, nullptr, filter_graph.get());
+    if (ret < 0) {
+        throw std::runtime_error("Failed to create buffer source filter");
+    }
+
+    // Create buffer sink
+    ret = avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out",
+                                       nullptr, nullptr, filter_graph.get());
+    if (ret < 0) {
+        throw std::runtime_error("Failed to create buffer sink filter");
+    }
+
+    // Set buffer sink parameters
+    AVSampleFormat sample_fmts[] = {audio_config.sample_format,
+                                    AV_SAMPLE_FMT_NONE};
+    ret = av_opt_set_int_list(buffersink_ctx, "sample_fmts", sample_fmts,
+                              AV_SAMPLE_FMT_NONE, AV_OPT_SEARCH_CHILDREN);
+    if (ret < 0) {
+        throw std::runtime_error("Failed to set output sample format");
+    }
+
+    AVChannelLayout ch_layouts[] = {ch_layout, {AV_CHANNEL_ORDER_UNSPEC, 0}};
+    ret = av_opt_set_chlayout(buffersink_ctx, "ch_layouts", &ch_layouts[0],
+                              AV_OPT_SEARCH_CHILDREN);
+    if (ret < 0) {
+        throw std::runtime_error("Failed to set output channel layout");
+    }
+
+    int sample_rates[] = {audio_config.sample_rate, -1};
+    ret = av_opt_set_int_list(buffersink_ctx, "sample_rates", sample_rates, -1,
+                              AV_OPT_SEARCH_CHILDREN);
+    if (ret < 0) {
+        throw std::runtime_error("Failed to set output sample rate");
+    }
+
+    // Create dynaudnorm filter
+    const AVFilter *dynaudnorm_filter = avfilter_get_by_name("dynaudnorm");
+    if (!dynaudnorm_filter) {
+        throw std::runtime_error("dynaudnorm filter not found");
+    }
+
+    AVFilterContext *dynaudnorm_ctx = nullptr;
+
+    // dynaudnorm parameters - adjust these as needed:
+    // framelen: Frame length in milliseconds (default 500)
+    // gausssize: Gaussian filter window size (default 31)
+    // peak: Target peak value (default 0.95)
+    // maxgain: Maximum gain factor (default 10.0)
+    // targetrms: Target RMS (default 0.0 = disabled)
+    // compress: Compression factor (default 0.0)
+    // threshold: Threshold for silence detection (default 0.0)
+    const char *dynaudnorm_args =
+        "framelen=500:gausssize=31:peak=0.95:maxgain=8.0:targetrms=0.22:compress=25.0";
+
+    ret = avfilter_graph_create_filter(&dynaudnorm_ctx, dynaudnorm_filter,
+                                       "dynaudnorm", dynaudnorm_args, nullptr,
+                                       filter_graph.get());
+    if (ret < 0) {
+        throw std::runtime_error("Failed to create dynaudnorm filter");
+    }
+
+    SPDLOG_TRACE("dynaudnorm filter created with args: {}", dynaudnorm_args);
+
+    // Connect filters: buffersrc -> dynaudnorm -> buffersink
+    ret = avfilter_link(buffersrc_ctx, 0, dynaudnorm_ctx, 0);
+    if (ret < 0) {
+        throw std::runtime_error("Failed to link buffer source to dynaudnorm");
+    }
+
+    ret = avfilter_link(dynaudnorm_ctx, 0, buffersink_ctx, 0);
+    if (ret < 0) {
+        throw std::runtime_error("Failed to link dynaudnorm to buffer sink");
+    }
+
+    // Configure the graph
+    ret = avfilter_graph_config(filter_graph.get(), nullptr);
+    if (ret < 0) {
+        throw std::runtime_error("Failed to configure filter graph");
+    }
+
+    SPDLOG_TRACE("Filter graph initialized successfully");
 }
 
 void AudioDecoder::decode() {
@@ -508,33 +629,144 @@ void AudioDecoder::decode() {
 
     SPDLOG_TRACE("Start decode loop");
 
-    // Create callback for processing audio samples
-    auto process_samples = [this](uint8_t *buffer, int nb_samples,
-                                  int channels) {
-        // Apply gain processing
-        gain_processor.apply_gain(buffer, nb_samples, channels);
+    // Process audio with filter graph
+    int frames_processed = 0;
 
-        // Write to output stream
-        int bytes_per_sample =
-            av_get_bytes_per_sample(audio_config.sample_format);
-        output_stream.write(reinterpret_cast<char *>(buffer),
-                            nb_samples * channels * bytes_per_sample);
+    while (av_read_frame(format_context.get(), packet.get()) >= 0) {
+        if (packet->stream_index == audio_stream_index) {
+            int ret = avcodec_send_packet(codec_context.get(), packet.get());
+            if (ret < 0) {
+                throw std::runtime_error("Failed to send packet to decoder");
+            }
 
-        // Update progress display
-        int64_t current_pts =
-            frame->pts *
-            av_q2d(format_context->streams[audio_stream_index]->time_base);
-        std::string current_time_str =
-            Utilities::format_time(static_cast<int>(current_pts));
-        fmt::print("  {:<{}}: {} / {}\r", "position", 16, current_time_str,
-                   duration_str);
-        std::cout.flush();
-    };
+            while (ret >= 0) {
+                ret = avcodec_receive_frame(codec_context.get(), frame.get());
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                    break;
+                } else if (ret < 0) {
+                    throw std::runtime_error("Error during decoding");
+                }
 
-    process_audio_data(process_samples);
+                // Calculate output buffer size for resampling
+                int max_dst_nb_samples =
+                    av_rescale_rnd(frame->nb_samples, audio_config.sample_rate,
+                                   codec_context->sample_rate, AV_ROUND_UP);
+
+                AudioUtils::SampleBuffer output_buffer;
+                if (!output_buffer.allocate(audio_config.channels,
+                                            max_dst_nb_samples,
+                                            audio_config.sample_format)) {
+                    throw std::runtime_error(
+                        "Failed to allocate output buffer");
+                }
+
+                int nb_samples =
+                    swr_convert(swr_context.get(), output_buffer.get_ptr(),
+                                max_dst_nb_samples,
+                                const_cast<const uint8_t **>(frame->data),
+                                frame->nb_samples);
+
+                if (nb_samples < 0) {
+                    throw std::runtime_error("Error converting samples");
+                }
+
+                // Create a frame for the filter input
+                AVFrame *filter_input = av_frame_alloc();
+                if (!filter_input) {
+                    throw std::runtime_error(
+                        "Failed to allocate filter input frame");
+                }
+
+                filter_input->format = audio_config.sample_format;
+                filter_input->ch_layout.nb_channels = audio_config.channels;
+                av_channel_layout_default(&filter_input->ch_layout,
+                                          audio_config.channels);
+                filter_input->sample_rate = audio_config.sample_rate;
+                filter_input->nb_samples = nb_samples;
+
+                ret = av_frame_get_buffer(filter_input, 0);
+                if (ret < 0) {
+                    av_frame_free(&filter_input);
+                    throw std::runtime_error(
+                        "Failed to allocate filter input buffer");
+                }
+
+                // Copy resampled data to filter input
+                int bytes_per_sample =
+                    av_get_bytes_per_sample(audio_config.sample_format);
+                memcpy(filter_input->data[0], output_buffer.get(),
+                       nb_samples * audio_config.channels * bytes_per_sample);
+
+                // Push frame to filter graph
+                ret = av_buffersrc_add_frame_flags(buffersrc_ctx, filter_input,
+                                                   AV_BUFFERSRC_FLAG_KEEP_REF);
+                av_frame_free(&filter_input);
+
+                if (ret < 0) {
+                    throw std::runtime_error(
+                        "Error feeding frame to filter graph");
+                }
+
+                // Pull filtered frames from filter graph
+                while (true) {
+                    ret = av_buffersink_get_frame(buffersink_ctx,
+                                                  filter_frame.get());
+                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                        break;
+                    }
+                    if (ret < 0) {
+                        throw std::runtime_error(
+                            "Error getting frame from filter");
+                    }
+
+                    // Write filtered audio to output
+                    int filtered_bytes = filter_frame->nb_samples *
+                                         audio_config.channels *
+                                         bytes_per_sample;
+                    output_stream.write(
+                        reinterpret_cast<char *>(filter_frame->data[0]),
+                        filtered_bytes);
+
+                    av_frame_unref(filter_frame.get());
+                }
+
+                frames_processed++;
+
+                // Update progress display
+                int64_t current_pts =
+                    frame->pts *
+                    av_q2d(
+                        format_context->streams[audio_stream_index]->time_base);
+                std::string current_time_str =
+                    Utilities::format_time(static_cast<int>(current_pts));
+                fmt::print("  {:<{}}: {} / {}\r", "position", 16,
+                           current_time_str, duration_str);
+                std::cout.flush();
+            }
+        }
+        av_packet_unref(packet.get());
+    }
+
+    // Flush the filter graph
+    av_buffersrc_add_frame_flags(buffersrc_ctx, nullptr, 0);
+    while (true) {
+        int ret = av_buffersink_get_frame(buffersink_ctx, filter_frame.get());
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            break;
+        }
+        if (ret >= 0) {
+            int bytes_per_sample =
+                av_get_bytes_per_sample(audio_config.sample_format);
+            int filtered_bytes = filter_frame->nb_samples *
+                                 audio_config.channels * bytes_per_sample;
+            output_stream.write(reinterpret_cast<char *>(filter_frame->data[0]),
+                                filtered_bytes);
+            av_frame_unref(filter_frame.get());
+        }
+    }
 
     fmt::print("\n\n");
-    SPDLOG_TRACE("Finish decode loop");
+    SPDLOG_TRACE("Finish decode loop, processed {} frames", frames_processed);
     SPDLOG_TRACE("End decoding {}", file_path.filename().string());
 }
 
@@ -544,6 +776,7 @@ void AudioDecoder::initialize() {
     find_audio_stream();
     initialize_codec();
     initialize_resampler();
+    initialize_filter_graph(); // Initialize filter graph with dynaudnorm
     open_output_pipe();
 
     int64_t duration = get_duration();
